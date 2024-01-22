@@ -1,0 +1,22 @@
+pkg : node : options
+
+# robotracer nodes
+    Packages
+        racing_bot_hat : hat_node
+        racing_bot_encoder : encoder_node
+        racing_bot_odometry : odometry_node
+        racing_bot_controller : controller_node
+
+# lidar nodes
+    Launch files
+        sllidar_ros2 : sllidar_a1_launch.py
+
+# RVIZ : rviz2 -d "/home/christiaan/.rviz2/raspberry_pi.rviz" --> launch on laptop
+    Launch files:
+        rviz2 : rviz2 : some_config_file
+
+        
+
+# Foresee the Unseen nodes
+
+
