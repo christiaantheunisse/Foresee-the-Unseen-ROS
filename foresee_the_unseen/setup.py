@@ -23,6 +23,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'visualization_node = foresee_the_unseen.visualization_node:main'
         ],
     },
 )

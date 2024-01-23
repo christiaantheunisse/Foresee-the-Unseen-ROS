@@ -14,6 +14,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 def generate_launch_description():
     # Values should be `true` or `1` and `false` or `0`
     use_lidar_launch_arg = DeclareLaunchArgument("use_lidar", default_value=TextSubstitution(text="true"))
+    use_keys_launch_arg = DeclareLaunchArgument("use_keys", default_value=TextSubstitution(text="false"))
 
     # To start the `pigpiod package`, necessary for communication with through the motor hat
     start_pigpiod = ExecuteProcess(
@@ -38,6 +39,18 @@ def generate_launch_description():
         package="racing_bot_controller",
         executable="controller_node",
     )
+    visualization_node = Node(
+        package="foresee_the_unseen",
+        executable="visualization_node",
+    )
+    # ros2 run racing_bot_controller teleop_key_node
+    # teleop_key_node = Node(
+    #     package="racing_bot_controller",
+    #     executable="teleop_key_node",
+    #     condition=IfCondition(LaunchConfiguration("use_keys")),
+    #     # prefix=[''],
+    #     output='screen',
+    # )
 
     # Launch lidar nodes if `use_lidar` == True
     lidar_launch = IncludeLaunchDescription(
@@ -73,6 +86,7 @@ def generate_launch_description():
             encoder_node,
             odometry_node,
             controller_node,
+            visualization_node,
             # launch files
             lidar_launch,
             # transforms

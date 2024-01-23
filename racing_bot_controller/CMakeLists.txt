@@ -15,9 +15,13 @@ include_directories(include)
 add_executable(controller_node src/main.cpp src/controller_node.cpp)
 ament_target_dependencies(controller_node rclcpp geometry_msgs std_msgs)
 
+add_executable(teleop_key_node src/teleop_key_control.cpp)
+ament_target_dependencies(teleop_key_node rclcpp geometry_msgs)
+
 install(
   TARGETS
   controller_node 
+  teleop_key_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
