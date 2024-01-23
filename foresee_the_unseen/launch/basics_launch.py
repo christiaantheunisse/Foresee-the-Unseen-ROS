@@ -43,6 +43,13 @@ def generate_launch_description():
         package="foresee_the_unseen",
         executable="visualization_node",
     )
+    imu_node = Node(
+        package="racing_bot_imu",
+        executable="imu_node",
+    )
+    # Extended Kalman Filter: https://docs.ros.org/en/melodic/api/robot_localization/html/state_estimation_nodes.html
+    
+
     # ros2 run racing_bot_controller teleop_key_node
     # teleop_key_node = Node(
     #     package="racing_bot_controller",
@@ -87,6 +94,7 @@ def generate_launch_description():
             odometry_node,
             controller_node,
             visualization_node,
+            imu_node,
             # launch files
             lidar_launch,
             # transforms

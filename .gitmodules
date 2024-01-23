@@ -1,0 +1,3 @@
+[submodule "LSM9DS1_RaspberryPi_Library"]
+	path = racing_bot_imu/include/LSM9DS1_RaspberryPi_Library
+	url = https://github.com/akimach/LSM9DS1_RaspberryPi_Library.git
