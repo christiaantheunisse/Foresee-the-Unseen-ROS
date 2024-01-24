@@ -44,6 +44,10 @@ namespace racing_bot
       rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odometry_publisher_;
       rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr right_subscription_;
       std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+
+      bool do_broadcast_transform_;
+      std::vector<double> pose_variances_;
+      std::vector<double> twist_variances_;
     };
   }
 }

@@ -14,6 +14,7 @@ RGBA = ["r", "g", "b", "a"]
 RED = [1.0, 0.0, 0.0, 1.0]
 GREEN = [0.0, 1.0, 0.0, 1.0]
 BLUE = [0.0, 0.0, 1.0, 1.0]
+TRANSPARENT_BLUE = [0.0, 0.0, 1.0, 0.6]
 BLACK = [0.0, 0.0, 0.0, 1.0]
 TRANSPARENT_GREY = [0.5, 0.5, 0.5, 0.8]
 
@@ -66,7 +67,7 @@ class VisualizationNode(Node):
 
         ego_vehicle_bb.pose.position = Point(**dict(zip(XYZ, self.ego_vehicle_offset)))
         ego_vehicle_bb.scale = Vector3(**dict(zip(XYZ, self.ego_vehicle_size)))
-        ego_vehicle_bb.color = ColorRGBA(**dict(zip(RGBA, BLUE)))
+        ego_vehicle_bb.color = ColorRGBA(**dict(zip(RGBA, TRANSPARENT_BLUE)))
         ego_vehicle_bb.frame_locked = True
 
         return [ego_vehicle_bb]

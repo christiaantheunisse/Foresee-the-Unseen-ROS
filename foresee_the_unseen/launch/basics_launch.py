@@ -3,10 +3,11 @@ import os
 from ament_index_python import get_package_share_directory
 
 from launch import LaunchDescription
+from launch_ros.substitutions import FindPackageShare
 from launch_ros.actions import Node
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.actions.execute_process import ExecuteProcess
-from launch.substitutions import TextSubstitution, LaunchConfiguration
+from launch.substitutions import TextSubstitution, LaunchConfiguration, PathJoinSubstitution
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 
@@ -16,7 +17,7 @@ def generate_launch_description():
     use_lidar_launch_arg = DeclareLaunchArgument("use_lidar", default_value=TextSubstitution(text="true"))
     use_keys_launch_arg = DeclareLaunchArgument("use_keys", default_value=TextSubstitution(text="false"))
 
-    # To start the `pigpiod package`, necessary for communication with through the motor hat
+    # To start the `pigpiod package`, necessary for I2C
     start_pigpiod = ExecuteProcess(
         cmd=["sudo", "pigpiod"],
         name="Start pigpiod",
@@ -48,7 +49,15 @@ def generate_launch_description():
         executable="imu_node",
     )
     # Extended Kalman Filter: https://docs.ros.org/en/melodic/api/robot_localization/html/state_estimation_nodes.html
-    
+    pkg = FindPackageShare('foresee_the_unseen')
+    path = PathJoinSubstitution([pkg, 'config', 'ekf.yaml'])
+    robot_localization_node = Node(
+        package="robot_localization",
+        executable="ekf_node",
+        name="my_ekf_filter_node",
+        output="screen",
+        parameters=[path],
+    )
 
     # ros2 run racing_bot_controller teleop_key_node
     # teleop_key_node = Node(
@@ -95,6 +104,7 @@ def generate_launch_description():
             controller_node,
             visualization_node,
             imu_node,
+            robot_localization_node,
             # launch files
             lidar_launch,
             # transforms
