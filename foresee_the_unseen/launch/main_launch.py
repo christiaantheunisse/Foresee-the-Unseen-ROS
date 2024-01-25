@@ -1,7 +1,4 @@
 import os
-
-from ament_index_python import get_package_share_directory
-
 from launch import LaunchDescription
 from launch_ros.substitutions import FindPackageShare
 from launch_ros.actions import Node, SetParameter
@@ -32,7 +29,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 ################################################
 
 ################ Record Ros Bag ##################
-### $ ---------------------------------------- ###
+### $ ros2 bag record -o some_name /scan /left_wheel /right_wheel /imu_data ###
 ##################################################
 
 ######## Get tf2_ros tree ##############
@@ -107,7 +104,7 @@ def generate_launch_description():
     )
     lidar_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(get_package_share_directory("sllidar_ros2"), "launch/sllidar_a1_launch.py")
+            PathJoinSubstitution([FindPackageShare("sllidar_ros2"), "launch", "sllidar_a1_launch.py"])
         ),
         condition=UnlessCondition(play_rosbag),  # not play_rosbag
     )
@@ -129,9 +126,12 @@ def generate_launch_description():
         executable="visualization_node",
     )
     # Extended Kalman Filter: https://docs.ros.org/en/melodic/api/robot_localization/html/state_estimation_nodes.html
-    # pkg_foresee_the_unseen = FindPackageShare("foresee_the_unseen")
-    # path_ekf_yaml = PathJoinSubstitution([pkg_foresee_the_unseen, "config", "ekf.yaml"])
-    path_ekf_yaml = "/home/ubuntu/thesis_ws/src/foresee_the_unseen/config/ekf.yaml"  # don't need to build
+    if os.path.isfile("/home/ubuntu/thesis_ws/src/foresee_the_unseen/config/ekf.yaml"):
+        path_ekf_yaml = "/home/ubuntu/thesis_ws/src/foresee_the_unseen/config/ekf.yaml"  # don't need to build
+    else:
+        pkg_foresee_the_unseen = FindPackageShare("foresee_the_unseen")
+        path_ekf_yaml = PathJoinSubstitution([pkg_foresee_the_unseen, "config", "ekf.yaml"])
+
     robot_localization_node = Node(
         package="robot_localization",
         executable="ekf_node",

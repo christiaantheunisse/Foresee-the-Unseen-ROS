@@ -2,6 +2,8 @@ import rclpy
 import numpy as np
 from rclpy.node import Node
 from setuptools import find_packages
+from ament_index_python import get_package_share_directory
+import os
 
 from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import ColorRGBA, Header
@@ -33,7 +35,7 @@ class VisualizationNode(Node):
         # TODO: Make these into parameters
         self.world_frame = "map"
         self.vehicle_frame = "base_link"
-        self.road_xml = "/home/ubuntu/thesis_ws/src/foresee_the_unseen/resource/road_structure.xml"
+        self.road_xml = os.path.join(get_package_share_directory("foresee_the_unseen"), 'resource/road_structure.xml')
         self.road_offset = np.array([0, 2], dtype=np.float_)
 
         # get road_structure
