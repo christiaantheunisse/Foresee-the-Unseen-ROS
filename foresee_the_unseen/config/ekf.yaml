@@ -6,7 +6,7 @@ my_ekf_filter_node:
         two_d_mode: true
         print_diagnostics: true
         permit_corrected_publication: false # not sure about this one
-        #reset_on_time_jump: true
+        reset_on_time_jump: true
         map_frame: map               
         odom_frame: odom                 
         base_link_frame: base_link  
