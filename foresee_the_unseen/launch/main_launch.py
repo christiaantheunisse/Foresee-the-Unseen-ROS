@@ -7,12 +7,14 @@ from launch_ros.substitutions import FindPackageShare
 from launch_ros.actions import Node, SetParameter
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.actions.execute_process import ExecuteProcess
+from launch.actions import LogInfo
 from launch.substitutions import (
     TextSubstitution,
     LaunchConfiguration,
     PathJoinSubstitution,
     NotSubstitution,
     AndSubstitution,
+    OrSubstitution,
 )
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -29,6 +31,10 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 ### $ ros2 bag play -l just_on_desk/ --clock ###
 ################################################
 
+################ Record Ros Bag ##################
+### $ ---------------------------------------- ###
+##################################################
+
 ######## Get tf2_ros tree ##############
 ### $ ros2 run tf2_tools view_frames ###
 ########################################
@@ -36,64 +42,87 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 def generate_launch_description():
     # Values should be `true` or `1` and `false` or `0`
-    use_lidar_launch_arg = DeclareLaunchArgument("use_lidar", default_value=TextSubstitution(text="true"))
-    use_rosbag_launch_arg = DeclareLaunchArgument("use_rosbag", default_value=TextSubstitution(text="false"))
-    use_lidar = LaunchConfiguration("use_lidar")
-    use_rosbag = LaunchConfiguration("use_rosbag")
+    play_rosbag_launch_arg = DeclareLaunchArgument("play_rosbag", default_value=TextSubstitution(text="false"))
+    record_rosbag_launch_arg = DeclareLaunchArgument("record_rosbag", default_value=TextSubstitution(text="false"))
+    use_ekf_launch_arg = DeclareLaunchArgument("use_ekf", default_value=TextSubstitution(text="false"))
+    play_rosbag = LaunchConfiguration("play_rosbag")
+    record_rosbag = LaunchConfiguration("record_rosbag")
+    use_ekf = LaunchConfiguration("use_ekf")
 
-    do_use_sim_time = SetParameter(name='use_sim_time', value=use_rosbag)
+    log_messages = []
+    log_messages.append(LogInfo(msg="\n=========================== Launch file logging ==========================="))
+    log_messages.append(
+        LogInfo(msg="Only starting the nodes required to run on a rosbag...", condition=IfCondition(play_rosbag))
+    )
+    log_messages.append(
+        LogInfo(msg="Starting all the nodes necessary to record a rosbag...", condition=IfCondition(record_rosbag))
+    )
+    log_messages.append(
+        LogInfo(
+            msg="The extended Kalman filter will be used to estimate the position in the \odom frame...",
+            condition=IfCondition(use_ekf),
+        )
+    )
+    log_messages.append(
+        LogInfo(
+            msg="ERROR! It is undefined to have both `play_rosbag:=True` and `record_rosbag:=True`",
+            condition=IfCondition(AndSubstitution(play_rosbag, record_rosbag)),
+        )
+    )
+    log_messages.append(LogInfo(msg="\n================================== END ==================================\n"))
+
+
+    do_use_sim_time = SetParameter(name="use_sim_time", value=play_rosbag)
 
     # To start the `pigpiod package`, necessary for I2C
     start_pigpiod = ExecuteProcess(
         cmd=["sudo", "pigpiod"],
         name="Start pigpiod",
-        condition=UnlessCondition(use_rosbag),
+        condition=UnlessCondition(play_rosbag),  # not play_rosbag
+        # condition=IfCondition(OrSubstitution(NotSubstitution(play_rosbag), record_rosbag)),
     )
 
     # ONLY used on real robot
     hat_node = Node(
         package="racing_bot_hat",
         executable="hat_node",
-        condition=UnlessCondition(use_rosbag),
+        condition=UnlessCondition(play_rosbag),  # not play_rosbag
     )
     encoder_node = Node(
         package="racing_bot_encoder",
         executable="encoder_node",
-        condition=UnlessCondition(use_rosbag),
+        condition=UnlessCondition(play_rosbag),  # not play_rosbag
     )
     controller_node = Node(
         package="racing_bot_controller",
         executable="controller_node",
-        condition=UnlessCondition(use_rosbag),
+        condition=UnlessCondition(play_rosbag),  # not play_rosbag
     )
     imu_node = Node(
         package="racing_bot_imu",
         executable="imu_node",
-        condition=UnlessCondition(use_rosbag),
+        condition=IfCondition(
+            AndSubstitution(NotSubstitution(play_rosbag), OrSubstitution(record_rosbag, use_ekf))
+        ),  # not play_rosbag and (record_rosbag or use_ekf)
     )
-    # Launch lidar nodes if `use_lidar` == True
     lidar_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(get_package_share_directory("sllidar_ros2"), "launch/sllidar_a1_launch.py")
         ),
-        condition=IfCondition(AndSubstitution(NotSubstitution(use_rosbag), use_lidar)),
+        condition=UnlessCondition(play_rosbag),  # not play_rosbag
     )
 
     # Used ANYWAY
     odometry_node = Node(
         package="racing_bot_odometry",
         executable="odometry_node",
-        ros_arguments=[
-            "-p",
-            "do_broadcast_transform:=false",  # Use either this or ekf transform (set in ekf.yaml)
-            #    "-p", "pose_variances:=[0.1, 0.1, 0.1, 0.1, 0.1, 0.1]",
-            #    "-p", "twist_variances:=[0.1, 0.1, 0.1, 0.1, 0.1, 0.1]",
-            "-p",
-            f"pose_variances:={[0.0001]*6}",
-            "-p",
-            f"twist_variances:={[0.0001]*6}",
+        parameters=[
+            {"do_broadcast_transform": NotSubstitution(use_ekf)},  # Use either this or ekf transform (set in ekf.yaml)
+            {"pose_variances": [0.0001] * 6},
+            {"twist_variances": [0.0001] * 6},
         ],
-        output="screen",
+        # output="screen",
+        # emulate_tty=True,
     )
     visualization_node = Node(
         package="foresee_the_unseen",
@@ -109,6 +138,7 @@ def generate_launch_description():
         name="my_ekf_filter_node",
         output="screen",
         parameters=[path_ekf_yaml],
+        condition=IfCondition(use_ekf),  # use_ekf
     )
 
     # Static transforms
@@ -185,9 +215,12 @@ def generate_launch_description():
     return LaunchDescription(
         [
             # arguments
-            use_lidar_launch_arg,
-            use_rosbag_launch_arg,
-            # Parameters
+            play_rosbag_launch_arg,
+            record_rosbag_launch_arg,
+            use_ekf_launch_arg,
+            # log messages
+            *log_messages,
+            # parameters
             do_use_sim_time,
             # commands
             start_pigpiod,

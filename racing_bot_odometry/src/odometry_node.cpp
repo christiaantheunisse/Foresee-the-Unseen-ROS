@@ -57,7 +57,17 @@ void OdometryNode::rightCallBack(const std_msgs::msg::Int32 right_message) { rig
 void OdometryNode::updateOdometry() {
     current_time_ = this->now();
     const double delta_time = (current_time_ - last_time_).seconds();
-
+    // RCLCPP_INFO(this->get_logger(), "The delta_time: %f", delta_time);
+    if (delta_time < 1e-4) {
+        // RCLCPP_INFO(this->get_logger(), "No odom data published, since the delta_time is %f", delta_time);
+        return;
+    } else if (delta_time > 1.) {
+        // RCLCPP_INFO(this->get_logger(), "No odom data published, since the delta_time is %f", delta_time);
+        last_time_ = current_time_;
+        previous_left_ticks_ = left_ticks_;
+        previous_right_ticks_ = right_ticks_;   
+        return;
+    }
     calculateVelocities(delta_time);
     updatePosition(delta_time);
     publishOdometry();
