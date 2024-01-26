@@ -12,7 +12,6 @@ from launch.substitutions import (
     NotSubstitution,
     AndSubstitution,
     OrSubstitution,
-    EqualsSubstitution,
 )
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -37,83 +36,24 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 ### $ ros2 run tf2_tools view_frames ###
 ########################################
 
-########################################## Store a created map ########################################################
-### $ ros2 service call /slam_toolbox/serialize_map slam_toolbox/srv/SerializePoseGraph "{filename: /path/to/file}" ###
-#######################################################################################################################
-
-########################################## Bash script to save a map to a certain location ########################
-### savemap() { # 1 argument with the file_name -> stored in ~/thesis/map_files
-###    filename="$(echo ~/thesis/map_files/$1)"
-###    if test -f "$filename.data"; then
-###        echo "File already exists! Map is not saved."
-###    else
-###        echo "Saving map to $filename ..."
-###        ros2 service call /slam_toolbox/serialize_map slam_toolbox/srv/SerializePoseGraph "{filename: $filename}"
-###    fi
-### }
-#######################################################################################################################
-
-### If defined, the maps are obtained from `ROS_MAP_FILES_DIR`
-
-
-# TODO: Separate launch file for the bringing up of the real robot.
-
 
 def generate_launch_description():
     # Values should be `true` or `1` and `false` or `0`
-    play_rosbag_launch_arg = DeclareLaunchArgument(
-        "play_rosbag",
-        default_value=TextSubstitution(text="false"),
-        description="If false, bring up the real robot.",
-    )
-    record_rosbag_launch_arg = DeclareLaunchArgument(
-        "record_rosbag",
-        default_value=TextSubstitution(text="false"),
-        description="If true, launch only the nodes necessary to record the sensor data.",
-    )
-    use_ekf_launch_arg = DeclareLaunchArgument(
-        "use_ekf",
-        default_value=TextSubstitution(text="false"),
-        description="Use the extended kalman filter for the odometry data."
-        "This will also activate and use the imu if available.",
-    )
-    slam_mode_launch_argument = DeclareLaunchArgument(
-        "slam_mode",
-        default_value=TextSubstitution(text="disabled"),
-        choices=["mapping", "localization", "disabled"],
-        description="Which mode of the slam_toolbox to use: SLAM, only localization or don't use.",
-    )
-    map_file_name_launch_arg = DeclareLaunchArgument(
-        "map_file_name",
-        default_value=TextSubstitution(text="on_the_floor"),
-        description="If applicable, the name of the map file used for localization.",
-    )
-
+    play_rosbag_launch_arg = DeclareLaunchArgument("play_rosbag", default_value=TextSubstitution(text="false"))
+    record_rosbag_launch_arg = DeclareLaunchArgument("record_rosbag", default_value=TextSubstitution(text="false"))
+    use_ekf_launch_arg = DeclareLaunchArgument("use_ekf", default_value=TextSubstitution(text="false"))
     play_rosbag = LaunchConfiguration("play_rosbag")
     record_rosbag = LaunchConfiguration("record_rosbag")
     use_ekf = LaunchConfiguration("use_ekf")
-    slam_mode = LaunchConfiguration("slam_mode")
-    map_file_name = LaunchConfiguration("map_file_name")
 
     log_messages = []
     log_messages.append(LogInfo(msg="\n=========================== Launch file logging ==========================="))
-
-    try:
-        map_files_dir = os.environ["ROS_MAP_FILES_DIR"]
-        log_messages.append(LogInfo(msg="The map is loaded from the path in `ROS_MAP_FILES_DIR`"))
-    except KeyError:
-        log_messages.append(LogInfo(msg="`ROS_MAP_FILES_DIR` is not set!"))
-        map_files_dir = ""
-
     log_messages.append(
         LogInfo(msg="Only starting the nodes required to run on a rosbag...", condition=IfCondition(play_rosbag))
     )
     log_messages.append(
         LogInfo(msg="Starting all the nodes necessary to record a rosbag...", condition=IfCondition(record_rosbag))
     )
-    # log_messages.append(
-    #     LogInfo(msg=f"A rosbag is {'PLAYED' if play_rosbag else 'RECORDED' if record_rosbag else 'not used'}")
-    # )
     log_messages.append(
         LogInfo(
             msg="The extended Kalman filter will be used to estimate the position in the \odom frame...",
@@ -127,6 +67,7 @@ def generate_launch_description():
         )
     )
     log_messages.append(LogInfo(msg="\n================================== END ==================================\n"))
+
 
     do_use_sim_time = SetParameter(name="use_sim_time", value=play_rosbag)
 
@@ -177,6 +118,8 @@ def generate_launch_description():
             {"pose_variances": [0.0001] * 6},
             {"twist_variances": [0.0001] * 6},
         ],
+        # output="screen",
+        # emulate_tty=True,
     )
     visualization_node = Node(
         package="foresee_the_unseen",
@@ -189,7 +132,7 @@ def generate_launch_description():
         pkg_foresee_the_unseen = FindPackageShare("foresee_the_unseen")
         path_ekf_yaml = PathJoinSubstitution([pkg_foresee_the_unseen, "config", "ekf.yaml"])
 
-    local_localization_node = Node(
+    robot_localization_node = Node(
         package="robot_localization",
         executable="ekf_node",
         name="my_ekf_filter_node",
@@ -198,69 +141,9 @@ def generate_launch_description():
         condition=IfCondition(use_ekf),  # use_ekf
     )
 
-    global_localization_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            # This launch file from the slam_toolbox is downloaded from github, because the version shipped with apt
-            # does not provide the same arguments.
-            PathJoinSubstitution(
-                [FindPackageShare("foresee_the_unseen"), "launch", "slam_toolbox", "localization_launch.py"]
-            )
-        ),
-        launch_arguments={
-            "slam_params_file": PathJoinSubstitution(
-                [FindPackageShare("foresee_the_unseen"), "config", "mapper_params_localization.yaml"]
-            ),
-            "map_file_name": PathJoinSubstitution([map_files_dir, map_file_name]),
-        }.items(),
-        condition=IfCondition(
-            AndSubstitution(NotSubstitution(record_rosbag), EqualsSubstitution(slam_mode, "localization"))
-        ),  # (not record_rosbag) and (slam_mode == "localization")
-    )
-
-    global_localization_and_mapping_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            # This launch file from the slam_toolbox is downloaded from github, because the version shipped with apt
-            # does not provide the same arguments.
-            PathJoinSubstitution(
-                [FindPackageShare("foresee_the_unseen"), "launch", "slam_toolbox", "online_async_launch.py"]
-            )
-        ),
-        launch_arguments={
-            "slam_params_file": PathJoinSubstitution(
-                [FindPackageShare("foresee_the_unseen"), "config", "mapper_params_online_async.yaml"]
-            ),
-        }.items(),
-        condition=IfCondition(
-            AndSubstitution(NotSubstitution(record_rosbag), EqualsSubstitution(slam_mode, "mapping"))
-        ),  # (not record_rosbag) and (slam_mode = "mapping")
-    )
-
+    
     # Static transforms
-    # $ ros2 run tf2_ros static_transform_publisher --x 0.0 --y 0 --z 0 --yaw 0 --pitch 0 --roll 0 --frame-id map --child-frame-id odom
-    static_trans_map_to_odom = Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        arguments=[
-            "--x",
-            "0",
-            "--y",
-            "0",
-            "--z",
-            "0",
-            "--roll",
-            "0",
-            "--pitch",
-            "0",
-            "--yaw",
-            "0",
-            "--frame-id",
-            "map",
-            "--child-frame-id",
-            "odom",
-        ],
-        condition=IfCondition(EqualsSubstitution(slam_mode, "disabled"))
-    )
-    # $ ros2 run tf2_ros static_transform_publisher --x 0.085 --y 0 --z 0 --yaw 0 --pitch 0 --roll 3.14 --frame-id laser --child-frame-id base_link
+    # $ ros2 run tf2_ros static_transform_publisher --x 0.085 --y 0 --z 0 --yaw 0 --pitch 0 --roll 3.14 --frame-id /laser --child-frame-id /base_link
     static_trans_base_link_to_laser = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
@@ -283,7 +166,7 @@ def generate_launch_description():
             "laser",
         ],
     )
-    # $ ros2 run tf2_ros static_transform_publisher --x -0.035 --y 0.04 --z 0 --yaw 0 --pitch 0 --roll 0 --frame-id base_link --child-frame-id imu_link
+    # $ ros2 run tf2_ros static_transform_publisher --x -0.035 --y 0.04 --z 0 --yaw 0 --pitch 0 --roll 0 --frame-id /base_link --child-frame-id /imu_link
     static_trans_base_link_to_imu_link = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
@@ -313,8 +196,6 @@ def generate_launch_description():
             play_rosbag_launch_arg,
             record_rosbag_launch_arg,
             use_ekf_launch_arg,
-            slam_mode_launch_argument,
-            map_file_name_launch_arg,
             # log messages
             *log_messages,
             # parameters
@@ -328,14 +209,11 @@ def generate_launch_description():
             controller_node,
             visualization_node,
             imu_node,
-            local_localization_node,
+            robot_localization_node,
             # launch files
             lidar_launch,
-            global_localization_launch,
-            global_localization_and_mapping_launch,
             # transforms
             static_trans_base_link_to_laser,
             static_trans_base_link_to_imu_link,
-            static_trans_map_to_odom,
         ]
     )
