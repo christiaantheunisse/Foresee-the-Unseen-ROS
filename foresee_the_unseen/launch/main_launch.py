@@ -111,9 +111,6 @@ def generate_launch_description():
     log_messages.append(
         LogInfo(msg="Starting all the nodes necessary to record a rosbag...", condition=IfCondition(record_rosbag))
     )
-    # log_messages.append(
-    #     LogInfo(msg=f"A rosbag is {'PLAYED' if play_rosbag else 'RECORDED' if record_rosbag else 'not used'}")
-    # )
     log_messages.append(
         LogInfo(
             msg="The extended Kalman filter will be used to estimate the position in the \odom frame...",
@@ -183,12 +180,11 @@ def generate_launch_description():
         executable="visualization_node",
     )
     # Extended Kalman Filter: https://docs.ros.org/en/melodic/api/robot_localization/html/state_estimation_nodes.html
-    if os.path.isfile("/home/ubuntu/thesis_ws/src/foresee_the_unseen/config/ekf.yaml"):
-        path_ekf_yaml = "/home/ubuntu/thesis_ws/src/foresee_the_unseen/config/ekf.yaml"  # don't need to build
-    else:
-        pkg_foresee_the_unseen = FindPackageShare("foresee_the_unseen")
-        path_ekf_yaml = PathJoinSubstitution([pkg_foresee_the_unseen, "config", "ekf.yaml"])
-
+    # if os.path.isfile("/home/ubuntu/thesis_ws/src/foresee_the_unseen/config/ekf.yaml"):
+    #     path_ekf_yaml = "/home/ubuntu/thesis_ws/src/foresee_the_unseen/config/ekf.yaml"  # don't need to build
+    # else:
+    pkg_foresee_the_unseen = FindPackageShare("foresee_the_unseen")
+    path_ekf_yaml = PathJoinSubstitution([pkg_foresee_the_unseen, "config", "ekf.yaml"])
     local_localization_node = Node(
         package="robot_localization",
         executable="ekf_node",
