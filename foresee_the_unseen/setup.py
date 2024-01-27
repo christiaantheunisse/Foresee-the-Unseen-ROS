@@ -26,7 +26,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'visualization_node = foresee_the_unseen.visualization_node:main'
+            'visualization_node = foresee_the_unseen.visualization_node:main',
+            'save_data_node = foresee_the_unseen.save_topics_node:main',
         ],
     },
 )

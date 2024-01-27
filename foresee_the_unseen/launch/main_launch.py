@@ -170,27 +170,20 @@ def generate_launch_description():
         package="racing_bot_odometry",
         executable="odometry_node",
         parameters=[
-            {"do_broadcast_transform": NotSubstitution(use_ekf)},  # Use either this or ekf transform (set in ekf.yaml)
-            {"pose_variances": [0.0001] * 6},
-            {"twist_variances": [0.0001] * 6},
+            PathJoinSubstitution([FindPackageShare("racing_bot_odometry"), "config", "odometry_node.yaml"]),
+            # {"do_broadcast_transform": NotSubstitution(use_ekf)},  # Use either this or ekf transform (set in ekf.yaml)
         ],
     )
     visualization_node = Node(
         package="foresee_the_unseen",
         executable="visualization_node",
     )
-    # Extended Kalman Filter: https://docs.ros.org/en/melodic/api/robot_localization/html/state_estimation_nodes.html
-    # if os.path.isfile("/home/ubuntu/thesis_ws/src/foresee_the_unseen/config/ekf.yaml"):
-    #     path_ekf_yaml = "/home/ubuntu/thesis_ws/src/foresee_the_unseen/config/ekf.yaml"  # don't need to build
-    # else:
-    pkg_foresee_the_unseen = FindPackageShare("foresee_the_unseen")
-    path_ekf_yaml = PathJoinSubstitution([pkg_foresee_the_unseen, "config", "ekf.yaml"])
     local_localization_node = Node(
         package="robot_localization",
         executable="ekf_node",
         name="my_ekf_filter_node",
         output="screen",
-        parameters=[path_ekf_yaml],
+        parameters=[PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "ekf.yaml"])],
         condition=IfCondition(use_ekf),  # use_ekf
     )
 
@@ -254,7 +247,7 @@ def generate_launch_description():
             "--child-frame-id",
             "odom",
         ],
-        condition=IfCondition(EqualsSubstitution(slam_mode, "disabled"))
+        condition=IfCondition(EqualsSubstitution(slam_mode, "disabled")),
     )
     # $ ros2 run tf2_ros static_transform_publisher --x 0.085 --y 0 --z 0 --yaw 0 --pitch 0 --roll 3.14 --frame-id laser --child-frame-id base_link
     static_trans_base_link_to_laser = Node(
