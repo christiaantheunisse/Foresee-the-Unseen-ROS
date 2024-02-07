@@ -60,6 +60,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 # ros2 run  datmo2 datmo_node --ros-args -p use_sim_time:=true -p pub_markers:=true
 
+
 def generate_launch_description():
     # Values should be `true` or `1` and `false` or `0`
     play_rosbag_launch_arg = DeclareLaunchArgument(
@@ -89,12 +90,18 @@ def generate_launch_description():
         default_value=TextSubstitution(text="on_the_floor"),
         description="If applicable, the name of the map file used for localization.",
     )
+    use_datmo_launch_arg = DeclareLaunchArgument(
+        "use_datmo",
+        default_value=TextSubstitution(text="false"),
+        description="If true, launch the datmo node",
+    )
 
     play_rosbag = LaunchConfiguration("play_rosbag")
     record_rosbag = LaunchConfiguration("record_rosbag")
     use_ekf = LaunchConfiguration("use_ekf")
     slam_mode = LaunchConfiguration("slam_mode")
     map_file_name = LaunchConfiguration("map_file_name")
+    use_datmo = LaunchConfiguration("use_datmo")
 
     log_messages = []
     log_messages.append(LogInfo(msg="\n=========================== Launch file logging ==========================="))
@@ -122,6 +129,12 @@ def generate_launch_description():
         LogInfo(
             msg="ERROR! It is undefined to have both `play_rosbag:=True` and `record_rosbag:=True`",
             condition=IfCondition(AndSubstitution(play_rosbag, record_rosbag)),
+        )
+    )
+    log_messages.append(
+        LogInfo(
+            msg="Datmo node is launched",
+            condition=IfCondition(use_datmo),
         )
     )
     log_messages.append(LogInfo(msg="\n================================== END ==================================\n"))
@@ -178,6 +191,14 @@ def generate_launch_description():
     visualization_node = Node(
         package="foresee_the_unseen",
         executable="visualization_node",
+        parameters=[
+            PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "visualization_node.yaml"]),
+            {
+                "road_xml": PathJoinSubstitution(
+                    [FindPackageShare("foresee_the_unseen"), "resource", "road_structure.xml"]
+                )
+            },
+        ],
     )
     local_localization_node = Node(
         package="robot_localization",
@@ -186,6 +207,14 @@ def generate_launch_description():
         output="screen",
         parameters=[PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "ekf.yaml"])],
         condition=IfCondition(use_ekf),  # use_ekf
+    )
+    datmo_node = Node(
+        package="datmo2",
+        executable="datmo_node",
+        name="datmo_node",
+        condition=IfCondition(use_datmo),
+        parameters=[{"min_pub_markers": True}],
+        remappings=[("/scan", "/scan/road_env")],
     )
 
     global_localization_launch = IncludeLaunchDescription(
@@ -305,6 +334,7 @@ def generate_launch_description():
             use_ekf_launch_arg,
             slam_mode_launch_argument,
             map_file_name_launch_arg,
+            use_datmo_launch_arg,
             # log messages
             *log_messages,
             # parameters
@@ -319,6 +349,7 @@ def generate_launch_description():
             visualization_node,
             imu_node,
             local_localization_node,
+            datmo_node,
             # launch files
             lidar_launch,
             global_localization_launch,
