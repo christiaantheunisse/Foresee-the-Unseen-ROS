@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from typing import Optional
 
 from nav_msgs.msg import Odometry
-from std_msgs.msg import Int16MultiArray
+from std_msgs.msg import Int16MultiArray, ColorRGBA, Header
+from geometry_msgs.msg import Point
+from visualization_msgs.msg import Marker
 
 
 @dataclass
@@ -67,12 +69,16 @@ class TrajectoryFollowerNode(Node):
     """
 
     def __init__(self):
-        # super().__init__("trajectory_follower_node")
+        super().__init__("trajectory_follower_node")
 
         # parameters
         self.trajectory_topic = None
+        self.traj_marker_topic = "trajectory_marker"
         self.odom_topic = "odom"
         self.motor_cmd_topic = "cmd_motor"
+
+        self.map_frame = "map"
+
         self.control_frequency = 10  # [Hz]
         self.W = 0.145  # distance between the wheels on the rear axle [m]
         self.L = 0.1  # position of the front axle measured from the rear axle [m]
@@ -80,22 +86,56 @@ class TrajectoryFollowerNode(Node):
         self.velocity_Kp = 5.0  # velocity proportional gain
         self.steering_k = 0.5  # steering control gain
 
-        # Temporary
+        # Straigth line trajectory
+        # no_points = 100
+        # xys = np.linspace([0, 0], [5, 0], no_points)
+        # diffs = xys[1:] - xys[:-1]
+        # diffs = np.append(diffs, diffs[-1:], axis=0)
+        # yaws = np.arctan2(diffs[:, 1], diffs[:, 0])
+        # vs = np.full(no_points, 0.4)
+
+        # Circular trajectory
         no_points = 100
-        xys = np.linspace([0, 0], [5, 0], no_points)
-        diffs = xys[1:] - xys[:-1]
-        diffs = np.append(diffs, diffs[-1:], axis=0)
-        yaws = np.arctan2(diffs[:, 1], diffs[:, 0])
+        radius = 1.2
+        thetas = np.linspace(np.pi, -np.pi, no_points + 1)[:-1]
+        xys = np.array([np.cos(thetas), np.sin(thetas)]).T * radius + np.array([radius, 0])
+        yaws = thetas - np.pi / 2
         vs = np.full(no_points, 0.4)
 
+        xys = np.repeat(xys, 10, axis=0)
+        yaws = np.repeat(yaws, 10, axis=0)
+        vs = np.repeat(vs, 10, axis=0)
+
         self.trajectory = Trajectory(xys, yaws, vs)
+
         self.state = State()
         self.last_target_idx = 0
         self.output_vel = 0
 
-        # self.create_subscription(Odometry, self.odom_topic, self.odom_callback, 5)
-        # self.motor_publisher = self.create_publisher(Int16MultiArray, self.motor_cmd_topic, 10)
-        # self.create_timer(1 / self.control_frequency, self.apply_control)
+        self.create_subscription(Odometry, self.odom_topic, self.odom_callback, 5)
+        self.motor_publisher = self.create_publisher(Int16MultiArray, self.motor_cmd_topic, 10)
+        self.traj_marker_publisher = self.create_publisher(Marker, self.traj_marker_topic, 1)
+        self.create_timer(1 / self.control_frequency, self.apply_control)
+        self.create_timer(1, self.visualize_trajectory)  # should be based on trajectory update
+
+    def visualize_trajectory(self):
+        point_list = []
+        color_rgba_list = []
+        for (x, y), v in zip(self.trajectory.xys, self.trajectory.vs):
+            point_list.append(Point(x=x, y=y))
+            color_rgba_list.append(ColorRGBA(r=np.clip(v / 0.6, -1.0, 1.0)))
+
+        header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.map_frame)
+        trajectory_marker = Marker(
+            header=header,
+            type=Marker.POINTS,
+            action=Marker.MODIFY,
+            id=8954,  # FIXME: remove hardcoded id
+            points=point_list,
+            colors=color_rgba_list,
+        )
+
+        self.traj_marker_publisher.publish(trajectory_marker)
 
     def trajectory_callback(self, msg):
         self.last_target_idx = 0
@@ -131,10 +171,12 @@ class TrajectoryFollowerNode(Node):
 
         """
         if self.state.x is None or self.state.y is None or self.state.yaw is None or self.state.v is None:
-            self.get_logger().warn("No state update received")
+            self.get_logger().warn("No state update received, so control is not applied")
+            return
 
         # calculate target index
-        dist = np.linalg.norm(np.array([self.state.x, self.state.y]) - self.trajectory.xys, axis=1)
+        dist_vec = np.array([self.state.x, self.state.y]) - self.trajectory.xys
+        dist = np.linalg.norm(dist_vec, axis=1)
         target_idx = np.argmin(dist)
         if self.last_target_idx > target_idx:
             target_idx = self.last_target_idx
@@ -143,7 +185,7 @@ class TrajectoryFollowerNode(Node):
 
         # perpendicular distance error
         perp_vec = -np.array([np.cos(self.state.yaw + np.pi / 2), np.sin(self.state.yaw + np.pi / 2)])
-        perp_error = dist[target_idx] @ perp_vec
+        perp_error = dist_vec[target_idx] @ perp_vec
 
         # calculate the acceleration
         acceleration = self.p_control(self.trajectory.vs[target_idx], self.state.v)
@@ -169,7 +211,7 @@ class TrajectoryFollowerNode(Node):
 
         v_left, v_right = int(255 * v_left), int(255 * v_right)
         motor_command = Int16MultiArray(data=[v_left, v_right, 0, 0])  # 4 motors are implemented by the hat_node
-        self.motor_publisher(motor_command)
+        self.motor_publisher.publish(motor_command)
 
         self.get_logger().info(f"Control: [v_left, v_right] = {v_left, v_right}")
 
@@ -185,6 +227,17 @@ class TrajectoryFollowerNode(Node):
         theta_d = np.arctan2(self.steering_k * perp_error, self.state.v)
 
         return theta_e + theta_d
+
+    @staticmethod
+    def scale_motor_vels(v_left, v_right):
+        if abs(v_left) > 1 and abs(v_left) > abs(v_right):
+            v_right /= abs(v_left)
+            v_left /= abs(v_left)
+        elif abs(v_right) > 1:
+            v_right /= abs(v_right)
+            v_left /= abs(v_right)
+
+        return v_left, v_right
 
 
 def main(args=None):
