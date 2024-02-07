@@ -58,6 +58,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 # TODO: Separate launch file for the bringing up of the real robot.
 
+# ros2 run  datmo2 datmo_node --ros-args -p use_sim_time:=true -p pub_markers:=true
 
 def generate_launch_description():
     # Values should be `true` or `1` and `false` or `0`

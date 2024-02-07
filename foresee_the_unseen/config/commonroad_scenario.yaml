@@ -1,0 +1,30 @@
+#EGO_VEHICLE
+vehicle_type : car
+vehicle_length : 0.23
+vehicle_width : 0.18
+goal_point_x : -2
+goal_point_y : -1
+
+#PLANNER
+reference_speed : 8.3333
+max_acceleration : 3.5
+max_deceleration : 5
+planning_horizon : 50
+safety_margin : 5
+
+#SENSOR
+field_of_view_degrees : 360
+min_resolution : 1
+view_range : 500
+
+#OCCLUSION_TRACKER
+min_velocity : 0
+max_velocity : 10
+min_shadow_area : 1
+prediction_horizon : 50
+tracking_enabled : True
+
+#DETECTED OBSTACLES:
+obstacle_min_width: 2
+obstacle_min_length: 5
+orientation_margin: 0.1  # radians

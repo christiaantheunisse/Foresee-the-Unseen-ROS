@@ -9,7 +9,7 @@ odom_node:
         right_encoder_topic: "right_wheel"
 
         # Wheel radius and base are tuned after measuring
-        wheel_radius: 0.033 # [m] double
+        wheel_radius: 0.032 # [m] double (0.033)
         ticks_per_rev: 1920. # double
         wheel_base: 0.145 # [m] double 
 
