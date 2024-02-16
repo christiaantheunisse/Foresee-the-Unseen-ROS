@@ -1,9 +1,17 @@
+#GENERAL
+simulation_duration : 30
+
 #EGO_VEHICLE
+initial_state_x : 0
+initial_state_y : 0
+initial_state_orientation: 0
+initial_state_velocity: 0
+
 vehicle_type : car
-vehicle_length : 0.23
+vehicle_length : 0.3
 vehicle_width : 0.18
-goal_point_x : -2
-goal_point_y : -1
+goal_point_x : -3
+goal_point_y : -0.13333
 
 #PLANNER
 reference_speed : 8.3333

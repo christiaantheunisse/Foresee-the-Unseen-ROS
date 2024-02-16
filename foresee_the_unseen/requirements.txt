@@ -1,0 +1,3 @@
+commonroad-io==2022.3
+commonroad-drivability-checker==2022.2
+shapely==1.8.5

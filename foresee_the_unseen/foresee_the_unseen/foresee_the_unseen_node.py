@@ -20,7 +20,7 @@ from lib.occlusion_tracker import Occlusion_tracker
 from lib.utilities import add_no_stop_zone
 from lib.helper_functions import euler_from_quaternion
 
-from datmo2.msg import TrackArray
+from datmo.msg import TrackArray
 from nav_msgs.msg import Odometry
 
 

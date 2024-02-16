@@ -13,7 +13,7 @@ from commonroad.scenario.obstacle import DynamicObstacle, ObstacleType
 from commonroad.scenario.state import InitialState
 from commonroad.prediction.prediction import SetBasedPrediction, Occupancy
 
-from utilities import Lanelet2ShapelyPolygon, ShapelyPolygon2Polygon, polygon_intersection, polygon_diff, polygon_union, cut_line
+from foresee_the_unseen.lib.utilities import Lanelet2ShapelyPolygon, ShapelyPolygon2Polygon, polygon_intersection, polygon_diff, polygon_union, cut_line
 
 import time
 
@@ -157,20 +157,6 @@ class Occlusion_tracker:
         self.prediction_horizon = prediction_horizon
         self.tracking_enabled = tracking_enabled
 
-        ## Find the initial lanelets
-        initial_lanelets = []
-        for lanelet in scenario.lanelet_network.lanelets:
-            if lanelet.predecessor == []:
-                initial_lanelets.append(lanelet)
-
-        ## Generate lanes (Collection of lanelets from start to end of the scenario)
-        lanes = []
-        for lanelet in initial_lanelets:
-            current_lanes, _ = Lanelet.all_lanelets_by_merging_successors_from_lanelet(lanelet, scenario.lanelet_network, max_length=500)
-            for lane in current_lanes:
-                lanes.append(lane)
-        self.lanes = lanes
-
         # ========== Find only the 3 relevant lanes for the `parked_vehicle_scenario` ==========
         lanelets_dict = {}
         for lanelet in scenario.lanelet_network.lanelets:
@@ -187,8 +173,20 @@ class Occlusion_tracker:
             self.lanes.append(Lanelet.merge_lanelets(_lane, lanelets_dict[49566]))
             self.lanes.append(Lanelet.merge_lanelets(lanelets_dict[49574], lanelets_dict[49590]))
             self.lanes.append(Lanelet.merge_lanelets(lanelets_dict[49564], lanelets_dict[49602]))
+        else:
+            ## Find the initial lanelets
+            initial_lanelets = []
+            for lanelet in scenario.lanelet_network.lanelets:
+                if lanelet.predecessor == []:
+                    initial_lanelets.append(lanelet)
 
-        # my scenario
+            ## Generate lanes (Collection of lanelets from start to end of the scenario)
+            lanes = []
+            for lanelet in initial_lanelets:
+                current_lanes, _ = Lanelet.all_lanelets_by_merging_successors_from_lanelet(lanelet, scenario.lanelet_network, max_length=500)
+                for lane in current_lanes:
+                    lanes.append(lane)
+            self.lanes = lanes
 
         # ==================== END ====================
 

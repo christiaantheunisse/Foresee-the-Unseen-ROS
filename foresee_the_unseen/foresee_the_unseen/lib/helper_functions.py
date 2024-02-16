@@ -4,6 +4,8 @@ from scipy.spatial.transform import Rotation as R
 import matplotlib.pyplot as plt
 import math
 from collections import namedtuple
+import os
+import time
 
 
 def polygons_from_road_xml(xml_file: str, offset: np.ndarray = np.array([0.0, 0.0])):
@@ -112,6 +114,26 @@ def matrices_from_cw_cvx_polygon(polygon):
 
     return np.array(A), np.array(B)
 
+
+def make_unique_name(directory, counter: int = 0):
+    new_directory = directory if counter == 0 else directory + " (" + str(counter) + ")"
+    if os.path.exists(new_directory) and counter < 100:
+        return make_unique_name(directory, counter + 1)
+    else:
+        return new_directory
+    
+
+def create_log_directory(base_dir: str):
+    if os.path.exists(base_dir):
+        t = time.localtime()
+        current_time = time.strftime("%Y-%m-%d %A at %H.%Mu", t)
+        log_dir = os.path.join(base_dir, current_time)
+        log_dir = make_unique_name(log_dir)
+        os.mkdir(log_dir)
+        return log_dir
+    else:
+        raise TypeError(f"The path specified for the log files does not exist: {base_dir}")
+    
 
 # if __name__ =="__main__":
 #     polygons = polygons_from_road_xml("road_structure.xml")

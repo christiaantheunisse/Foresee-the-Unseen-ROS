@@ -54,6 +54,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 #######################################################################################################################
 
 ### If defined, the maps are obtained from `ROS_MAP_FILES_DIR`
+### Logs are stored in  `ROS_LOG_FILES_DIR`
 
 
 # TODO: Separate launch file for the bringing up of the real robot.
@@ -92,7 +93,7 @@ def generate_launch_description():
     )
     use_datmo_launch_arg = DeclareLaunchArgument(
         "use_datmo",
-        default_value=TextSubstitution(text="false"),
+        default_value=TextSubstitution(text="true"),
         description="If true, launch the datmo node",
     )
 
@@ -112,6 +113,13 @@ def generate_launch_description():
     except KeyError:
         log_messages.append(LogInfo(msg="`ROS_MAP_FILES_DIR` is not set!"))
         map_files_dir = ""
+
+    try:
+        log_files_dir = os.environ["ROS_LOG_FILES_DIR"]
+        log_messages.append(LogInfo(msg="The log data is stored in the path in `ROS_LOG_FILES_DIR`"))
+    except KeyError:
+        log_messages.append(LogInfo(msg="`ROS_LOG_FILES_DIR` is not set!"))
+        log_files_dir = ""
 
     log_messages.append(
         LogInfo(msg="Only starting the nodes required to run on a rosbag...", condition=IfCondition(play_rosbag))
@@ -195,8 +203,9 @@ def generate_launch_description():
             PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "visualization_node.yaml"]),
             {
                 "road_xml": PathJoinSubstitution(
-                    [FindPackageShare("foresee_the_unseen"), "resource", "road_structure.xml"]
-                )
+                    [FindPackageShare("foresee_the_unseen"), "resource", "road_structure_15.xml"]
+                ),
+                "log_directory": PathJoinSubstitution(log_files_dir),
             },
         ],
     )
@@ -209,7 +218,7 @@ def generate_launch_description():
         condition=IfCondition(use_ekf),  # use_ekf
     )
     datmo_node = Node(
-        package="datmo2",
+        package="datmo",
         executable="datmo_node",
         name="datmo_node",
         condition=IfCondition(use_datmo),
@@ -325,6 +334,28 @@ def generate_launch_description():
             "imu_link",
         ],
     )
+    static_trans_map_to_planner_frame = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        arguments=[
+            "--x",
+            "1.75", # 1.30
+            "--y",
+            "0", # 0.13
+            "--z",
+            "0",
+            "--roll",
+            "0",
+            "--pitch",
+            "0",
+            "--yaw",
+            "-1.57079632679",
+            "--frame-id",
+            "map",
+            "--child-frame-id",
+            "planner",
+        ],
+    )
 
     return LaunchDescription(
         [
@@ -358,5 +389,6 @@ def generate_launch_description():
             static_trans_base_link_to_laser,
             static_trans_base_link_to_imu_link,
             static_trans_map_to_odom,
+            static_trans_map_to_planner_frame,
         ]
     )

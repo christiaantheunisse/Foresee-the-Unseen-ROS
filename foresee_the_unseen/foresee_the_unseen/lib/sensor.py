@@ -13,7 +13,7 @@ from commonroad_dc.collision.collision_detection.pycrcc_collision_dispatch impor
 import matplotlib.pyplot as plt
 
 from shapely.geometry import Polygon as ShapelyPolygon
-from utilities import ShapelyPolygon2Polygon, polygon_union
+from foresee_the_unseen.lib.utilities import ShapelyPolygon2Polygon, polygon_union
 
 
 class Sensor:

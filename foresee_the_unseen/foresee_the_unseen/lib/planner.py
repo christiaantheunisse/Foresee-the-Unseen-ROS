@@ -6,7 +6,7 @@ from commonroad.prediction.prediction import TrajectoryPrediction
 from commonroad.geometry.shape import Rectangle
 from commonroad_dc.collision.collision_detection.pycrcc_collision_dispatch import create_collision_checker, create_collision_object
 
-from utilities import Lanelet2ShapelyPolygon
+from foresee_the_unseen.lib.utilities import Lanelet2ShapelyPolygon
 from shapely.geometry import Point
 
 class Planner:
@@ -68,6 +68,7 @@ class Planner:
             else:
                 continue
             break
+        assert starting_lane != [], "Goal does not intersect with a lane"
         self.waypoints = list(starting_lane.center_vertices)
         self.remove_passed_waypoints()
 
