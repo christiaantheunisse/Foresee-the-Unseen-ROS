@@ -12,8 +12,8 @@
     do_visualize_trajectory: True
     
     control_frequency: 10.0 # frequency of the motor controls send to the motor [Hz] (double)
-    velocity_PID: [5., 0., 0.] # velocity control PID constants (double array)
-    steering_k: 0.5 # steering control gain (double)
+    velocity_PID: [5., 0., 0.5] # velocity control PID constants (double array)
+    steering_k: 1. # steering control gain (double)
     
     wheel_base_width: 0.145 # wheel base width [m] (double)
     wheel_base_length: 0.1 # wheel base length [m] (double)

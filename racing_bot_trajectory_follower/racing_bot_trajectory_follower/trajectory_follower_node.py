@@ -163,6 +163,7 @@ class TrajectoryFollowerNode(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
         self.state = State()
+        self.prev_error = None
         self.last_target_idx = 0
         self.output_vel = 0
         self.trajectory = None
@@ -244,7 +245,8 @@ class TrajectoryFollowerNode(Node):
         self.last_target_idx = 0
         # FIXME: Temporary fix
         # trajectory = get_sinus_and_circ_trajectory(velocity=0.2).repeat(1)[0.5]  # is in the planner frame
-        trajectory = get_circular_trajectory(velocity=0.2)[0.9]  # is in the planner frame
+        trajectory = get_sinus_and_circ_trajectory(velocity=0.2).repeat(1)[0.9]  # is in the planner frame
+        # trajectory = get_circular_trajectory(velocity=0.2)[0.9]  # is in the planner frame
         self.trajectory = self.trajectory_convert_frame(trajectory, self.map_frame, self.planner_frame)
 
     def odom_callback(self, msg: Odometry):
@@ -277,6 +279,7 @@ class TrajectoryFollowerNode(Node):
             f"translation: {translation}, rotation: {rotation}, position: {position}, yaw: {yaw}, transf_position: {transf_position}, transf_yaw: {transf_yaw}",
             throttle_duration_sec=0.5,
         )
+        self.prev_state = self.state
         self.state = State(*transf_position, transf_yaw, velocity)
 
     def apply_control(self):
@@ -355,7 +358,11 @@ class TrajectoryFollowerNode(Node):
     def p_control(self, target, current) -> float:
         """Proportional control for the speed."""
         Kp, Ki, Kd = self.velocity_PID
-        return Kp * (target - current)
+        error = target - current
+        derror = (error - self.prev_error) * self.control_frequency if self.prev_error is not None else 0
+        self.prev_error = error
+
+        return Kp * error + Kd * derror
 
     def stanley_controller(self, goal_yaw, perp_error) -> float:
         """Calculates the steering angle"""
