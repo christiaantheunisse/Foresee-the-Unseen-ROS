@@ -93,12 +93,12 @@ def generate_launch_description():
     )
     use_datmo_launch_arg = DeclareLaunchArgument(
         "use_datmo",
-        default_value=TextSubstitution(text="true"),
+        default_value=TextSubstitution(text="false"),
         description="If true, launch the datmo node",
     )
     use_foresee_launch_arg = DeclareLaunchArgument(
         "use_foresee",
-        default_value=TextSubstitution(text="true"),
+        default_value=TextSubstitution(text="false"),
         description="If true, launch the foresee_the_unseen node",
     )
 
@@ -358,6 +358,29 @@ def generate_launch_description():
             "0",
             "--yaw",
             "-1.57079632679",
+            "--frame-id",
+            "map",
+            "--child-frame-id",
+            "planner",
+        ],
+    )
+    # Zero
+    static_trans_map_to_planner_frame = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        arguments=[
+            "--x",
+            "0", # 1.30
+            "--y",
+            "0", # 0.13
+            "--z",
+            "0",
+            "--roll",
+            "0",
+            "--pitch",
+            "0",
+            "--yaw",
+            "0",
             "--frame-id",
             "map",
             "--child-frame-id",

@@ -16,6 +16,8 @@ from commonroad.prediction.prediction import TrajectoryPrediction
 from commonroad.scenario.obstacle import DynamicObstacle, ObstacleType, StaticObstacle
 from commonroad.geometry.shape import Rectangle, Circle
 
+from shapely.geometry import Polygon as ShapelyPolygon
+
 from datmo.msg import TrackArray
 from nav_msgs.msg import Odometry
 from visualization_msgs.msg import Marker, MarkerArray
@@ -160,6 +162,7 @@ class VisualizationNode(Node):
         self.ego_vehicle_state = None
         self.trajectory = None
         self.planner_step = 0
+        self.sensor_FOV = None
 
     def visualize_callback(self):
         markers = []
@@ -235,6 +238,7 @@ class VisualizationNode(Node):
 
     def laser_callback(self, msg):
         self.filter_pointcloud(msg)
+        self.FOV_from_laser(msg)
 
     def filter_pointcloud(self, scan_msg: LaserScan):
         """Filter points from the pointcloud from the lidar to reduce the computation of the `datmo` package."""
@@ -251,11 +255,9 @@ class VisualizationNode(Node):
 
         points_laser = np.vstack((points_laser, np.zeros((1, len(angles)))))
         # points_laser = points_laser[((ranges > scan_msg.range_min) & (ranges < scan_msg.range_max))] # apply the bounds
-
-        # Transform the pointcloud
         points_laser_4D = np.vstack((points_laser, np.full((1, points_laser.shape[1]), 1)))
 
-        # Convert to map frame
+        # Convert to map frame and filter base on ENVIRONMENT
         try:
             t_map_laser = self.tf_buffer.lookup_transform(self.map_frame, self.lidar_frame, rclpy.time.Time())
         except TransformException as ex:
@@ -478,6 +480,19 @@ class VisualizationNode(Node):
         state.orientation = np.arctan2(*np.flip(r_matrix @ np.array([np.cos(state.orientation), np.sin(state.orientation)])))
 
         return state
+    
+    def FOV_from_laser(self, scan_msg: LaserScan):
+        """Determines the FOV based on the LaserScan message"""
+        max_range = 2
+        ranges = np.array(scan_msg.ranges)
+        ranges[ranges > max_range] = max_range
+        N = len(ranges)
+        angles = scan_msg.angle_min + np.arange(N) * scan_msg.angle_increment
+        cos_sin_map = np.array([np.cos(angles), np.sin(angles)])
+        points_laser = (ranges * cos_sin_map).T  # 2D points
+        # points_laser = np.nan_to_num(points_laser, nan=1e99, posinf=1e99, neginf=-1e99)
+        self.sensor_FOV = ShapelyPolygon(points_laser) if len(points_laser) >= 3 else None
+        
 
     def update_scenario(self):
         """Gets called every n seconds"""
@@ -497,8 +512,14 @@ class VisualizationNode(Node):
         percieved_scenario.add_objects(self.detected_obstacles)
 
         # Update the sensor and get the sensor view and the list of observed obstacles
-        self.sensor.update(self.ego_vehicle.initial_state)
-        sensor_view = self.sensor.get_sensor_view(percieved_scenario)
+        # self.sensor.update(self.ego_vehicle.initial_state)
+        # sensor_view = self.sensor.get_sensor_view(percieved_scenario)
+
+        if self.sensor_FOV is not None:
+            sensor_view = self.sensor_FOV
+        else:
+            self.get_logger().warn("No detected obstacles available", throttle_duration_sec=self.throttle_duration)
+            return
 
         # Update the tracker with the new sensor view and get the prediction for the shadows
         self.occ_track.update(sensor_view, self.ego_vehicle.initial_state.time_step)

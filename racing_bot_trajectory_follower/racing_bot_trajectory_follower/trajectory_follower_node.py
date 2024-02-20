@@ -78,6 +78,29 @@ def trans_rot_from_euler(t):
     return translation, yaw
 
 
+def matrix_yaw_from_transform(t):
+    rot_quat = [
+        t.transform.rotation.x,
+        t.transform.rotation.y,
+        t.transform.rotation.z,
+        t.transform.rotation.w,
+    ]
+    translation = [
+        t.transform.translation.x,
+        t.transform.translation.y,
+        t.transform.translation.z,
+    ]
+    rot_scipy = R.from_quat(rot_quat)
+    _, _, yaw = rot_scipy.as_euler("xyz")
+    rot_matrix = rot_scipy.as_matrix()
+    t_matrix = np.zeros((4, 4))
+    t_matrix[:3, :3] = rot_matrix
+    t_matrix[:3, 3] = translation
+    t_matrix[3, 3] = 1
+
+    return t_matrix, yaw
+
+
 class TrajectoryFollowerNode(Node):
     """
     This node implements Stanley steering control and PID speed control which is based on the code from the github
@@ -97,6 +120,7 @@ class TrajectoryFollowerNode(Node):
         # parameters
         self.declare_parameter("map_frame", "map")
         self.declare_parameter("planner_frame", "planner")
+        self.declare_parameter("odom_frame", "odom")
 
         self.declare_parameter("trajectory_topic", "trajectory")
         self.declare_parameter("trajectory_marker_topic", "visualization/trajectory")
@@ -115,6 +139,7 @@ class TrajectoryFollowerNode(Node):
 
         self.map_frame = self.get_parameter("map_frame").get_parameter_value().string_value
         self.planner_frame = self.get_parameter("planner_frame").get_parameter_value().string_value
+        self.odom_frame = self.get_parameter("odom_frame").get_parameter_value().string_value
 
         self.trajectory_topic = self.get_parameter("trajectory_topic").get_parameter_value().string_value
         self.traj_marker_topic = self.get_parameter("trajectory_marker_topic").get_parameter_value().string_value
@@ -129,7 +154,9 @@ class TrajectoryFollowerNode(Node):
 
         self.velocity_PID = self.get_parameter("velocity_PID").get_parameter_value().double_array_value
         self.steering_k = self.get_parameter("steering_k").get_parameter_value().double_value
-        self.max_steering_angle = self.get_parameter("max_steering_angle").get_parameter_value().double_value
+        self.max_steering_angle = np.rad2deg(
+            self.get_parameter("max_steering_angle").get_parameter_value().double_value
+        )
 
         # Transformer listener
         self.tf_buffer = Buffer()
@@ -185,6 +212,19 @@ class TrajectoryFollowerNode(Node):
             )
             marker_list.append(closest_point_marker)
 
+        if self.state.x is not None:
+            closest_point_marker = Marker(
+                header=header,
+                type=Marker.POINTS,
+                action=Marker.MODIFY,
+                id=8955,
+                points=[Point(x=float(self.state.x), y=float(self.state.y))],
+                colors=[ColorRGBA(a=1.0)],
+                scale=Vector3(x=0.1, y=0.1),
+                ns="state",
+            )
+            marker_list.append(closest_point_marker)
+
         self.traj_marker_publisher.publish(MarkerArray(markers=marker_list))
 
     def trajectory_convert_frame(self, trajectory: Trajectory, target_frame: str, source_frame: str):
@@ -203,7 +243,8 @@ class TrajectoryFollowerNode(Node):
     def trajectory_callback(self):
         self.last_target_idx = 0
         # FIXME: Temporary fix
-        trajectory = get_sinus_and_circ_trajectory().repeat(1)  # is in the planner frame
+        # trajectory = get_sinus_and_circ_trajectory(velocity=0.2).repeat(1)[0.5]  # is in the planner frame
+        trajectory = get_circular_trajectory(velocity=0.2)[0.9]  # is in the planner frame
         self.trajectory = self.trajectory_convert_frame(trajectory, self.map_frame, self.planner_frame)
 
     def odom_callback(self, msg: Odometry):
@@ -220,7 +261,23 @@ class TrajectoryFollowerNode(Node):
         _, _, yaw = euler_from_quaternion(*quaternion)
         velocity = msg.twist.twist.linear.x
 
-        self.state = State(*position, yaw, velocity)
+        try:
+            t = self.tf_buffer.lookup_transform(self.map_frame, self.odom_frame, rclpy.time.Time())
+        except TransformException as ex:
+            self.get_logger().info(
+                f"Could not transform `{self.odom_frame}` to `{self.map_frame}`: {ex}",
+                throttle_duration_sec=self.throttle_duration,
+            )
+            return
+        translation, rotation = trans_rot_from_euler(t)
+        t_mat, yaw_rot = matrix_yaw_from_transform(t)
+        transf_position = (t_mat @ np.array([*position, 0, 1]))[:2]
+        transf_yaw = yaw + yaw_rot
+        self.get_logger().info(
+            f"translation: {translation}, rotation: {rotation}, position: {position}, yaw: {yaw}, transf_position: {transf_position}, transf_yaw: {transf_yaw}",
+            throttle_duration_sec=0.5,
+        )
+        self.state = State(*transf_position, transf_yaw, velocity)
 
     def apply_control(self):
         """
@@ -247,7 +304,7 @@ class TrajectoryFollowerNode(Node):
                 self.get_logger().warn(
                     "No trajectory available, so control is not applied", throttle_duration_sec=self.throttle_duration
                 )
-            
+
             self.visualize_trajectory()
             return
 

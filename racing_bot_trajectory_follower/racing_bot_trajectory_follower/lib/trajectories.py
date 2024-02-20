@@ -91,6 +91,7 @@ class Trajectory:
             plt.plot(*np.array([xy, xy + o]).T, "k--", transform=rot + base)
             # plt.scatter(*xy, color='k', transform= rot + base)
 
+        plt.title(f"vs_avg = {self.vs.mean():.3f}; vs_max = {self.vs.max():.3f}; vs_min = {self.vs.min():.3f}")
         plt.grid()
         plt.gca().set_aspect("equal")
         plt.legend()
@@ -108,8 +109,8 @@ def get_straight_line_trajectory(velocity: float = 0.4):
     return Trajectory(xys, yaws, vs)
 
 
-def get_circular_trajectory(repetitions: int = 10, radius: float = 0.8, velocity: float = 0.4):
-    no_points = 100
+def get_circular_trajectory(repetitions: int = 1, radius: float = 0.8, velocity: float = 0.4):
+    no_points = 400
     thetas = np.linspace(np.pi / 2, -np.pi * 3 / 2, no_points + 1)[:-1]
     xys = np.array([np.cos(thetas), np.sin(thetas)]).T * radius + np.array([0, -radius])
     yaws = thetas - np.pi / 2
@@ -164,8 +165,10 @@ if __name__ == "__main__":
     radius = 1
     velocity = 1
     # get_sinus_trajectory(x_shape=2 * radius, y_shape=2 * radius, velocity=velocity).rotate(-np.pi / 2).translate([0, radius]).mirror_x().translate([0, -radius * 3/2]).visualize()
-    get_sinus_and_circ_trajectory().visualize()
     # get_circular_trajectory(repetitions=1)[(0.25, 0.75)].translate([0, 0.8]).rotate(np.pi / 2).visualize()
+    # get_sinus_and_circ_trajectory(velocity=0.2).repeat(1)[0.5].visualize()
+    get_circular_trajectory(velocity=0.2)[0.8].visualize()
+
     # get_sinus_trajectory().visualize()
     # get_circular_reverse_trajectory(repetitions=1).visualize()
     # get_eight_trajectory(repetitions=1).visualize()
