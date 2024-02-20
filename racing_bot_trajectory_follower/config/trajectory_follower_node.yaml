@@ -1,0 +1,20 @@
+/trajectory_follower_node:
+  ros__parameters:
+    map_frame: map
+    planner_frame: planner
+
+    odom_topic: odom
+    trajectory_topic: trajectory
+    motor_command_topic: cmd_motor
+    trajectory_marker_topic: visualization/trajectory
+
+    do_visualize_trajectory: True
+    
+    control_frequency: 10.0 # frequency of the motor controls send to the motor [Hz] (double)
+    velocity_PID: [5., 0., 0.] # velocity control PID constants (double array)
+    steering_k: 0.5 # steering control gain (double)
+    
+    wheel_base_width: 0.145 # wheel base width [m] (double)
+    wheel_base_length: 0.1 # wheel base length [m] (double)
+    max_steering_angle: 25.0 # max steering angle [deg] (double)
+

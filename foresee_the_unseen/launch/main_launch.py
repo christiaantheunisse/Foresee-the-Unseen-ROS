@@ -96,6 +96,11 @@ def generate_launch_description():
         default_value=TextSubstitution(text="true"),
         description="If true, launch the datmo node",
     )
+    use_foresee_launch_arg = DeclareLaunchArgument(
+        "use_foresee",
+        default_value=TextSubstitution(text="true"),
+        description="If true, launch the foresee_the_unseen node",
+    )
 
     play_rosbag = LaunchConfiguration("play_rosbag")
     record_rosbag = LaunchConfiguration("record_rosbag")
@@ -103,6 +108,7 @@ def generate_launch_description():
     slam_mode = LaunchConfiguration("slam_mode")
     map_file_name = LaunchConfiguration("map_file_name")
     use_datmo = LaunchConfiguration("use_datmo")
+    use_foresee = LaunchConfiguration("use_foresee")
 
     log_messages = []
     log_messages.append(LogInfo(msg="\n=========================== Launch file logging ==========================="))
@@ -208,6 +214,7 @@ def generate_launch_description():
                 "log_directory": PathJoinSubstitution(log_files_dir),
             },
         ],
+        condition=IfCondition(use_foresee),
     )
     local_localization_node = Node(
         package="robot_localization",
@@ -334,6 +341,7 @@ def generate_launch_description():
             "imu_link",
         ],
     )
+    # $ ros2 run tf2_ros static_transform_publisher --x 3 --y 2 --z 0 --yaw 1.57 --pitch 0 --roll 0 --frame-id map --child-frame-id planner
     static_trans_map_to_planner_frame = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
@@ -366,6 +374,7 @@ def generate_launch_description():
             slam_mode_launch_argument,
             map_file_name_launch_arg,
             use_datmo_launch_arg,
+            use_foresee_launch_arg,
             # log messages
             *log_messages,
             # parameters

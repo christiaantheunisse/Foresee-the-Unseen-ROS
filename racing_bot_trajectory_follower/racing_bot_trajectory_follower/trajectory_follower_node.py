@@ -1,15 +1,22 @@
 from rclpy.node import Node
 import rclpy
 import numpy as np
-import matplotlib as mpl
+from scipy.spatial.transform import Rotation as R
 import math
+import matplotlib as mpl
 from dataclasses import dataclass
 from typing import Optional
+
+from tf2_ros import TransformException
+from tf2_ros.buffer import Buffer
+from tf2_ros.transform_listener import TransformListener
 
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Int16MultiArray, ColorRGBA, Header
 from geometry_msgs.msg import Point, Vector3
-from visualization_msgs.msg import Marker
+from visualization_msgs.msg import Marker, MarkerArray
+
+from racing_bot_trajectory_follower.lib.trajectories import *
 
 
 @dataclass
@@ -18,13 +25,6 @@ class State:
     y: Optional[float] = None  # position along y-axis [m]
     yaw: Optional[float] = None  # heading (0 along x-axis, ccw positive) [rad]
     v: Optional[float] = None  # velocity [m/s]
-
-
-@dataclass
-class Trajectory:
-    xys: np.ndarray  # xy-positions [m] [[x, y], ...]
-    yaws: np.ndarray  # headings [rad] [yaw, ...]
-    vs: np.ndarray  # velocties [m/s] [v, ...]
 
 
 def euler_from_quaternion(x, y, z, w):
@@ -60,6 +60,24 @@ def angle_mod(x):
     return mod_angle
 
 
+def trans_rot_from_euler(t):
+    rot_quat = [
+        t.transform.rotation.x,
+        t.transform.rotation.y,
+        t.transform.rotation.z,
+        t.transform.rotation.w,
+    ]
+    translation = [
+        t.transform.translation.x,
+        t.transform.translation.y,
+        t.transform.translation.z,
+    ]
+    rot_scipy = R.from_quat(rot_quat)
+    _, _, yaw = rot_scipy.as_euler("xyz")
+
+    return translation, yaw
+
+
 class TrajectoryFollowerNode(Node):
     """
     This node implements Stanley steering control and PID speed control which is based on the code from the github
@@ -67,99 +85,126 @@ class TrajectoryFollowerNode(Node):
         https://github.com/AtsushiSakai/PythonRobotics/blob/bd253e81060c6a11a944016706bd1d87ef72bded/PathTracking/stanley_controller/stanley_controller.py
 
     A futher explanation of the algorithm is given in the method: `apply_control()`
+
+    TODO: The trajectory is obtained from a ROS topic with the custom message type trajectory
+    The trajectory is converted to the map frame
     """
 
     def __init__(self):
         super().__init__("trajectory_follower_node")
+        self.throttle_duration = 2  # s
 
         # parameters
-        self.trajectory_topic = None
-        self.traj_marker_topic = "visualization/trajectory"
-        self.traj_closest_point = "visualization/trajectory/closest_point"
-        self.odom_topic = "odom"
-        self.motor_cmd_topic = "cmd_motor"
+        self.declare_parameter("map_frame", "map")
+        self.declare_parameter("planner_frame", "planner")
 
-        self.map_frame = "map"
+        self.declare_parameter("trajectory_topic", "trajectory")
+        self.declare_parameter("trajectory_marker_topic", "visualization/trajectory")
+        self.declare_parameter("odom_topic", "odom")
+        self.declare_parameter("motor_command_topic", "cmd_motor")
 
-        self.control_frequency = 10  # [Hz]
-        self.W = 0.145  # distance between the wheels on the rear axle [m]
-        self.L = 0.1  # position of the front axle measured from the rear axle [m]
+        self.declare_parameter("do_visualize_trajectory", False)
 
-        self.velocity_Kp = 5.0  # velocity proportional gain
-        self.steering_k = 0.5  # steering control gain
-        self.max_steering_angle = np.deg2rad(25)
+        self.declare_parameter("control_frequency", 10.0)  # [Hz]
+        self.declare_parameter("wheel_base_width", 0.145)  # distance between the wheels on the rear axle [m]
+        self.declare_parameter("wheel_base_length", 0.1)  # position of the front axle measured from the rear axle [m]
 
-        # Straigth line trajectory
-        no_points = 100
-        xys = np.linspace([0, 0], [5, 0], no_points)
-        diffs = xys[1:] - xys[:-1]
-        diffs = np.append(diffs, diffs[-1:], axis=0)
-        yaws = np.arctan2(diffs[:, 1], diffs[:, 0])
-        vs = np.full(no_points, 0.2)
+        self.declare_parameter("velocity_PID", [5.0, 0.0, 0.0])  # velocity PID constants
+        self.declare_parameter("steering_k", 0.5)  # steering control gain
+        self.declare_parameter("max_steering_angle", 25.0)  # max steering angle [deg]
 
-        # Circular trajectory
-        # no_points = 100
-        # radius = 0.8
-        # thetas = np.linspace(np.pi / 2, -np.pi * 3 / 2, no_points + 1)[:-1]
-        # xys = np.array([np.cos(thetas), np.sin(thetas)]).T * radius + np.array([0, - radius])
-        # yaws = thetas - np.pi / 2
-        # vs = np.full(no_points, 0.4)
+        self.map_frame = self.get_parameter("map_frame").get_parameter_value().string_value
+        self.planner_frame = self.get_parameter("planner_frame").get_parameter_value().string_value
 
-        # xys = np.tile(xys, (10, 1))
-        # yaws = np.tile(yaws, 10)
-        # vs = np.repeat(vs, 10)
+        self.trajectory_topic = self.get_parameter("trajectory_topic").get_parameter_value().string_value
+        self.traj_marker_topic = self.get_parameter("trajectory_marker_topic").get_parameter_value().string_value
+        self.odom_topic = self.get_parameter("odom_topic").get_parameter_value().string_value
+        self.motor_cmd_topic = self.get_parameter("motor_command_topic").get_parameter_value().string_value
 
-        self.trajectory = Trajectory(xys, yaws, vs)
+        self.do_visual_traj = self.get_parameter("do_visualize_trajectory").get_parameter_value().bool_value
+
+        self.control_frequency = self.get_parameter("control_frequency").get_parameter_value().double_value
+        self.wheel_base_W = self.get_parameter("wheel_base_width").get_parameter_value().double_value
+        self.wheel_base_L = self.get_parameter("wheel_base_length").get_parameter_value().double_value
+
+        self.velocity_PID = self.get_parameter("velocity_PID").get_parameter_value().double_array_value
+        self.steering_k = self.get_parameter("steering_k").get_parameter_value().double_value
+        self.max_steering_angle = self.get_parameter("max_steering_angle").get_parameter_value().double_value
+
+        # Transformer listener
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
 
         self.state = State()
         self.last_target_idx = 0
         self.output_vel = 0
+        self.trajectory = None
 
         self.create_subscription(Odometry, self.odom_topic, self.odom_callback, 5)
+        # TODO: Subscription to trajectory topic instead of timer
+        self.create_timer(2, self.trajectory_callback)
         self.motor_publisher = self.create_publisher(Int16MultiArray, self.motor_cmd_topic, 10)
-        self.traj_marker_publisher = self.create_publisher(Marker, self.traj_marker_topic, 1)
-        self.closest_point_marker_publisher = self.create_publisher(Marker, self.traj_marker_topic, 1)
+        self.traj_marker_publisher = self.create_publisher(MarkerArray, self.traj_marker_topic, 1)
+
         self.create_timer(1 / self.control_frequency, self.apply_control)
-        self.create_timer(1, self.visualize_trajectory)  # should be based on trajectory update
 
-    def visualize_trajectory(self):
-        point_list = []
-        color_rgba_list = []
-        cmap = mpl.cm.get_cmap("cool")
-        for (x, y), v in zip(self.trajectory.xys, self.trajectory.vs):
-            point_list.append(Point(x=x, y=y))
-            r, g, b, a = cmap(len(point_list) / len(self.trajectory.xys))
-            color_rgba_list.append(ColorRGBA(r=r, g=g, b=b, a=a))
-
+    def visualize_trajectory(self, target_idx: Optional[int] = None) -> None:
+        marker_list = []
         header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.map_frame)
-        trajectory_marker = Marker(
-            header=header,
-            type=Marker.POINTS,
-            action=Marker.MODIFY,
-            id=8954,  # FIXME: remove hardcoded id
-            points=point_list,
-            colors=color_rgba_list,
-            scale=Vector3(x=0.03, y=0.03),
-        )
-        self.get_logger().info("visualizing trajectory")
-        self.traj_marker_publisher.publish(trajectory_marker)
 
-    def visualize_closest_point(self, target_idx):
-        header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.map_frame)
-        closest_point_marker = Marker(
-            header=header,
-            type=Marker.POINTS,
-            action=Marker.MODIFY,
-            id=8955,  # FIXME: remove hardcoded id
-            points=[Point(x=self.trajectory.xys[target_idx, 0], y=self.trajectory.xys[target_idx, 1])],
-            colors=[ColorRGBA(a=1.)],
-            scale=Vector3(x=0.06, y=0.06),
-        )
-        self.get_logger().info("visualizing closest point")
-        self.closest_point_marker_publisher.publish(closest_point_marker)
+        if self.trajectory is not None:
+            point_list = []
+            color_rgba_list = []
+            cmap = mpl.cm.get_cmap("cool")
+            for (x, y), v in zip(self.trajectory.xys, self.trajectory.vs):
+                point_list.append(Point(x=x, y=y))
+                r, g, b, a = cmap(len(point_list) / len(self.trajectory.xys))
+                color_rgba_list.append(ColorRGBA(r=r, g=g, b=b, a=a))
+            trajectory_marker = Marker(
+                header=header,
+                type=Marker.POINTS,
+                action=Marker.MODIFY,
+                id=8954,
+                points=point_list,
+                colors=color_rgba_list,
+                scale=Vector3(x=0.03, y=0.03),
+                ns="positions",
+            )
+            marker_list.append(trajectory_marker)
 
-    def trajectory_callback(self, msg):
+        if target_idx is not None:
+            closest_point_marker = Marker(
+                header=header,
+                type=Marker.POINTS,
+                action=Marker.MODIFY,
+                id=8955,
+                points=[Point(x=self.trajectory.xys[target_idx, 0], y=self.trajectory.xys[target_idx, 1])],
+                colors=[ColorRGBA(a=1.0)],
+                scale=Vector3(x=0.06, y=0.06),
+                ns="closest point",
+            )
+            marker_list.append(closest_point_marker)
+
+        self.traj_marker_publisher.publish(MarkerArray(markers=marker_list))
+
+    def trajectory_convert_frame(self, trajectory: Trajectory, target_frame: str, source_frame: str):
+        try:
+            t = self.tf_buffer.lookup_transform(target_frame, source_frame, rclpy.time.Time())
+        except TransformException as ex:
+            self.get_logger().info(
+                f"Could not transform `{source_frame}` to `{target_frame}`: {ex}",
+                throttle_duration_sec=self.throttle_duration,
+            )
+            return None
+        translation, rotation = trans_rot_from_euler(t)
+        return trajectory.rotate(rotation).translate(translation[:2])
+
+    # def trajectory_callback(self, msg):
+    def trajectory_callback(self):
         self.last_target_idx = 0
+        # FIXME: Temporary fix
+        trajectory = get_sinus_and_circ_trajectory().repeat(1)  # is in the planner frame
+        self.trajectory = self.trajectory_convert_frame(trajectory, self.map_frame, self.planner_frame)
 
     def odom_callback(self, msg: Odometry):
         position = [
@@ -191,8 +236,19 @@ class TrajectoryFollowerNode(Node):
         of the rear axle.
 
         """
-        if self.state.x is None or self.state.y is None or self.state.yaw is None or self.state.v is None:
-            self.get_logger().warn("No state update received, so control is not applied")
+        no_state = self.state.x is None or self.state.y is None or self.state.yaw is None or self.state.v is None
+        no_trajectory = self.trajectory is None
+        if no_state or no_trajectory:
+            if no_state:
+                self.get_logger().warn(
+                    "No state update received, so control is not applied", throttle_duration_sec=self.throttle_duration
+                )
+            if no_trajectory:
+                self.get_logger().warn(
+                    "No trajectory available, so control is not applied", throttle_duration_sec=self.throttle_duration
+                )
+            
+            self.visualize_trajectory()
             return
 
         # calculate target index
@@ -204,7 +260,6 @@ class TrajectoryFollowerNode(Node):
         else:
             self.last_target_idx = target_idx
 
-        self.visualize_closest_point(target_idx)
         # perpendicular distance error
         perp_vec = -np.array([np.cos(self.state.yaw + np.pi / 2), np.sin(self.state.yaw + np.pi / 2)])
         perp_error = dist_vec[target_idx] @ perp_vec
@@ -224,26 +279,26 @@ class TrajectoryFollowerNode(Node):
             self.get_logger().info(f"Maximum steering angle exceeded: delta = {delta}")
             delta = np.clip(delta, -self.max_steering_angle, self.max_steering_angle)
         # convert the steering angle to a speed difference of the wheels: v_delta = (v / 2) * (W / L) * tan(delta)
-        v_delta = self.output_vel / 2 * self.W / self.L * np.tan(delta)
+        v_delta = self.output_vel / 2 * self.wheel_base_W / self.wheel_base_L * np.tan(delta)
 
         # directly set the motor speed
         self.get_logger().info(f"v_delta = {v_delta}, output_vel = {self.output_vel}, delta = {delta}")
         v_left, v_right = self.output_vel - v_delta, self.output_vel + v_delta
         if abs(v_left) > 1 or abs(v_right) > 1:
             v_left, v_right = self.scale_motor_vels(v_left, v_right)
-            self.get_logger().warn(
-                f"Maximum motor values exceed due to steering: v_delta = {v_delta}"
-            )
+            self.get_logger().warn(f"Maximum motor values exceed due to steering: v_delta = {v_delta}")
 
         v_left, v_right = int(255 * v_left), int(255 * v_right)
         motor_command = Int16MultiArray(data=[v_left, v_right, 0, 0])  # 4 motors are implemented by the hat_node
         self.motor_publisher.publish(motor_command)
 
         self.get_logger().info(f"Control: [v_left, v_right] = {v_left, v_right}")
+        self.visualize_trajectory(target_idx)
 
     def p_control(self, target, current) -> float:
         """Proportional control for the speed."""
-        return self.velocity_Kp * (target - current)
+        Kp, Ki, Kd = self.velocity_PID
+        return Kp * (target - current)
 
     def stanley_controller(self, goal_yaw, perp_error) -> float:
         """Calculates the steering angle"""
