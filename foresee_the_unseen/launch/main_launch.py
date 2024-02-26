@@ -93,12 +93,12 @@ def generate_launch_description():
     )
     use_datmo_launch_arg = DeclareLaunchArgument(
         "use_datmo",
-        default_value=TextSubstitution(text="false"),
+        default_value=TextSubstitution(text="true"),
         description="If true, launch the datmo node",
     )
     use_foresee_launch_arg = DeclareLaunchArgument(
         "use_foresee",
-        default_value=TextSubstitution(text="false"),
+        default_value=TextSubstitution(text="true"),
         description="If true, launch the foresee_the_unseen node",
     )
 
@@ -202,14 +202,14 @@ def generate_launch_description():
             # {"do_broadcast_transform": NotSubstitution(use_ekf)},  # Use either this or ekf transform (set in ekf.yaml)
         ],
     )
-    visualization_node = Node(
+    planner_node = Node(
         package="foresee_the_unseen",
-        executable="visualization_node",
+        executable="planner_node",
         parameters=[
-            PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "visualization_node.yaml"]),
+            PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "planner_node.yaml"]),
             {
                 "road_xml": PathJoinSubstitution(
-                    [FindPackageShare("foresee_the_unseen"), "resource", "road_structure_15.xml"]
+                    [FindPackageShare("foresee_the_unseen"), "resource", "road_structure_15_reduced_points.xml"]
                 ),
                 "log_directory": PathJoinSubstitution(log_files_dir),
             },
@@ -347,9 +347,9 @@ def generate_launch_description():
         executable="static_transform_publisher",
         arguments=[
             "--x",
-            "1.75", # 1.30
+            "3.30", # 1.30
             "--y",
-            "0", # 0.13
+            "0.13", # 0.13
             "--z",
             "0",
             "--roll",
@@ -365,28 +365,28 @@ def generate_launch_description():
         ],
     )
     # Zero
-    static_trans_map_to_planner_frame = Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        arguments=[
-            "--x",
-            "0", # 1.30
-            "--y",
-            "0", # 0.13
-            "--z",
-            "0",
-            "--roll",
-            "0",
-            "--pitch",
-            "0",
-            "--yaw",
-            "0",
-            "--frame-id",
-            "map",
-            "--child-frame-id",
-            "planner",
-        ],
-    )
+    # static_trans_map_to_planner_frame = Node(
+    #     package="tf2_ros",
+    #     executable="static_transform_publisher",
+    #     arguments=[
+    #         "--x",
+    #         "0", # 1.30
+    #         "--y",
+    #         "0", # 0.13
+    #         "--z",
+    #         "0",
+    #         "--roll",
+    #         "0",
+    #         "--pitch",
+    #         "0",
+    #         "--yaw",
+    #         "0",
+    #         "--frame-id",
+    #         "map",
+    #         "--child-frame-id",
+    #         "planner",
+    #     ],
+    # )
 
     return LaunchDescription(
         [
@@ -409,7 +409,7 @@ def generate_launch_description():
             encoder_node,
             odometry_node,
             controller_node,
-            visualization_node,
+            planner_node,
             imu_node,
             local_localization_node,
             datmo_node,

@@ -22,13 +22,13 @@ safety_margin : 5
 
 #SENSOR
 field_of_view_degrees : 360
-min_resolution : 1
-view_range : 500
+min_resolution : 1  # Change this
+view_range : 3
 
 #OCCLUSION_TRACKER
 min_velocity : 0
 max_velocity : 10
-min_shadow_area : 1
+min_shadow_area : 1  # Change this
 prediction_horizon : 50
 tracking_enabled : True
 
@@ -36,3 +36,8 @@ tracking_enabled : True
 obstacle_min_width: 2
 obstacle_min_length: 5
 orientation_margin: 0.1  # radians
+
+#REAL-WORLD IMPLEMENTATION
+laser_scan_fov: True
+goal_on_road_check: True
+ego_state_on_road_check: True
