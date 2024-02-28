@@ -174,7 +174,7 @@ class PlannerNode(Node):
             perceived_scenario, sensor_view = self.foresee_the_unseen_planner.update_scenario()
             shadow_obstacles = [o for o in perceived_scenario.obstacles if o.obstacle_type == ObstacleType.UNKNOWN]
         except NoUpdatePossible:
-            self.get_logger().warn("No planner update step possible")
+            self.get_logger().warn("No planner update step possible", throttle_duration_sec=self.throttle_duration)
             shadow_obstacles, sensor_view = None, None
 
         # TODO: Visualize shadow obstacles

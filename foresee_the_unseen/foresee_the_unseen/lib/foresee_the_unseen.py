@@ -171,6 +171,8 @@ class ForeseeTheUnseen:
 
     def update_scenario(self):
         """Gets called at a certain rate"""
+        # Do not require detected obstacles
+        self.detected_obstacles = [] if self.detected_obstacles is None else self.detected_obstacles
         no_obstacles = self.detected_obstacles is None
         no_updated_state = self.ego_vehicle_state is None or self.ego_vehicle_state.time_step < self.planner_step
         if no_obstacles or no_updated_state:

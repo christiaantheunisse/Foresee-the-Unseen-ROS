@@ -230,7 +230,7 @@ def generate_launch_description():
         name="datmo_node",
         condition=IfCondition(AndSubstitution(use_datmo, use_foresee)),
         parameters=[{"min_pub_markers": True}],
-        remappings=([("/scan", "/scan/road_env")] if use_foresee else None),
+        remappings=[("/scan", "/scan/road_env")],
     )
     datmo_node_without_remapping = Node(
         package="datmo",
