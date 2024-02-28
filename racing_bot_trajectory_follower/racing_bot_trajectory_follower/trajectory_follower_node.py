@@ -282,10 +282,10 @@ class TrajectoryFollowerNode(Node):
         t_mat, yaw_rot = matrix_yaw_from_transform(t)
         transf_position = (t_mat @ np.array([*position, 0, 1]))[:2]
         transf_yaw = yaw + yaw_rot
-        self.get_logger().info(
-            f"translation: {translation}, rotation: {rotation}, position: {position}, yaw: {yaw}, transf_position: {transf_position}, transf_yaw: {transf_yaw}",
-            throttle_duration_sec=0.5,
-        )
+        # self.get_logger().info(
+        #     f"translation: {translation}, rotation: {rotation}, position: {position}, yaw: {yaw}, transf_position: {transf_position}, transf_yaw: {transf_yaw}",
+        #     throttle_duration_sec=0.5,
+        # )
         self.prev_state = self.state
         self.state = State(*transf_position, transf_yaw, velocity)
 
@@ -349,7 +349,7 @@ class TrajectoryFollowerNode(Node):
         v_delta = self.output_vel / 2 * self.wheel_base_W / self.wheel_base_L * np.tan(delta)
 
         # directly set the motor speed
-        self.get_logger().info(f"v_delta = {v_delta}, output_vel = {self.output_vel}, delta = {delta}")
+        # self.get_logger().info(f"v_delta = {v_delta}, output_vel = {self.output_vel}, delta = {delta}")
         v_left, v_right = self.output_vel - v_delta, self.output_vel + v_delta
         if abs(v_left) > 1 or abs(v_right) > 1:
             v_left, v_right = self.scale_motor_vels(v_left, v_right)
@@ -359,7 +359,7 @@ class TrajectoryFollowerNode(Node):
         motor_command = Int16MultiArray(data=[v_left, v_right, 0, 0])  # 4 motors are implemented by the hat_node
         self.motor_publisher.publish(motor_command)
 
-        self.get_logger().info(f"Control: [v_left, v_right] = {v_left, v_right}")
+        # self.get_logger().info(f"Control: [v_left, v_right] = {v_left, v_right}")
         self.visualize_trajectory(target_idx)
 
     def p_control(self, target, current) -> float:
@@ -374,6 +374,7 @@ class TrajectoryFollowerNode(Node):
     def stanley_controller(self, goal_yaw, perp_error) -> float:
         """Calculates the steering angle"""
         # theta_e corrects the heading error
+        self.get_logger().info(f"Yaw: current={self.state.yaw}, goal={goal_yaw}")
         theta_e = angle_mod(goal_yaw - self.state.yaw)
         # theta_d corrects the cross track error
         theta_d = np.arctan2(self.steering_k * perp_error, self.state.v)
