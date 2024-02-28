@@ -105,22 +105,26 @@ class ForeseeTheUnseen:
         )
 
         self.occ_track = Occlusion_tracker(
-            self.scenario,
+            scenario=self.scenario,
             min_vel=self.configuration.get("min_velocity"),
             max_vel=self.configuration.get("max_velocity"),
             min_shadow_area=self.configuration.get("min_shadow_area"),
             prediction_horizon=self.configuration.get("prediction_horizon"),
+            steps_per_occ_pred=self.configuration.get("prediction_step_size"),
+            dt=1 / self.frequency,
             tracking_enabled=self.configuration.get("tracking_enabled"),
         )
 
         self.planner = Planner(
-            self.ego_vehicle.initial_state,
+            initial_state=self.ego_vehicle.initial_state,
             vehicle_shape=self.ego_vehicle.obstacle_shape,
             goal_point=[self.configuration.get("goal_point_x"), self.configuration.get("goal_point_y")],
             reference_speed=self.configuration.get("reference_speed"),
             max_acceleration=self.configuration.get("max_acceleration"),
             max_deceleration=self.configuration.get("max_deceleration"),
             time_horizon=self.configuration.get("planning_horizon"),
+            dt=1 / self.frequency,
+            min_dist_waypoint=self.configuration.get("minimum_distance_waypoint"),
         )
         self.logger.info("commonroad scenario initialized")
 
@@ -134,7 +138,6 @@ class ForeseeTheUnseen:
     def position_on_road_check(self, x: float, y: float):
         """Check if a certain position is on the road"""
 
-
     def update_state(self, state: InitialState):
         """State should be in the planner frame, which is the Commonroad frame"""
         state.time_step = self.planner_step
@@ -144,9 +147,17 @@ class ForeseeTheUnseen:
         """FOV should be in the planner frame, which is the Commonroad frame"""
         self.sensor_view = fov
 
+    # Make a property
     def update_obstacles(self, detected_obstacles: List[Obstacle]):
         """Obstacles should be in the planner frame, which is the Commonroad frame"""
         self.detected_obstacles = detected_obstacles
+
+    def get_obstacles(self, scenario: Scenario):
+        for obs in self.detected_obstacles:
+            obs.initial_state.time_step = self.planner_step
+            # obstacle_id is an immutable property; this overrides the constraint
+            obs._obstacle_id = scenario.generate_object_id()
+        return self.detected_obstacles
 
     @staticmethod
     def update_vehicle(vehicle: DynamicObstacle, state: State):
@@ -164,14 +175,14 @@ class ForeseeTheUnseen:
         no_updated_state = self.ego_vehicle_state is None or self.ego_vehicle_state.time_step < self.planner_step
         if no_obstacles or no_updated_state:
             if no_obstacles:
-                self.logger.warn("No detected obstacles available")
+                self.logger.warn("No detected obstacles available", throttle_duration_sec=self.throttle_duration)
             if no_updated_state:
-                self.logger.warn("No up-to-date ego vehicle state available")
+                self.logger.warn("No up-to-date ego vehicle state available", throttle_duration_sec=self.throttle_duration)
             raise NoUpdatePossible()
 
         percieved_scenario = copy.deepcopy(self.scenario)  # start with a clean scenario
         self.ego_vehicle = self.update_vehicle(self.ego_vehicle, self.ego_vehicle_state)  # update ego vehicle
-        percieved_scenario.add_objects(self.detected_obstacles)  # a
+        percieved_scenario.add_objects(self.get_obstacles(percieved_scenario))
 
         # Update the sensor view:
         if self.configuration.get("laser_scan_fov"):
@@ -196,7 +207,7 @@ class ForeseeTheUnseen:
 
         try:
             self.planner.update(self.ego_vehicle.initial_state)  # FIXME: should not be possible to remove all waypoints
-        # FIXME: Throws an attribute error if the ego_vehicle or goal_position is not on the road
+            # FIXME: Throws an attribute error if the ego_vehicle or goal_position is not on the road
             collision_free_trajectory = self.planner.plan(percieved_scenario)
         except PositionNotOnALane as p:
             self.logger.warn(f"Position not on a lane: {p.message}")
@@ -204,9 +215,9 @@ class ForeseeTheUnseen:
         except GoalAndPositionNotSameLane as g:
             self.logger.warn(f"Goal and position not on the same lane: {g.message}")
             raise NoUpdatePossible()
-        
+
         if collision_free_trajectory:
-            self.logger.info("new trajectory found")
+            # self.logger.info("new trajectory found")
             self.trajectory = collision_free_trajectory
 
         percieved_scenario.add_objects(self.ego_vehicle)
@@ -218,6 +229,6 @@ class ForeseeTheUnseen:
                 pickle.dump(log_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         self.planner_step += 1
-        self.logger.info(f"Scenario updated: planner step = {self.planner_step}")
+        # self.logger.info(f"Scenario updated: planner step = {self.planner_step}")
 
         return percieved_scenario, sensor_view

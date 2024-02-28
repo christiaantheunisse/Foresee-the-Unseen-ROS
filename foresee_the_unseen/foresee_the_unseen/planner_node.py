@@ -2,16 +2,16 @@ import rclpy
 from rclpy.node import Node
 import os
 import yaml
-import pickle
-import copy
+import time
 import numpy as np
 import matplotlib as mpl
 from setuptools import find_packages
 from ament_index_python import get_package_share_directory
-from typing import Optional, List
+from typing import Optional, List, Union, Tuple, Dict, TypedDict
 
 from commonroad.scenario.state import InitialState, State
-from commonroad.scenario.obstacle import Obstacle, ObstacleType
+from commonroad.scenario.obstacle import Obstacle, ObstacleType, DynamicObstacle
+from commonroad.geometry.shape import Rectangle
 
 from shapely.geometry import Polygon as ShapelyPolygon
 
@@ -45,7 +45,16 @@ TRANSPARENT_BLUE = [0.0, 0.0, 1.0, 0.6]
 BLACK = [0.0, 0.0, 0.0, 1.0]
 TRANSPARENT_GREY = [0.5, 0.5, 0.5, 0.8]
 
-SHADOW_OBS_COLOR = {"r": 100.0 / 255.0, "g": 0.0, "b": 0.0, "a": 1.0}
+Color = TypedDict("Color", {"r": float, "g": float, "r": float, "a": float})
+RED: Color = {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}
+GREEN: Color = {"r": 0.0, "g": 1.0, "b": 0.0, "a": 1.0}
+BLUE: Color = {"r": 0.0, "g": 0.0, "b": 1.0, "a": 1.0}
+BLACK: Color = {"r": 0.0, "g": 0.0, "b": 0.0, "a": 1.0}
+TRANSPARENT_BLUE: Color = {"r": 0.0, "g": 0.0, "b": 1.0, "a": 0.6}
+TRANSPARENT_GREY: Color = {"r": 0.5, "g": 0.5, "b": 0.5, "a": 0.8}
+
+SHADOW_OBS_COLOR: Color = {"r": 100.0 / 255.0, "g": 0.0, "b": 0.0, "a": 1.0}
+SHADOW_PRED_COLOR: Color = {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}
 
 XYZ = ["x", "y", "z"]
 
@@ -96,6 +105,8 @@ class PlannerNode(Node):
         self.declare_parameter("planner_frequency", 2.0)
 
         self.declare_parameter("use_triangulation", False)  # for the visualization of the polygons
+        self.declare_parameter("num_pred_to_visualize", 5)
+        self.declare_parameter("do_visualize", True)
 
         self.map_frame = self.get_parameter("map_frame").get_parameter_value().string_value
         self.base_frame = self.get_parameter("base_frame").get_parameter_value().string_value
@@ -120,6 +131,8 @@ class PlannerNode(Node):
         self.frequency = self.get_parameter("planner_frequency").get_parameter_value().double_value
 
         self.use_triangulation = self.get_parameter("use_triangulation").get_parameter_value().bool_value
+        self.predictions_to_visualize = self.get_parameter("num_pred_to_visualize").get_parameter_value().integer_value
+        self.do_visualize = self.get_parameter("do_visualize").get_parameter_value().bool_value
 
         # get road_structure and configuration
         self.get_logger().info(f"road .xml file used: {self.road_xml}")
@@ -150,12 +163,13 @@ class PlannerNode(Node):
             road_xml=self.road_xml,
             frequency=self.frequency,
             logger=self.get_logger(),
-            log_dir=self.log_root_directory if self.log_root_directory is not "none" else None,
+            log_dir=self.log_root_directory if self.log_root_directory != "none" else None,
         )
 
     # CALLBACKS
     def plan(self):
         """Calls the Foresee The Unseen Planner and updates the visualization"""
+        start_time = time.time()
         try:
             perceived_scenario, sensor_view = self.foresee_the_unseen_planner.update_scenario()
             shadow_obstacles = [o for o in perceived_scenario.obstacles if o.obstacle_type == ObstacleType.UNKNOWN]
@@ -167,19 +181,40 @@ class PlannerNode(Node):
         # TODO: Visualize occupancies of shadow obstacles
         # TODO: Visualize goal point
 
-        self.visualization_callback(shadow_obstacles, sensor_view)
+        start_viz_time = time.time()
+        if self.do_visualize:
+            self.visualization_callback(shadow_obstacles, sensor_view)
+        end_time = time.time()
+        tot_time = end_time - start_time
+        viz_time = end_time - start_viz_time
+        if tot_time > (1 / self.frequency):
+            self.get_logger().error(
+                f"Planner update took too long: execution time = {tot_time * 1000:.0f} ms "
+                + f"(visualization = {viz_time * 1000:.0f} ms; maximum time {1/self.frequency*1000:.0f} ms "
+                + f"({self.frequency} Hz)",
+            )
+        else:
+            pass
+            # self.get_logger().info(
+            #     f"Planner update: execution time = {tot_time * 1000:.0f} ms "
+            #     + f"(visualization = {viz_time * 1000:.0f} ms; maximum time {1/self.frequency*1000:.0f} ms "
+            #     + f"({self.frequency} Hz)",
+            # )
 
     def visualization_callback(
         self,
         shadow_obstacles: Optional[List[Obstacle]] = None,
         sensor_view: Optional[ShapelyPolygon] = None,
     ):
+        # TODO: Only remove markers that need to and only add markers that need to be added every time step
         markers = []
+        markers.append(Marker(action=Marker.DELETEALL)) # remove all markers
         markers += self.get_ego_vehicle_marker()
         markers += self.get_road_structure_marker()
         markers += self.get_filter_polygon_marker()
-        markers += self.get_fov_marker(sensor_view)
         markers += self.get_goal_marker()
+
+        markers += self.get_fov_marker(sensor_view)
         markers += self.get_trajectory_marker()
         markers += self.get_shadow_marker(shadow_obstacles)
         self.marker_array_publisher.publish(MarkerArray(markers=markers))
@@ -190,9 +225,27 @@ class PlannerNode(Node):
 
     def datmo_callback(self, msg: TrackArray):
         """Converts DATMO detections to Commonroad obstacles"""
-        # TODO: Implement
-        # TODO: convert to planner frame
+        if msg.tracks:  # length not zero
+            datmo_frame = msg.tracks[0].odom.header.frame_id
+            try:
+                t_planner_datmo = self.tf_buffer.lookup_transform(self.planner_frame, datmo_frame, rclpy.time.Time())
+            except TransformException as ex:
+                self.get_logger().info(
+                    f"Could not transform {datmo_frame} to {self.planner_frame}: {ex}",
+                    throttle_duration_sec=self.throttle_duration,
+                )
+                return None
         detected_obstacles = []
+        for track in msg.tracks:
+            detected_obstacles.append(
+                DynamicObstacle(
+                    obstacle_id=0,  # Should be mutated
+                    obstacle_type=ObstacleType.CAR,
+                    obstacle_shape=Rectangle(track.length, track.width),
+                    initial_state=self.transform_state(self.state_from_odom(track.odom), t_planner_datmo),
+                )
+            )
+
         self.foresee_the_unseen_planner.update_obstacles(detected_obstacles)
 
     def odom_callback(self, msg: Odometry):
@@ -223,7 +276,7 @@ class PlannerNode(Node):
             action=Marker.ADD,
             pose=Pose(position=Point(**dict(zip(XYZ, self.ego_vehicle_offset)))),
             scale=Vector3(**dict(zip(XYZ, self.ego_vehicle_size))),
-            color=ColorRGBA(**dict(zip(RGBA, TRANSPARENT_BLUE))),
+            color=ColorRGBA(**TRANSPARENT_BLUE),
             frame_locked=True,
             ns="ego_vehicle",
         )
@@ -246,7 +299,7 @@ class PlannerNode(Node):
                 action=Marker.ADD,
                 points=point_type_list,
                 scale=Vector3(x=0.005),
-                color=ColorRGBA(**dict(zip(RGBA, BLACK))),
+                color=ColorRGBA(**BLACK),
                 ns="road structure",
             )
 
@@ -266,7 +319,7 @@ class PlannerNode(Node):
             action=Marker.ADD,
             points=point_list,
             scale=Vector3(x=0.01),
-            color=ColorRGBA(**dict(zip(RGBA, BLUE))),
+            color=ColorRGBA(**BLUE),
             ns="experiment env",
         )
         return [filter_marker]
@@ -289,7 +342,7 @@ class PlannerNode(Node):
             action=Marker.ADD,
             points=point_list,
             scale=Vector3(x=0.01),
-            color=ColorRGBA(**dict(zip(RGBA, BLUE))),
+            color=ColorRGBA(**BLUE),
             frame_locked=True,
             ns="fov",
         )
@@ -353,7 +406,7 @@ class PlannerNode(Node):
             color_rgba_list = []
             for x, y in self.foresee_the_unseen_planner.planner.waypoints:
                 point_list.append(Point(x=float(x), y=float(y)))
-                color_rgba_list.append(ColorRGBA(**dict(zip(RGBA, RED))))
+                color_rgba_list.append(ColorRGBA(**BLACK))
             waypoints_marker = Marker(
                 header=header,
                 type=Marker.POINTS,
@@ -368,59 +421,108 @@ class PlannerNode(Node):
 
         return marker_list
 
-    def get_shadow_marker(self, shadow_obstacles: Optional[List[Obstacle]] = None):
-        """Makes a marker for the shadow obstacles and their prediction."""
-        if shadow_obstacles is None:
-            return []
-
+    def polygons_to_ros_marker(
+        self,
+        polygons: Union[np.ndarray, List[np.ndarray]],
+        color: Color,
+        namespace: str,
+        marker_id: int = 0,
+        use_triangulation: bool = False,
+        z: float = 0.0,
+    ) -> Marker:
+        """Converts a array of polygon which is defined by a numpy array (N, 2) to ROS marker"""
         header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.planner_frame)
-        polygons = [s.obstacle_shape.vertices for s in shadow_obstacles]
-        markers_list = []
-
-        if self.use_triangulation:  # make filled polygons with triangles
+        if use_triangulation:  # make filled polygons with triangles
             point_type_list, colors = [], []
             for polygon in polygons:
+                if len(polygon) < 4:
+                    continue
+
                 polygon = remove_redudant_vertices_polygon(polygon)
                 try:
                     for t in triangulate(polygon[:-1]):  # do not include start point twice
                         for x, y in t:
-                            point_type_list.append(Point(x=float(x), y=float(y)))
-                        colors.append(ColorRGBA(**SHADOW_OBS_COLOR))
+                            point_type_list.append(Point(x=float(x), y=float(y), z=float(z)))
+                        colors.append(ColorRGBA(**color))
                 except ValueError as e:
                     self.get_logger().warn(f"triangulation failed: {e}")
-                    # self.get_logger().info(f"{polygon}")
 
-            triangle_markers = Marker(
+            marker = Marker(
                 header=header,
-                id=0,
+                id=marker_id,
                 type=Marker.TRIANGLE_LIST,
                 action=Marker.ADD,
                 points=point_type_list,
                 colors=colors,
                 scale=Vector3(x=1.0, y=1.0, z=1.0),
-                color=ColorRGBA(a=1.0),
-                ns="shadow obstacles",
+                color=ColorRGBA(a=color.get("a", 1.0)),
+                ns=namespace,
             )
-            markers_list.append(triangle_markers)
+            markers = []
         else:  # plot polygons as lines
+            markers = []
             for idx, polygon in enumerate(polygons):
                 point_type_list = []
                 for x, y in polygon:
-                    point_type_list.append(Point(x=float(x), y=float(y)))
+                    point_type_list.append(Point(x=float(x), y=float(y), z=float(z)))
 
-                shadow_obs_marker = Marker(
+                marker = Marker(
                     header=header,
-                    id=idx,
+                    id=marker_id + idx,
                     type=Marker.LINE_STRIP,
                     action=Marker.ADD,
                     points=point_type_list,
                     scale=Vector3(x=0.1),
-                    color=ColorRGBA(**SHADOW_OBS_COLOR),
-                    ns="shadow obstacles",
+                    color=ColorRGBA(**color),
+                    ns=namespace,
                 )
-                markers_list.append(shadow_obs_marker)
+                markers.append(marker)
+        return markers
 
-        return markers_list
+    def get_shadow_marker(self, shadow_obstacles: Optional[List[Obstacle]] = None):
+        """Makes a marker for the shadow obstacles and their prediction."""
+        if shadow_obstacles is None:
+            return []
+
+        markers = []
+
+        N = self.predictions_to_visualize
+        steps = np.arange(0, N * self.configuration["prediction_step_size"], self.configuration["prediction_step_size"])
+        steps = np.clip(steps, 0, self.configuration["prediction_horizon"] - 1)
+        # occupancy per prediction step
+        pred_polygons_per_step = [
+            [s.prediction.occupancy_set[i].shape.vertices for s in shadow_obstacles] for i in steps
+        ]
+
+        base_color = np.array([SHADOW_PRED_COLOR[key] for key in ["r", "g", "b"]])
+        diff_color = 1 - base_color
+        for idx, pred_polygons in enumerate(pred_polygons_per_step):
+            color = base_color + diff_color * idx / N
+            color_dict = {key: float(value) for key, value in zip(["r", "g", "b"], color)}
+            color_dict['a'] = 1.
+            markers.extend(
+                self.polygons_to_ros_marker(
+                    polygons=pred_polygons,
+                    color=color_dict,
+                    namespace="shadow obstacles prediction",
+                    marker_id=idx * 10000,  # in case there are multiple polygons
+                    use_triangulation=self.use_triangulation,
+                    z=-(idx + 1) * 0.01,
+                )
+            )
+
+        polygons_occluded_set = [s.obstacle_shape.vertices for s in shadow_obstacles]
+        markers.extend(
+            self.polygons_to_ros_marker(
+                polygons=polygons_occluded_set,
+                color=SHADOW_OBS_COLOR,
+                namespace="shadow obstacles",
+                use_triangulation=self.use_triangulation,
+                z=0.0,
+            )
+        )
+
+        return markers
 
     # OTHER
 
@@ -461,7 +563,6 @@ class PlannerNode(Node):
             points_planner = self.transform_pointcloud(points_laser, self.planner_frame, laser_frame)
             # subsample the points to make the shape simpler
             points_planner = points_planner[::10]
-            self.get_logger().info(f"Number of points on FOV: {len(points_planner)}")
             sensor_FOV = ShapelyPolygon(points_planner) if len(points_planner) >= 3 else None
         except TransformException:
             sensor_FOV = None

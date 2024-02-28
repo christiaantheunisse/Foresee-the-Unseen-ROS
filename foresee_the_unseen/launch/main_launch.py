@@ -224,13 +224,20 @@ def generate_launch_description():
         parameters=[PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "ekf.yaml"])],
         condition=IfCondition(use_ekf),  # use_ekf
     )
-    datmo_node = Node(
+    datmo_node_with_remapping = Node(
         package="datmo",
         executable="datmo_node",
         name="datmo_node",
-        condition=IfCondition(use_datmo),
+        condition=IfCondition(AndSubstitution(use_datmo, use_foresee)),
         parameters=[{"min_pub_markers": True}],
-        remappings=[("/scan", "/scan/road_env")],
+        remappings=([("/scan", "/scan/road_env")] if use_foresee else None),
+    )
+    datmo_node_without_remapping = Node(
+        package="datmo",
+        executable="datmo_node",
+        name="datmo_node",
+        condition=IfCondition(AndSubstitution(use_datmo, NotSubstitution(use_foresee))),
+        parameters=[{"min_pub_markers": True}],
     )
 
     global_localization_launch = IncludeLaunchDescription(
@@ -347,7 +354,7 @@ def generate_launch_description():
         executable="static_transform_publisher",
         arguments=[
             "--x",
-            "3.30", # 1.30
+            "1.80", # 1.30
             "--y",
             "0.13", # 0.13
             "--z",
@@ -412,7 +419,8 @@ def generate_launch_description():
             planner_node,
             imu_node,
             local_localization_node,
-            datmo_node,
+            datmo_node_with_remapping,
+            datmo_node_without_remapping,
             # launch files
             lidar_launch,
             global_localization_launch,

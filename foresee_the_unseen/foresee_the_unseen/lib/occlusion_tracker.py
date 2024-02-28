@@ -1,4 +1,3 @@
-
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -13,14 +12,17 @@ from commonroad.scenario.obstacle import DynamicObstacle, ObstacleType
 from commonroad.scenario.state import InitialState
 from commonroad.prediction.prediction import SetBasedPrediction, Occupancy
 
-from foresee_the_unseen.lib.utilities import Lanelet2ShapelyPolygon, ShapelyPolygon2Polygon, polygon_intersection, polygon_diff, polygon_union, cut_line
-
-import time
+from foresee_the_unseen.lib.utilities import (
+    Lanelet2ShapelyPolygon,
+    ShapelyPolygon2Polygon,
+    polygon_intersection,
+    polygon_diff,
+    polygon_union,
+    cut_line,
+)
 
 class Shadow:
-    def __init__(self,
-                 polygon,
-                 lane):
+    def __init__(self, polygon, lane):
         self.polygon = polygon
         self.lane = lane
         self.center_line = ShapelyLineString(self.lane.center_vertices)
@@ -29,12 +31,14 @@ class Shadow:
         self.lane_shapely = Lanelet2ShapelyPolygon(lane)
 
     def expand(self, dist):
-        self.polygon = self.__get_next_occ(self.polygon, dist)
+        if abs(dist) > 1e-10:
+            new_polygon = self.__get_next_occ(self.polygon, dist)
+            self.polygon = new_polygon if new_polygon is not None else self.polygon
 
-    def get_occupancy_set(self, time_step, dt, max_vel, prediction_horizon, planning_horizon = 100):
-        dist = dt*max_vel
+    def get_occupancy_set(self, time_step, dt, max_vel, prediction_horizon, steps_per_occ_pred, planning_horizon=100):
+        dist = dt * max_vel
         occupancy_set = []
-        #pred_polygon_shapely = self.polygon
+        # pred_polygon_shapely = self.polygon
 
         # Calculate the right and left projections
         right_projections = []
@@ -58,59 +62,87 @@ class Shadow:
 
         ### THIS IS THE MOST TIME CONSUMING STEP IN THE WHOLE CODE
         # reduce the number of predictions steps, but keep the same horizon
-        red_factor = 5
-        assert prediction_horizon % red_factor == 0, \
-            f"Number of steps on the prediction horizon should be dividable by {red_factor}"
-        red_prediction_horizon = prediction_horizon // red_factor
-        dist *= red_factor
+        assert prediction_horizon % steps_per_occ_pred == 0, (
+            f"Prediction horizon should be dividable by the steps to combine in the occupancy prediction: "
+            + f"prediction_horizon = {prediction_horizon}, steps_per_occ_pred = {steps_per_occ_pred}"
+        )
+        dist *= steps_per_occ_pred
 
-        for i in range(prediction_horizon):
+        # for i in range(prediction_horizon):
+        #     # Extend the top edges without overpasing the length of the lane
+        #     #   the front and rear of the prediction sets are always made perpendicular to the path / flat.
+        #     if i % steps_per_occ_pred == 0:
+        #         new_top_right = max(
+        #             top_right + dist, self.right_line.project(self.left_line.interpolate(top_left + dist))
+        #         )
+        #         new_top_left = max(
+        #             top_left + dist, self.left_line.project(self.right_line.interpolate(top_right + dist))
+        #         )
+        #         top_right = new_top_right
+        #         top_left = new_top_left
+        #         top_right = min(top_right, self.right_line.length)
+        #         top_left = min(top_left, self.left_line.length)
+
+        #         # print(f"top_right: {top_right}")
+        #         # print(f"top_left: {top_left}")
+
+        #         pred_polygon_shapely = self.__build_polygon(bottom_right, bottom_left, top_right, top_left)
+        #         pred_polygon = ShapelyPolygon2Polygon(pred_polygon_shapely)
+
+        #     occupancy = Occupancy(time_step + i + 1, pred_polygon)
+        #     # occupancy_set.extend([occupancy for _ in range(red_factor)])
+        #     occupancy_set.append(occupancy)
+
+        for pred_step in range(int(prediction_horizon / steps_per_occ_pred)):
             # Extend the top edges without overpasing the length of the lane
             #   the front and rear of the prediction sets are always made perpendicular to the path / flat.
-            if i % 5 == 0:
-                new_top_right = max(top_right + dist, self.right_line.project(self.left_line.interpolate(top_left + dist)))
-                new_top_left = max(top_left + dist, self.left_line.project(self.right_line.interpolate(top_right + dist)))
-                top_right = new_top_right
-                top_left = new_top_left
-                top_right = min(top_right, self.right_line.length)
-                top_left = min(top_left, self.left_line.length)
-                
-                # print(f"top_right: {top_right}")
-                # print(f"top_left: {top_left}")
+            new_top_right = max(
+                top_right + dist, self.right_line.project(self.left_line.interpolate(top_left + dist))
+            )
+            new_top_left = max(
+                top_left + dist, self.left_line.project(self.right_line.interpolate(top_right + dist))
+            )
+            top_right = new_top_right
+            top_left = new_top_left
+            top_right = min(top_right, self.right_line.length)
+            top_left = min(top_left, self.left_line.length)
 
-                pred_polygon_shapely = self.__build_polygon(bottom_right, bottom_left, top_right, top_left)
-                pred_polygon = ShapelyPolygon2Polygon(pred_polygon_shapely)
-            
-            occupancy = Occupancy(time_step+i+1, pred_polygon)
-            # occupancy_set.extend([occupancy for _ in range(red_factor)])
-            occupancy_set.append(occupancy)
-        
+            pred_polygon_shapely = self.__build_polygon(bottom_right, bottom_left, top_right, top_left)
+            pred_polygon = ShapelyPolygon2Polygon(pred_polygon_shapely)
+
+            occupancy_set.extend([Occupancy(time_step + pred_step * steps_per_occ_pred + i, pred_polygon) for i in range(steps_per_occ_pred)])
+
         # Populate the rest of the planning horizon with the last prediction
-        for i in range(prediction_horizon, planning_horizon):
-            occupancy = Occupancy(time_step+i+1, pred_polygon)
-            occupancy_set.append(occupancy)
-        
+        # for i in range(prediction_horizon, planning_horizon):
+        #     occupancy = Occupancy(time_step + i + 1, pred_polygon)
+        #     occupancy_set.append(occupancy)
+
         return occupancy_set
 
     def __get_next_occ(self, poly, dist):
         smallest_projection = 999999
         for edge in poly.exterior.coords:
-            projection = self.center_line.project(ShapelyPoint(edge))
+            projection = self.center_line.project(
+                ShapelyPoint(edge)
+            )  # project the edges of the occupancy polygon on the centerline
             if projection < smallest_projection:
                 smallest_projection = projection
             if smallest_projection <= 0:
                 break
         poly = poly.buffer(dist, join_style=1)
         intersection = polygon_intersection(poly, self.lane_shapely)
-        poly = intersection[0] #This has to be fixed
+        poly = intersection[0]  # This has to be fixed
 
-        if smallest_projection > 0:
+        if smallest_projection > 0:  # if the starting point of the occlusion is not the starting point of the lane
             sub_center_line = substring(self.center_line, 0, smallest_projection)
-            left_side = sub_center_line.parallel_offset(2.8, 'left')
-            right_side = sub_center_line.parallel_offset(2.8, 'right')
-            Area_to_substract = ShapelyPolygon(np.concatenate((np.array(left_side.coords), np.array(right_side.coords))))
+            left_side = sub_center_line.parallel_offset(2.8, "left")  # FIXME: seems to be hardcoded lane width
+            right_side = sub_center_line.parallel_offset(2.8, "right")  # FIXME: seems to be hardcoded lane width
+            Area_to_substract = ShapelyPolygon(
+                np.concatenate((np.array(left_side.coords), np.array(right_side.coords)))
+            )
             diff = polygon_diff(poly, Area_to_substract)
-            poly = diff[0] #This has to be fixed
+            # poly = diff[0] #This has to be fixed
+            poly = diff[0] if diff else None  # This has to be fixed
 
         return poly
 
@@ -128,34 +160,51 @@ class Shadow:
 
         assert shadow_shapely.is_valid
         assert not shadow_shapely.is_empty
-        if not isinstance(shadow_shapely, ShapelyPolygon):#, "shadow_boundary: " + str(shadow_boundary)
+        if not isinstance(shadow_shapely, ShapelyPolygon):  # , "shadow_boundary: " + str(shadow_boundary)
             print(type(shadow_shapely))
             print("Not instance")
             assert LinearRing(shadow_boundary).is_valid
         return shadow_shapely
 
+
 class Occlusion_tracker:
-    def __init__(self,
-                 scenario,
-                 initial_time_step=0,
-                 min_vel=0,
-                 max_vel=1,
-                 #min_acc=-1,
-                 #max_acc=1,
-                 min_shadow_area = 1,
-                 initial_sensor_view = ShapelyPolygon(),
-                 prediction_horizon = 10,
-                 tracking_enabled = True):
+    def __init__(
+        self,
+        scenario,
+        min_vel,
+        max_vel,
+        # min_acc=-1,
+        # max_acc=1,
+        min_shadow_area,
+        prediction_horizon,
+        steps_per_occ_pred,  # no. of time steps to combine in the occupancy prediction
+        dt,
+        initial_sensor_view=ShapelyPolygon(),
+        initial_time_step=0,
+        tracking_enabled=True,
+        # initial_time_step=0,
+        # min_vel=0,
+        # max_vel=1,
+        # # min_acc=-1,
+        # # max_acc=1,
+        # min_shadow_area=1,
+        # initial_sensor_view=ShapelyPolygon(),
+        # prediction_horizon=10,
+        # tracking_enabled=True,
+        # dt=0.1,
+        # steps_per_occ_pred=2,  # no. of time steps to combine in the occupancy prediction
+    ):
         self.time_step = initial_time_step
-        self.dt = scenario.dt
+        self.dt = dt
         self.min_vel = min_vel
         self.max_vel = max_vel
-        #self.min_acc = min_acc
-        #self.max_acc = max_acc
+        # self.min_acc = min_acc
+        # self.max_acc = max_acc
         self.min_shadow_area = min_shadow_area
         self.shadows = []
         self.prediction_horizon = prediction_horizon
         self.tracking_enabled = tracking_enabled
+        self.steps_per_occ_pred = steps_per_occ_pred
 
         # ========== Find only the 3 relevant lanes for the `parked_vehicle_scenario` ==========
         lanelets_dict = {}
@@ -183,7 +232,9 @@ class Occlusion_tracker:
             ## Generate lanes (Collection of lanelets from start to end of the scenario)
             lanes = []
             for lanelet in initial_lanelets:
-                current_lanes, _ = Lanelet.all_lanelets_by_merging_successors_from_lanelet(lanelet, scenario.lanelet_network, max_length=500)
+                current_lanes, _ = Lanelet.all_lanelets_by_merging_successors_from_lanelet(
+                    lanelet, scenario.lanelet_network, max_length=500
+                )
                 for lane in current_lanes:
                     lanes.append(lane)
             self.lanes = lanes
@@ -202,9 +253,9 @@ class Occlusion_tracker:
         # Calculate the first occluded area
         self.accumulated_occluded_area = 0
 
-        #plt.figure()
-        #plot(scenario, shadows=self.shadows)
-        #plt.show()
+        # plt.figure()
+        # plot(scenario, shadows=self.shadows)
+        # plt.show()
 
     def update(self, sensor_view, new_time):
         if self.tracking_enabled == True:
@@ -213,13 +264,13 @@ class Occlusion_tracker:
             self.reset(sensor_view, new_time)
 
     def update_tracker(self, sensor_view, new_time):
-        assert(new_time>=self.time_step)
+        assert new_time >= self.time_step
         time_diff = new_time - self.time_step
         # Update the time
         self.time_step = new_time
         # Expand all the shadows
         for shadow in self.shadows:
-            shadow.expand(self.dt*self.max_vel*time_diff)
+            shadow.expand(self.dt * self.max_vel * time_diff)
 
         # Intersect them with the current sensorview
         new_shadows = []
@@ -248,10 +299,10 @@ class Occlusion_tracker:
             shadow_polygons = polygon_diff(lanelet_shapely, sensor_view)
             for shadow_polygon in shadow_polygons:
                 if shadow_polygon.area >= self.min_shadow_area:
-                    #print(shadow_polygon.area)
-                    #plt.figure()
-                    #plot(shapelyPolygons=[shadow_polygon])
-                    #plt.show()
+                    # print(shadow_polygon.area)
+                    # plt.figure()
+                    # plot(shapelyPolygons=[shadow_polygon])
+                    # plt.show()
                     current_shadow = Shadow(shadow_polygon, lane)
                     new_shadows.append(current_shadow)
         self.shadows = new_shadows
@@ -281,28 +332,28 @@ class Occlusion_tracker:
         # plt.show()
 
         import time
+
         time_steps = []
         for shadow in self.shadows:
             t_steps = [time.time()]  # LOG RUNTIME
             occupancies = []
-            occupancy_set = shadow.get_occupancy_set(self.time_step, self.dt, self.max_vel, self.prediction_horizon)
+            occupancy_set = shadow.get_occupancy_set(
+                self.time_step, self.dt, self.max_vel, self.prediction_horizon, self.steps_per_occ_pred
+            )
             t_steps.append(time.time())  # LOG RUNTIME
             obstacle_id = scenario.generate_object_id()
             obstacle_type = ObstacleType.UNKNOWN
             t_steps.append(time.time())  # LOG RUNTIME
             obstacle_shape = ShapelyPolygon2Polygon(shadow.polygon)
-            obstacle_initial_state = InitialState(position = np.array([0,0]),
-                                           velocity = self.max_vel,
-                                           orientation = 0,
-                                           time_step = self.time_step)
+            obstacle_initial_state = InitialState(
+                position=np.array([0, 0]), velocity=self.max_vel, orientation=0, time_step=self.time_step
+            )
             t_steps.append(time.time())  # LOG RUNTIME
-            obstacle_prediction = SetBasedPrediction(self.time_step+1, occupancy_set)
+            obstacle_prediction = SetBasedPrediction(self.time_step + 1, occupancy_set)
             t_steps.append(time.time())  # LOG RUNTIME
-            dynamic_obstacle = DynamicObstacle(obstacle_id,
-                            obstacle_type,
-                            obstacle_shape,
-                            obstacle_initial_state,
-                            obstacle_prediction)
+            dynamic_obstacle = DynamicObstacle(
+                obstacle_id, obstacle_type, obstacle_shape, obstacle_initial_state, obstacle_prediction
+            )
             dynamic_obstacles.append(dynamic_obstacle)
             t_steps.append(time.time())  # LOG RUNTIME
             t_steps = np.array(t_steps)
@@ -311,7 +362,7 @@ class Occlusion_tracker:
 
         time_steps = np.array(time_steps)
         # print(f"[shadows] Time per step:\n{time_steps.mean(axis=0).tolist()}")
-        # print(f"[shadows] Percentage of time per step:\n{(time_steps.mean(axis=0) / (time_steps.sum() / time_steps.shape[0]) * 100).tolist()}")      
+        # print(f"[shadows] Percentage of time per step:\n{(time_steps.mean(axis=0) / (time_steps.sum() / time_steps.shape[0]) * 100).tolist()}")
         # print("")
 
         return dynamic_obstacles
