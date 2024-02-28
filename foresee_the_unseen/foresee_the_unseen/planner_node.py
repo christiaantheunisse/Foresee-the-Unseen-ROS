@@ -208,17 +208,18 @@ class PlannerNode(Node):
 
     def publish_trajectory(self, trajectory: TrajectoryCR) -> None:
         """ Publishes the Commonroad trajectory on a topic for the trajectory follower node. """
-        header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.planner_frame)
+        header_path = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.planner_frame)
         pose_stamped_list = []
         for state in trajectory.trajectory.state_list:
             quaternion = Quaternion(
                 **{k: v for k, v in zip(["x", "y", "z", "w"], self.quaternion_from_yaw(state.orientation))}
             )
             position = Point(x=float(state.position[0]), y=float(state.position[1]))
-            header = Header(sec=int(state.time_step), nanosec=int((state.time_step % 1) * 1e9))
-            pose_stamped_list.append(PoseStamped(pose=Pose(position=position, quaternion=quaternion)))
+            time_diff = (state.time_step - self.foresee_the_unseen_planner.planner_step) * 1 / self.frequency
+            header_pose = Header(sec=int(time_diff), nanosec=int((time_diff % 1) * 1e9))
+            pose_stamped_list.append(PoseStamped(header=header_pose, pose=Pose(position=position, quaternion=quaternion)))
         twist_list = [Twist(linear=Vector3(x=s.velocity)) for s in trajectory.trajectory.state_list]
-        trajectory_msg = TrajectoryMsg(path=Path(header=header, poses=pose_stamped_list), velocities=twist_list)
+        trajectory_msg = TrajectoryMsg(path=Path(header=header_path, poses=pose_stamped_list), velocities=twist_list)
 
         self.trajectory_publisher.publish(trajectory_msg)
 
