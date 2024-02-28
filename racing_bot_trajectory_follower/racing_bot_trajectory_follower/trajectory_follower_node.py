@@ -15,6 +15,7 @@ from nav_msgs.msg import Odometry
 from std_msgs.msg import Int16MultiArray, ColorRGBA, Header
 from geometry_msgs.msg import Point, Vector3
 from visualization_msgs.msg import Marker, MarkerArray
+from racing_bot_interfaces.msg import Trajectory as TrajectoryMsg
 
 from racing_bot_trajectory_follower.lib.trajectories import *
 
@@ -169,8 +170,7 @@ class TrajectoryFollowerNode(Node):
         self.trajectory = None
 
         self.create_subscription(Odometry, self.odom_topic, self.odom_callback, 5)
-        # TODO: Subscription to trajectory topic instead of timer
-        self.create_timer(2, self.trajectory_callback)
+        self.create_subscription(TrajectoryMsg, self.trajectory_topic, self.trajectory_callback, 5)
         self.motor_publisher = self.create_publisher(Int16MultiArray, self.motor_cmd_topic, 10)
         self.traj_marker_publisher = self.create_publisher(MarkerArray, self.traj_marker_topic, 1)
 
@@ -228,7 +228,7 @@ class TrajectoryFollowerNode(Node):
 
         self.traj_marker_publisher.publish(MarkerArray(markers=marker_list))
 
-    def trajectory_convert_frame(self, trajectory: Trajectory, target_frame: str, source_frame: str):
+    def transform_trajectory(self, trajectory: Trajectory, target_frame: str, source_frame: str):
         try:
             t = self.tf_buffer.lookup_transform(target_frame, source_frame, rclpy.time.Time())
         except TransformException as ex:
@@ -240,14 +240,21 @@ class TrajectoryFollowerNode(Node):
         translation, rotation = trans_rot_from_euler(t)
         return trajectory.rotate(rotation).translate(translation[:2])
 
-    # def trajectory_callback(self, msg):
-    def trajectory_callback(self):
+    def trajectory_callback(self, msg: TrajectoryMsg):
+    # def trajectory_callback(self):
         self.last_target_idx = 0
         # FIXME: Temporary fix
         # trajectory = get_sinus_and_circ_trajectory(velocity=0.2).repeat(1)[0.5]  # is in the planner frame
-        trajectory = get_sinus_and_circ_trajectory(velocity=0.2).repeat(1)[0.9]  # is in the planner frame
+        # trajectory = get_sinus_and_circ_trajectory(velocity=0.2).repeat(1)[0.9]  # is in the planner frame
         # trajectory = get_circular_trajectory(velocity=0.2)[0.9]  # is in the planner frame
-        self.trajectory = self.trajectory_convert_frame(trajectory, self.map_frame, self.planner_frame)
+
+        positions = np.array([[p.pose.position.x, p.pose.position.y] for p in msg.path.poses])
+        quaternions = [p.pose.orientation for p in msg.path.poses]
+        yaws = [euler_from_quaternion(*map(lambda attr: getattr(q, attr), ['x', 'y', 'z','w']))[2] for q in quaternions]
+        velocities = [v.linear.x for v in msg.velocities]
+        trajectory = Trajectory(positions, yaws, velocities)
+        trajectory_transformed = self.transform_trajectory(trajectory, self.map_frame, self.planner_frame)
+        self.trajectory = trajectory_transformed if trajectory_transformed is not None else self.trajectory
 
     def odom_callback(self, msg: Odometry):
         position = [

@@ -93,7 +93,7 @@ def generate_launch_description():
     )
     use_datmo_launch_arg = DeclareLaunchArgument(
         "use_datmo",
-        default_value=TextSubstitution(text="true"),
+        default_value=TextSubstitution(text="false"),
         description="If true, launch the datmo node",
     )
     use_foresee_launch_arg = DeclareLaunchArgument(
@@ -179,6 +179,10 @@ def generate_launch_description():
         executable="controller_node",
         condition=UnlessCondition(play_rosbag),  # not play_rosbag
     )
+    trajectory_node = Node(
+        package="racing_bot_trajectory_follower",
+        executable="trajectory_follower_node",
+    )
     imu_node = Node(
         package="racing_bot_imu",
         executable="imu_node",
@@ -202,20 +206,20 @@ def generate_launch_description():
             # {"do_broadcast_transform": NotSubstitution(use_ekf)},  # Use either this or ekf transform (set in ekf.yaml)
         ],
     )
-    planner_node = Node(
-        package="foresee_the_unseen",
-        executable="planner_node",
-        parameters=[
-            PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "planner_node.yaml"]),
-            {
-                "road_xml": PathJoinSubstitution(
-                    [FindPackageShare("foresee_the_unseen"), "resource", "road_structure_15_reduced_points.xml"]
-                ),
-                "log_directory": PathJoinSubstitution(log_files_dir),
-            },
-        ],
-        condition=IfCondition(use_foresee),
-    )
+    # planner_node = Node(
+    #     package="foresee_the_unseen",
+    #     executable="planner_node",
+    #     parameters=[
+    #         PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "planner_node.yaml"]),
+    #         {
+    #             "road_xml": PathJoinSubstitution(
+    #                 [FindPackageShare("foresee_the_unseen"), "resource", "road_structure_15_reduced_points.xml"]
+    #             ),
+    #             "log_directory": PathJoinSubstitution(log_files_dir),
+    #         },
+    #     ],
+    #     condition=IfCondition(use_foresee),
+    # )
     local_localization_node = Node(
         package="robot_localization",
         executable="ekf_node",
@@ -275,6 +279,16 @@ def generate_launch_description():
         condition=IfCondition(
             AndSubstitution(NotSubstitution(record_rosbag), EqualsSubstitution(slam_mode, "mapping"))
         ),  # (not record_rosbag) and (slam_mode = "mapping")
+    )
+
+    planner_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "launch", "planner_launch.py"])
+        ),
+        launch_arguments={
+            "play_rosbag": play_rosbag,
+        }.items(),
+        condition=IfCondition(use_foresee),  # use_foresee
     )
 
     # Static transforms
@@ -349,28 +363,28 @@ def generate_launch_description():
         ],
     )
     # $ ros2 run tf2_ros static_transform_publisher --x 3 --y 2 --z 0 --yaw 1.57 --pitch 0 --roll 0 --frame-id map --child-frame-id planner
-    static_trans_map_to_planner_frame = Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        arguments=[
-            "--x",
-            "1.80", # 1.30
-            "--y",
-            "0.13", # 0.13
-            "--z",
-            "0",
-            "--roll",
-            "0",
-            "--pitch",
-            "0",
-            "--yaw",
-            "-1.57079632679",
-            "--frame-id",
-            "map",
-            "--child-frame-id",
-            "planner",
-        ],
-    )
+    # static_trans_map_to_planner_frame = Node(
+    #     package="tf2_ros",
+    #     executable="static_transform_publisher",
+    #     arguments=[
+    #         "--x",
+    #         "3.80", # 1.80
+    #         "--y",
+    #         "0.13", # 0.13
+    #         "--z",
+    #         "0",
+    #         "--roll",
+    #         "0",
+    #         "--pitch",
+    #         "0",
+    #         "--yaw",
+    #         "-1.57079632679",
+    #         "--frame-id",
+    #         "map",
+    #         "--child-frame-id",
+    #         "planner",
+    #     ],
+    # )
     # Zero
     # static_trans_map_to_planner_frame = Node(
     #     package="tf2_ros",
@@ -416,7 +430,8 @@ def generate_launch_description():
             encoder_node,
             odometry_node,
             controller_node,
-            planner_node,
+            trajectory_node,
+            # planner_node,
             imu_node,
             local_localization_node,
             datmo_node_with_remapping,
@@ -425,10 +440,11 @@ def generate_launch_description():
             lidar_launch,
             global_localization_launch,
             global_localization_and_mapping_launch,
+            planner_launch,
             # transforms
             static_trans_base_link_to_laser,
             static_trans_base_link_to_imu_link,
             static_trans_map_to_odom,
-            static_trans_map_to_planner_frame,
+            # static_trans_map_to_planner_frame,
         ]
     )

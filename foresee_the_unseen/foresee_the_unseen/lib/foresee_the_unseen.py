@@ -191,6 +191,7 @@ class ForeseeTheUnseen:
             sensor_view = self.sensor_view  # Based on laser scan
             if sensor_view is None:
                 self.logger.warn("No FOV available", throttle_duration_sec=self.throttle_duration)
+                raise NoUpdatePossible()
         else:
             self.sensor.update(self.ego_vehicle.initial_state)
             sensor_view = self.sensor.get_sensor_view(percieved_scenario)  # Based on detected obstacles
@@ -233,4 +234,4 @@ class ForeseeTheUnseen:
         self.planner_step += 1
         # self.logger.info(f"Scenario updated: planner step = {self.planner_step}")
 
-        return percieved_scenario, sensor_view
+        return shadow_obstacles, sensor_view, self.trajectory

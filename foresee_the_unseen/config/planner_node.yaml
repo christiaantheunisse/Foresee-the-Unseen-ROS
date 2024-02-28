@@ -9,14 +9,13 @@ planner_node:
     odom_topic: odom 
     datmo_topic: datmo/box_kf 
     filtered_lidar_topic: scan/road_env
-    fov_topic: visualization/fov
-    obstacles_topic: visualization/obstacles
+    visualization_topic: visualization/planner
     
-    environment_boundary: [0., 3., 2., 3., 2., -3., 0., -3.]  # CW convex polygon [x1, y1, x2, y2, ...] in the map frame
+    environment_boundary: [0., 2.5, 2., 2.5, 2., -3., 0., -3.]  # CW convex polygon [x1, y1, x2, y2, ...] in the map frame
     
     ego_vehicle_size: [0.25, 0.18, 0.12]
     ego_vehicle_offset: [0., 0., 0.06]
-    planner_frequency: 7. # [Hz]
+    planner_frequency: 5. # [Hz]
 
     use_triangulation: False
     num_pred_to_visualize: 5

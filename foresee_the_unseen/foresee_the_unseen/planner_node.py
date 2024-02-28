@@ -12,16 +12,18 @@ from typing import Optional, List, Union, Tuple, Dict, TypedDict
 from commonroad.scenario.state import InitialState, State
 from commonroad.scenario.obstacle import Obstacle, ObstacleType, DynamicObstacle
 from commonroad.geometry.shape import Rectangle
+from commonroad.prediction.prediction import TrajectoryPrediction as TrajectoryCR
 
 from shapely.geometry import Polygon as ShapelyPolygon
 
 from datmo.msg import TrackArray
-from nav_msgs.msg import Odometry
+from nav_msgs.msg import Odometry, Path
 from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import ColorRGBA, Header
-from geometry_msgs.msg import Vector3, Point, Point32, PolygonStamped, TransformStamped, Pose
+from geometry_msgs.msg import Vector3, Point, Point32, PolygonStamped, TransformStamped, Pose, PoseStamped, Quaternion, Twist
 from sensor_msgs.msg import LaserScan
 from rcl_interfaces.msg import ParameterDescriptor
+from racing_bot_interfaces.msg import Trajectory as TrajectoryMsg
 
 from tf2_ros import TransformException
 from tf2_ros.buffer import Buffer
@@ -73,8 +75,8 @@ class PlannerNode(Node):
         self.declare_parameter("odom_topic", "odom")
         self.declare_parameter("datmo_topic", "datmo/box_kf")
         self.declare_parameter("filtered_lidar_topic", "scan/road_env")
-        self.declare_parameter("fov_topic", "visualization/fov")
-        self.declare_parameter("obstacles_topic", "visualization/obstacles")
+        self.declare_parameter("visualization_topic", "visualization/planner")
+        self.declare_parameter("trajectory_topic", "trajectory")
 
         self.declare_parameter(
             "road_xml",
@@ -117,8 +119,8 @@ class PlannerNode(Node):
         self.odom_topic = self.get_parameter("odom_topic").get_parameter_value().string_value
         self.datmo_topic = self.get_parameter("datmo_topic").get_parameter_value().string_value
         self.filtered_lidar_topic = self.get_parameter("filtered_lidar_topic").get_parameter_value().string_value
-        self.fov_topic = self.get_parameter("fov_topic").get_parameter_value().string_value
-        self.markersarray_topic = self.get_parameter("obstacles_topic").get_parameter_value().string_value
+        self.visualization_topic = self.get_parameter("visualization_topic").get_parameter_value().string_value
+        self.trajectory_topic = self.get_parameter("trajectory_topic").get_parameter_value().string_value
 
         self.road_xml = self.get_parameter("road_xml").get_parameter_value().string_value
         self.config_yaml = self.get_parameter("foresee_the_unseen_yaml").get_parameter_value().string_value
@@ -153,8 +155,8 @@ class PlannerNode(Node):
         self.create_subscription(Odometry, self.odom_topic, self.odom_callback, 5)  # Ego vehicle pose
         self.create_subscription(TrackArray, self.datmo_topic, self.datmo_callback, 5)  # Ego vehicle pose
         self.filtered_laser_publisher = self.create_publisher(LaserScan, self.filtered_lidar_topic, 5)
-        self.marker_array_publisher = self.create_publisher(MarkerArray, self.markersarray_topic, 10)
-        # self.fov_publisher = self.create_publisher(PolygonStamped, self.fov_topic, 1) # FOV publisher
+        self.marker_array_publisher = self.create_publisher(MarkerArray, self.visualization_topic, 10)
+        self.trajectory_publisher = self.create_publisher(TrajectoryMsg, self.trajectory_topic, 5)
 
         self.laser_filter_matrices = matrices_from_cw_cvx_polygon(self.filter_polygon)
 
@@ -171,19 +173,18 @@ class PlannerNode(Node):
         """Calls the Foresee The Unseen Planner and updates the visualization"""
         start_time = time.time()
         try:
-            perceived_scenario, sensor_view = self.foresee_the_unseen_planner.update_scenario()
-            shadow_obstacles = [o for o in perceived_scenario.obstacles if o.obstacle_type == ObstacleType.UNKNOWN]
+            shadow_obstacles, sensor_view, trajectory = self.foresee_the_unseen_planner.update_scenario()
         except NoUpdatePossible:
             self.get_logger().warn("No planner update step possible", throttle_duration_sec=self.throttle_duration)
-            shadow_obstacles, sensor_view = None, None
+            shadow_obstacles, sensor_view, trajectory = None, None, None
 
-        # TODO: Visualize shadow obstacles
-        # TODO: Visualize occupancies of shadow obstacles
-        # TODO: Visualize goal point
+        if trajectory is not None:
+            self.publish_trajectory(trajectory)
 
         start_viz_time = time.time()
         if self.do_visualize:
-            self.visualization_callback(shadow_obstacles, sensor_view)
+            self.visualization_callback(shadow_obstacles, sensor_view, trajectory)
+
         end_time = time.time()
         tot_time = end_time - start_time
         viz_time = end_time - start_viz_time
@@ -201,22 +202,47 @@ class PlannerNode(Node):
             #     + f"({self.frequency} Hz)",
             # )
 
+    @staticmethod
+    def quaternion_from_yaw(yaw):
+        return [0, 0, np.sin(yaw / 2), np.cos(yaw / 2)]
+
+    def publish_trajectory(self, trajectory: TrajectoryCR) -> None:
+        """ Publishes the Commonroad trajectory on a topic for the trajectory follower node. """
+        header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.planner_frame)
+        pose_stamped_list = []
+        for state in trajectory.trajectory.state_list:
+            quaternion = Quaternion(
+                **{k: v for k, v in zip(["x", "y", "z", "w"], self.quaternion_from_yaw(state.orientation))}
+            )
+            position = Point(x=float(state.position[0]), y=float(state.position[1]))
+            header = Header(sec=int(state.time_step), nanosec=int((state.time_step % 1) * 1e9))
+            pose_stamped_list.append(PoseStamped(pose=Pose(position=position, quaternion=quaternion)))
+        twist_list = [Twist(linear=Vector3(x=s.velocity)) for s in trajectory.trajectory.state_list]
+        trajectory_msg = TrajectoryMsg(path=Path(header=header, poses=pose_stamped_list), velocities=twist_list)
+
+        self.trajectory_publisher.publish(trajectory_msg)
+
     def visualization_callback(
         self,
         shadow_obstacles: Optional[List[Obstacle]] = None,
         sensor_view: Optional[ShapelyPolygon] = None,
+        trajectory: Optional[TrajectoryCR] = None,
     ):
         # TODO: Only remove markers that need to and only add markers that need to be added every time step
         markers = []
-        markers.append(Marker(action=Marker.DELETEALL)) # remove all markers
+        markers.append(Marker(action=Marker.DELETEALL))  # remove all markers
         markers += self.get_ego_vehicle_marker()
         markers += self.get_road_structure_marker()
         markers += self.get_filter_polygon_marker()
         markers += self.get_goal_marker()
 
-        markers += self.get_fov_marker(sensor_view)
-        markers += self.get_trajectory_marker()
-        markers += self.get_shadow_marker(shadow_obstacles)
+        if sensor_view is not None:
+            markers += self.get_fov_marker(sensor_view)
+        if trajectory is not None:
+            markers += self.get_trajectory_marker(trajectory)
+        if shadow_obstacles is not None:
+            markers += self.get_shadow_marker(shadow_obstacles)
+
         self.marker_array_publisher.publish(MarkerArray(markers=markers))
 
     def laser_callback(self, msg):
@@ -377,15 +403,15 @@ class PlannerNode(Node):
         polygon.polygon.points = point32_list
         self.fov_publisher.publish(polygon)
 
-    def get_trajectory_marker(self):
+    def get_trajectory_marker(self, trajectory: TrajectoryCR) -> None:
         header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.planner_frame)
         marker_list = []
-        if self.foresee_the_unseen_planner.trajectory is not None:
+        if trajectory is not None:
             point_list = []
             color_rgba_list = []
             cmap = mpl.cm.get_cmap("cool")
             # o in the list below is of type InitialState
-            positions = [o.position for o in self.foresee_the_unseen_planner.trajectory.trajectory.state_list]
+            positions = [o.position for o in trajectory.trajectory.state_list]
             for x, y in positions:
                 point_list.append(Point(x=x, y=y))
                 r, g, b, a = cmap(len(point_list) / len(positions))
@@ -479,11 +505,8 @@ class PlannerNode(Node):
                 markers.append(marker)
         return markers
 
-    def get_shadow_marker(self, shadow_obstacles: Optional[List[Obstacle]] = None):
+    def get_shadow_marker(self, shadow_obstacles: List[Obstacle]):
         """Makes a marker for the shadow obstacles and their prediction."""
-        if shadow_obstacles is None:
-            return []
-
         markers = []
 
         N = self.predictions_to_visualize
@@ -499,7 +522,7 @@ class PlannerNode(Node):
         for idx, pred_polygons in enumerate(pred_polygons_per_step):
             color = base_color + diff_color * idx / N
             color_dict = {key: float(value) for key, value in zip(["r", "g", "b"], color)}
-            color_dict['a'] = 1.
+            color_dict["a"] = 1.0
             markers.extend(
                 self.polygons_to_ros_marker(
                     polygons=pred_polygons,
