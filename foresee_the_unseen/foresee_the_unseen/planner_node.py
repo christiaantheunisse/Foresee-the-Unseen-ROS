@@ -20,7 +20,17 @@ from datmo.msg import TrackArray
 from nav_msgs.msg import Odometry, Path
 from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import ColorRGBA, Header
-from geometry_msgs.msg import Vector3, Point, Point32, PolygonStamped, TransformStamped, Pose, PoseStamped, Quaternion, Twist
+from geometry_msgs.msg import (
+    Vector3,
+    Point,
+    Point32,
+    PolygonStamped,
+    TransformStamped,
+    Pose,
+    PoseStamped,
+    Quaternion,
+    Twist,
+)
 from sensor_msgs.msg import LaserScan
 from rcl_interfaces.msg import ParameterDescriptor
 from racing_bot_interfaces.msg import Trajectory as TrajectoryMsg
@@ -204,10 +214,10 @@ class PlannerNode(Node):
 
     @staticmethod
     def quaternion_from_yaw(yaw):
-        return [0, 0, np.sin(yaw / 2), np.cos(yaw / 2)]
+        return [0., 0., np.sin(yaw / 2), np.cos(yaw / 2)]
 
     def publish_trajectory(self, trajectory: TrajectoryCR) -> None:
-        """ Publishes the Commonroad trajectory on a topic for the trajectory follower node. """
+        """Publishes the Commonroad trajectory on a topic for the trajectory follower node."""
         header_path = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.planner_frame)
         pose_stamped_list = []
         for state in trajectory.trajectory.state_list:
@@ -217,7 +227,9 @@ class PlannerNode(Node):
             position = Point(x=float(state.position[0]), y=float(state.position[1]))
             time_diff = (state.time_step - self.foresee_the_unseen_planner.planner_step) * 1 / self.frequency
             header_pose = Header(sec=int(time_diff), nanosec=int((time_diff % 1) * 1e9))
-            pose_stamped_list.append(PoseStamped(header=header_pose, pose=Pose(position=position, quaternion=quaternion)))
+            pose_stamped_list.append(
+                PoseStamped(header=header_pose, pose=Pose(position=position, orientation=quaternion))
+            )
         twist_list = [Twist(linear=Vector3(x=s.velocity)) for s in trajectory.trajectory.state_list]
         trajectory_msg = TrajectoryMsg(path=Path(header=header_path, poses=pose_stamped_list), velocities=twist_list)
 

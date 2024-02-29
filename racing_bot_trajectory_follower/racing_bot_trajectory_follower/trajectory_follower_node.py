@@ -110,13 +110,13 @@ class TrajectoryFollowerNode(Node):
 
     A futher explanation of the algorithm is given in the method: `apply_control()`
 
-    TODO: The trajectory is obtained from a ROS topic with the custom message type trajectory
-    The trajectory is converted to the map frame
+    The trajectory is obtained from a ROS topic with the custom message type Trajectory. The trajectory and the odometry
+    information are both converted to the map frame where the control is applied.
     """
 
     def __init__(self):
         super().__init__("trajectory_follower_node")
-        self.throttle_duration = 2  # s
+        self.throttle_duration = 3  # s
 
         # parameters
         self.declare_parameter("map_frame", "map")
@@ -155,14 +155,14 @@ class TrajectoryFollowerNode(Node):
 
         self.velocity_PID = self.get_parameter("velocity_PID").get_parameter_value().double_array_value
         self.steering_k = self.get_parameter("steering_k").get_parameter_value().double_value
-        self.max_steering_angle = np.rad2deg(
+        self.max_steering_angle = np.deg2rad(
             self.get_parameter("max_steering_angle").get_parameter_value().double_value
         )
 
-        # Transformer listener
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
+        # Variables relevant to the trajectory following
         self.state = State()
         self.prev_error = None
         self.last_target_idx = 0
@@ -177,6 +177,9 @@ class TrajectoryFollowerNode(Node):
         self.create_timer(1 / self.control_frequency, self.apply_control)
 
     def visualize_trajectory(self, target_idx: Optional[int] = None) -> None:
+        if not self.do_visual_traj:
+            return
+
         marker_list = []
         header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.map_frame)
 
@@ -229,6 +232,7 @@ class TrajectoryFollowerNode(Node):
         self.traj_marker_publisher.publish(MarkerArray(markers=marker_list))
 
     def transform_trajectory(self, trajectory: Trajectory, target_frame: str, source_frame: str):
+        """Transforms a trajectory to another frame by looking a ROS transform."""
         try:
             t = self.tf_buffer.lookup_transform(target_frame, source_frame, rclpy.time.Time())
         except TransformException as ex:
@@ -241,22 +245,27 @@ class TrajectoryFollowerNode(Node):
         return trajectory.rotate(rotation).translate(translation[:2])
 
     def trajectory_callback(self, msg: TrajectoryMsg):
-    # def trajectory_callback(self):
+        """Callback for the trajectory topic."""
+        # def trajectory_callback(self):
         self.last_target_idx = 0
         # FIXME: Temporary fix
         # trajectory = get_sinus_and_circ_trajectory(velocity=0.2).repeat(1)[0.5]  # is in the planner frame
         # trajectory = get_sinus_and_circ_trajectory(velocity=0.2).repeat(1)[0.9]  # is in the planner frame
         # trajectory = get_circular_trajectory(velocity=0.2)[0.9]  # is in the planner frame
 
+        traj_frame = msg.path.header.frame_id
         positions = np.array([[p.pose.position.x, p.pose.position.y] for p in msg.path.poses])
         quaternions = [p.pose.orientation for p in msg.path.poses]
-        yaws = [euler_from_quaternion(*map(lambda attr: getattr(q, attr), ['x', 'y', 'z','w']))[2] for q in quaternions]
+        yaws = [
+            euler_from_quaternion(*map(lambda attr: getattr(q, attr), ["x", "y", "z", "w"]))[2] for q in quaternions
+        ]
         velocities = [v.linear.x for v in msg.velocities]
         trajectory = Trajectory(positions, yaws, velocities)
-        trajectory_transformed = self.transform_trajectory(trajectory, self.map_frame, self.planner_frame)
+        trajectory_transformed = self.transform_trajectory(trajectory, self.map_frame, traj_frame)
         self.trajectory = trajectory_transformed if trajectory_transformed is not None else self.trajectory
 
     def odom_callback(self, msg: Odometry):
+        """Callback for the odometry topic. Converts the pose in the odometry to the map frame."""
         position = [
             msg.pose.pose.position.x,
             msg.pose.pose.position.y,
@@ -269,49 +278,46 @@ class TrajectoryFollowerNode(Node):
         ]
         _, _, yaw = euler_from_quaternion(*quaternion)
         velocity = msg.twist.twist.linear.x
+        odom_frame = msg.header.frame_id
 
         try:
-            t = self.tf_buffer.lookup_transform(self.map_frame, self.odom_frame, rclpy.time.Time())
+            t = self.tf_buffer.lookup_transform(self.map_frame, odom_frame, rclpy.time.Time())
         except TransformException as ex:
             self.get_logger().info(
-                f"Could not transform `{self.odom_frame}` to `{self.map_frame}`: {ex}",
+                f"Could not transform `{odom_frame}` to `{self.map_frame}`: {ex}",
                 throttle_duration_sec=self.throttle_duration,
             )
             return
-        translation, rotation = trans_rot_from_euler(t)
+        # translation, rotation = trans_rot_from_euler(t)
         t_mat, yaw_rot = matrix_yaw_from_transform(t)
         transf_position = (t_mat @ np.array([*position, 0, 1]))[:2]
         transf_yaw = yaw + yaw_rot
-        # self.get_logger().info(
-        #     f"translation: {translation}, rotation: {rotation}, position: {position}, yaw: {yaw}, transf_position: {transf_position}, transf_yaw: {transf_yaw}",
-        #     throttle_duration_sec=0.5,
-        # )
         self.prev_state = self.state
         self.state = State(*transf_position, transf_yaw, velocity)
 
     def apply_control(self):
         """
         Calculates the motor commands based on the trajectory and the position using a Stanley controller for the
-        steering angle and a pid controller for the speed.
+        steering angle and a PID controller for the speed.
 
-        The pid controller is tuned to output the acceleration for a normalized motor speed in the range [-1, 1].
+        The PID controller (actually just a PD controller) is tuned to output the acceleration for a normalized motor
+        speed in the range [-1, 1].
 
         The Stanley controller is developed for Ackermann steering vehicles and not for a differential drive mobile
-        robot (DDMR). The position of the front axle is chosen to be around the castor wheel, but this is a arbitrary
-        decision. The algorithms tries to position the front axle on the path and the (fictional) front wheels with the
-        path. The center of the baselink frame (and thus the position the odometry pose is pointing to) is the center
-        of the rear axle.
-
+        robot (DDMR). The position of the front axle is chosen to be on the castor wheel, but this is a arbitrary
+        decision. The algorithms tries to position the front axle on the path and to align the (fictional) front wheels
+        with the path. The center of the baselink frame (and thus the position the odometry pose is pointing to) is the
+        center of the rear axle.
         """
         no_state = self.state.x is None or self.state.y is None or self.state.yaw is None or self.state.v is None
         no_trajectory = self.trajectory is None
         if no_state or no_trajectory:
             if no_state:
-                self.get_logger().warn(
+                self.get_logger().info(
                     "No state update received, so control is not applied", throttle_duration_sec=self.throttle_duration
                 )
             if no_trajectory:
-                self.get_logger().warn(
+                self.get_logger().info(
                     "No trajectory available, so control is not applied", throttle_duration_sec=self.throttle_duration
                 )
 
@@ -332,28 +338,35 @@ class TrajectoryFollowerNode(Node):
         perp_error = dist_vec[target_idx] @ perp_vec
 
         # calculate the acceleration
-        acceleration = self.p_control(self.trajectory.vs[target_idx], self.state.v)
+        acceleration = self.pd_control(self.trajectory.vs[target_idx], self.state.v)
         self.output_vel += acceleration / self.control_frequency
         if abs(self.output_vel) > 1:
             self.output_vel = np.clip(self.output_vel, -1, 1)
             self.get_logger().warn(
-                f"Acceleration is too high. Speed most likely not reachable: acceleration = {acceleration}"
+                (
+                    f"Normalized output velocity > 1 (output vel = {self.output_vel})."
+                    + f"Speed most likely not reachable: acceleration = {acceleration}"
+                ),
+                throttle_duration_sec=self.throttle_duration,
             )
 
         # calculate the steering angle: ccw positive
         delta = self.stanley_controller(self.trajectory.yaws[target_idx], perp_error)
         if abs(delta) > self.max_steering_angle:
-            self.get_logger().info(f"Maximum steering angle exceeded: delta = {delta}")
+            # self.get_logger().info(f"Maximum steering angle exceeded: delta = {delta}")
             delta = np.clip(delta, -self.max_steering_angle, self.max_steering_angle)
         # convert the steering angle to a speed difference of the wheels: v_delta = (v / 2) * (W / L) * tan(delta)
+        # v_delta is proportional to the velocity, so this all works with normalized velocities
         v_delta = self.output_vel / 2 * self.wheel_base_W / self.wheel_base_L * np.tan(delta)
 
         # directly set the motor speed
-        # self.get_logger().info(f"v_delta = {v_delta}, output_vel = {self.output_vel}, delta = {delta}")
         v_left, v_right = self.output_vel - v_delta, self.output_vel + v_delta
         if abs(v_left) > 1 or abs(v_right) > 1:
             v_left, v_right = self.scale_motor_vels(v_left, v_right)
-            self.get_logger().warn(f"Maximum motor values exceed due to steering: v_delta = {v_delta}")
+            self.get_logger().warn(
+                f"Maximum motor values exceed due to steering: v_delta = {v_delta} (normalized), delta = {delta} rad",
+                throttle_duration_sec=self.throttle_duration,
+            )
 
         v_left, v_right = int(255 * v_left), int(255 * v_right)
         motor_command = Int16MultiArray(data=[v_left, v_right, 0, 0])  # 4 motors are implemented by the hat_node
@@ -362,8 +375,8 @@ class TrajectoryFollowerNode(Node):
         # self.get_logger().info(f"Control: [v_left, v_right] = {v_left, v_right}")
         self.visualize_trajectory(target_idx)
 
-    def p_control(self, target, current) -> float:
-        """Proportional control for the speed."""
+    def pd_control(self, target, current) -> float:
+        """PD controller for the speed."""
         Kp, Ki, Kd = self.velocity_PID
         error = target - current
         derror = (error - self.prev_error) * self.control_frequency if self.prev_error is not None else 0
@@ -372,17 +385,17 @@ class TrajectoryFollowerNode(Node):
         return Kp * error + Kd * derror
 
     def stanley_controller(self, goal_yaw, perp_error) -> float:
-        """Calculates the steering angle"""
+        """Calculates the steering angle in radians according Stanley steering algorithm"""
         # theta_e corrects the heading error
-        self.get_logger().info(f"Yaw: current={self.state.yaw}, goal={goal_yaw}")
         theta_e = angle_mod(goal_yaw - self.state.yaw)
         # theta_d corrects the cross track error
         theta_d = np.arctan2(self.steering_k * perp_error, self.state.v)
 
-        return theta_e + theta_d
+        return theta_e + theta_d  # [rad]
 
     @staticmethod
     def scale_motor_vels(v_left, v_right):
+        """Scales the motor velocities to make them stay within the range [-1, 1]."""
         if abs(v_left) > 1 and abs(v_left) > abs(v_right):
             v_right /= abs(v_left)
             v_left /= abs(v_left)

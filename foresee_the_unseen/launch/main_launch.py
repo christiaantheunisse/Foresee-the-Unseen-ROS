@@ -182,6 +182,11 @@ def generate_launch_description():
     trajectory_node = Node(
         package="racing_bot_trajectory_follower",
         executable="trajectory_follower_node",
+        parameters=[
+            PathJoinSubstitution(
+                [FindPackageShare("racing_bot_trajectory_follower"), "config", "trajectory_follower_node.yaml"]
+            ),
+        ],
     )
     imu_node = Node(
         package="racing_bot_imu",
@@ -206,20 +211,6 @@ def generate_launch_description():
             # {"do_broadcast_transform": NotSubstitution(use_ekf)},  # Use either this or ekf transform (set in ekf.yaml)
         ],
     )
-    # planner_node = Node(
-    #     package="foresee_the_unseen",
-    #     executable="planner_node",
-    #     parameters=[
-    #         PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "planner_node.yaml"]),
-    #         {
-    #             "road_xml": PathJoinSubstitution(
-    #                 [FindPackageShare("foresee_the_unseen"), "resource", "road_structure_15_reduced_points.xml"]
-    #             ),
-    #             "log_directory": PathJoinSubstitution(log_files_dir),
-    #         },
-    #     ],
-    #     condition=IfCondition(use_foresee),
-    # )
     local_localization_node = Node(
         package="robot_localization",
         executable="ekf_node",
@@ -233,7 +224,7 @@ def generate_launch_description():
         executable="datmo_node",
         name="datmo_node",
         condition=IfCondition(AndSubstitution(use_datmo, use_foresee)),
-        parameters=[{"min_pub_markers": True}],
+        parameters=[{"min_pub_markers": True}],  # TODO: add .yaml file
         remappings=[("/scan", "/scan/road_env")],
     )
     datmo_node_without_remapping = Node(
@@ -241,7 +232,7 @@ def generate_launch_description():
         executable="datmo_node",
         name="datmo_node",
         condition=IfCondition(AndSubstitution(use_datmo, NotSubstitution(use_foresee))),
-        parameters=[{"min_pub_markers": True}],
+        parameters=[{"min_pub_markers": True}],  # TODO: add .yaml file
     )
 
     global_localization_launch = IncludeLaunchDescription(

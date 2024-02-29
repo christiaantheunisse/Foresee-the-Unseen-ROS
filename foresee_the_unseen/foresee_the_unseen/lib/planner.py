@@ -90,7 +90,7 @@ class Planner:
         for lanelet_id in starting_lanelet_ids:
             starting_lanelets.append(lanelet_network.find_lanelet_by_id(lanelet_id))
 
-        starting_lane = []
+        starting_lane = None
         for lanelet in starting_lanelets:
             starting_lanes = lanelet.all_lanelets_by_merging_successors_from_lanelet(lanelet, lanelet_network)[0]
             for lane in starting_lanes:
@@ -101,7 +101,7 @@ class Planner:
             else:
                 continue
             break
-        if starting_lane == []:
+        if starting_lane is None:
             raise GoalAndPositionNotSameLane(
                 f"Goal: {self.goal_point}; current position: {self.initial_state.position}"
             )

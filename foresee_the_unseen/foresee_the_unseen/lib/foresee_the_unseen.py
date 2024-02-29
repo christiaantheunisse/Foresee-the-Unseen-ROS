@@ -63,7 +63,7 @@ class ForeseeTheUnseen:
         self.road_xml = road_xml
         self.logger = logger if logger is not None else Logger()
         self.frequency = frequency
-        self.throttle_duration = 2  # set the throttle duration for the logging when used with ROS
+        self.throttle_duration = 3  # set the throttle duration for the logging when used with ROS
 
         if self.logger is not None:
             assert hasattr(self.logger, "info") and hasattr(
@@ -135,6 +135,14 @@ class ForeseeTheUnseen:
         self.planner_step = 0
         self.sensor_view = None
 
+    def logger_warn(self, message: str):
+        if self.logger is not None:
+            self.logger.warn(("[foresee-the-unseen] " + message), throttle_duration_sec=self.throttle_duration)
+
+    def logger_info(self, message: str):
+        if self.logger is not None:
+            self.logger.info(("[foresee-the-unseen] " + message), throttle_duration_sec=self.throttle_duration)
+
     def position_on_road_check(self, x: float, y: float):
         """Check if a certain position is on the road"""
 
@@ -177,9 +185,9 @@ class ForeseeTheUnseen:
         no_updated_state = self.ego_vehicle_state is None or self.ego_vehicle_state.time_step < self.planner_step
         if no_obstacles or no_updated_state:
             if no_obstacles:
-                self.logger.warn("No detected obstacles available", throttle_duration_sec=self.throttle_duration)
+                self.logger_warn("No detected obstacles available")
             if no_updated_state:
-                self.logger.warn("No up-to-date ego vehicle state available", throttle_duration_sec=self.throttle_duration)
+                self.logger_warn("No up-to-date ego vehicle state available")
             raise NoUpdatePossible()
 
         percieved_scenario = copy.deepcopy(self.scenario)  # start with a clean scenario
@@ -190,7 +198,7 @@ class ForeseeTheUnseen:
         if self.configuration.get("laser_scan_fov"):
             sensor_view = self.sensor_view  # Based on laser scan
             if sensor_view is None:
-                self.logger.warn("No FOV available", throttle_duration_sec=self.throttle_duration)
+                self.logger_warn("No FOV available")
                 raise NoUpdatePossible()
         else:
             self.sensor.update(self.ego_vehicle.initial_state)
@@ -213,14 +221,15 @@ class ForeseeTheUnseen:
             # FIXME: Throws an attribute error if the ego_vehicle or goal_position is not on the road
             collision_free_trajectory = self.planner.plan(percieved_scenario)
         except PositionNotOnALane as p:
-            self.logger.warn(f"Position not on a lane: {p.message}")
+            self.logger_warn(f"Position not on a lane: {p.message}")
             raise NoUpdatePossible()
         except GoalAndPositionNotSameLane as g:
-            self.logger.warn(f"Goal and position not on the same lane: {g.message}")
+            self.logger_warn(f"Goal and position not on the same lane: {g.message}")
             raise NoUpdatePossible()
 
         if collision_free_trajectory:
             # self.logger.info("new trajectory found")
+            self.ego_vehicle.prediction = collision_free_trajectory
             self.trajectory = collision_free_trajectory
 
         percieved_scenario.add_objects(self.ego_vehicle)

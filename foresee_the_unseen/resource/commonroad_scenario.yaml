@@ -19,7 +19,7 @@ max_acceleration : 0.5
 max_deceleration : 0.5
 planning_horizon : 20
 safety_margin : 0.65
-minimum_distance_waypoint: 0.15
+minimum_distance_waypoint: 0.2
 
 #SENSOR
 field_of_view_degrees : 360
