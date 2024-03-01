@@ -12,6 +12,7 @@ find_library(WIRINGPI_LIB wiringPi)
 find_package(sensor_msgs REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
 
 include_directories(${sensor_msgs_INCLUDE_DIRS})
 

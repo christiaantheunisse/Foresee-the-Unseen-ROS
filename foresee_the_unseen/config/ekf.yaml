@@ -14,6 +14,7 @@ my_ekf_filter_node:
    
         odom0: /odom
         # Non-holonomic robot example: https://docs.ros.org/en/melodic/api/robot_localization/html/configuring_robot_localization.html
+        # Pose (position and orientation) is in the header.frame_id (odom) and Twist (linear and angular velocity) is in the child_frame_id (base_link)
         odom0_config: [false, false, false,    # x, y, z
                     false, false, false ,     # roll, pitch, yaw
                     true, true, false,    # x', y', z'

@@ -3,6 +3,8 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/imu.hpp"
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
 #include "LSM9DS1_Types.h"
 #include "LSM9DS1.h"
 #include "MadgwickAHRS.h"
@@ -30,6 +32,9 @@ namespace racing_bot
       LSM9DS1 imu_;
       void readImuValues();
       void publishImuMessage(const float accelerometer_x, const float accelerometer_y, const float accelerometer_z, const float gyroscope_x, const float gyroscope_y, const float gyroscope_z);
+
+      std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+      std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
     };
   }
 }
