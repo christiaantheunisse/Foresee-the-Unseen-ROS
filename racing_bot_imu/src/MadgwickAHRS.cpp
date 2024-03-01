@@ -37,10 +37,10 @@
 
 Madgwick::Madgwick() {
 	beta = betaDef;
-	q0 = 1.0f;
+	q0 = 0.0f;
 	q1 = 0.0f;
 	q2 = 0.0f;
-	q3 = 0.0f;
+	q3 = 1.0f;
 	invSampleFreq = 1.0f / sampleFreqDef;
 	anglesComputed = 0;
 }

@@ -1,0 +1,9 @@
+/imu_node:
+  ros__parameters:
+    base_frame: base_link
+    imu_frame: imu_link
+    imu_topic: imu_data
+
+    update_frequency: 100.0
+    use_magnetometer: true
+    use_sim_time: false

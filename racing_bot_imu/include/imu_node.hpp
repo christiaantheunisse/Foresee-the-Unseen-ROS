@@ -5,6 +5,19 @@
 #include "sensor_msgs/msg/imu.hpp"
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/time.h>
+#include <time.h>
+#include <unistd.h>
+
+#include <cstring>
+#include <iostream>
+
+#include "tf2/LinearMath/Quaternion.h"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
+#include "transform_imu.h"
 #include "LSM9DS1_Types.h"
 #include "LSM9DS1.h"
 #include "MadgwickAHRS.h"
@@ -35,6 +48,12 @@ namespace racing_bot
 
       std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
       std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
+
+      std::string imu_frame_;
+      std::string base_frame_;
+      std::string imu_topic_;
+      float frequency_;
+      bool use_magnetometer_;
     };
   }
 }

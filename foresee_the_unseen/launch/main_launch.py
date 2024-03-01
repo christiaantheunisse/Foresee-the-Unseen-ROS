@@ -182,6 +182,11 @@ def generate_launch_description():
     imu_node = Node(
         package="racing_bot_imu",
         executable="imu_node",
+        parameters=[
+            PathJoinSubstitution(
+                [FindPackageShare("racing_bot_imu"), "config", "imu_node.yaml"]
+            ),
+        ],
         condition=IfCondition(
             AndSubstitution(NotSubstitution(play_rosbag), OrSubstitution(record_rosbag, use_ekf))
         ),  # not play_rosbag and (record_rosbag or use_ekf)
@@ -331,6 +336,7 @@ def generate_launch_description():
             "laser",
         ],
     )
+    # The angular velocity and linear acceleration are correctly transformed, but the orientation is wrong
     # $ ros2 run tf2_ros static_transform_publisher --x 0.025 --y -0.038 --z 0 --yaw 1.57080 --pitch 0 --roll 0 --frame-id base_link --child-frame-id imu_link
     static_trans_base_link_to_imu_link = Node(
         package="tf2_ros",
@@ -355,51 +361,28 @@ def generate_launch_description():
         ],
     )
     # $ ros2 run tf2_ros static_transform_publisher --x 3 --y 2 --z 0 --yaw 1.57 --pitch 0 --roll 0 --frame-id map --child-frame-id planner
-    # static_trans_map_to_planner_frame = Node(
-    #     package="tf2_ros",
-    #     executable="static_transform_publisher",
-    #     arguments=[
-    #         "--x",
-    #         "3.80", # 1.80
-    #         "--y",
-    #         "0.13", # 0.13
-    #         "--z",
-    #         "0",
-    #         "--roll",
-    #         "0",
-    #         "--pitch",
-    #         "0",
-    #         "--yaw",
-    #         "-1.57079632679",
-    #         "--frame-id",
-    #         "map",
-    #         "--child-frame-id",
-    #         "planner",
-    #     ],
-    # )
-    # Zero
-    # static_trans_map_to_planner_frame = Node(
-    #     package="tf2_ros",
-    #     executable="static_transform_publisher",
-    #     arguments=[
-    #         "--x",
-    #         "0", # 1.30
-    #         "--y",
-    #         "0", # 0.13
-    #         "--z",
-    #         "0",
-    #         "--roll",
-    #         "0",
-    #         "--pitch",
-    #         "0",
-    #         "--yaw",
-    #         "0",
-    #         "--frame-id",
-    #         "map",
-    #         "--child-frame-id",
-    #         "planner",
-    #     ],
-    # )
+    static_trans_map_to_planner_frame = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        arguments=[
+            "--x",
+            "3.80", # 1.80
+            "--y",
+            "0.13", # 0.13
+            "--z",
+            "0",
+            "--roll",
+            "0",
+            "--pitch",
+            "0",
+            "--yaw",
+            "-1.57079632679",
+            "--frame-id",
+            "map",
+            "--child-frame-id",
+            "planner",
+        ],
+    )
 
     return LaunchDescription(
         [
@@ -437,6 +420,6 @@ def generate_launch_description():
             static_trans_base_link_to_laser,
             static_trans_base_link_to_imu_link,
             static_trans_map_to_odom,
-            # static_trans_map_to_planner_frame,
+            static_trans_map_to_planner_frame,
         ]
     )

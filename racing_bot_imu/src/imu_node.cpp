@@ -1,30 +1,33 @@
 #include "imu_node.hpp"
 
-#include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/time.h>
-#include <time.h>
-#include <unistd.h>
-
-#include <cstring>
-#include <iostream>
-
-#include "imu_constants.hpp"
-#include "tf2/LinearMath/Quaternion.h"
-#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
-#include "tf2_sensor_msgs.h"
-
 namespace racing_bot {
     namespace imu {
 
 #define LSM9DS1_AG_ADDRESS 0x6b  // Accelerometer & Gyro Address
 #define LSM9DS1_M_ADDRESS 0x1e   // Magnetometer Address
 
-        ImuNode::ImuNode() : Node(NODE_NAME), filter_(), imu_(IMU_MODE_I2C, 0x6b, 0x1e) {
-            imu_values_publisher_ = this->create_publisher<sensor_msgs::msg::Imu>(PUBLISHER_TOPIC, IMU_QUEUE_SIZE);
-            publish_timer_ = this->create_wall_timer(std::chrono::milliseconds(TIMER_MILLISECONDS),
+        ImuNode::ImuNode() : Node("imu_node"), filter_(), imu_(IMU_MODE_I2C, 0x6b, 0x1e) {
+            this->declare_parameter("imu_frame", "imu_link");
+            this->declare_parameter("base_frame", "base_link");
+            this->declare_parameter("imu_topic", "imu_data");
+            this->declare_parameter("update_frequency", 100.);  // [Hz]
+            this->declare_parameter("use_magnetometer", true);
+
+            imu_frame_ = this->get_parameter("imu_frame").as_string();
+            base_frame_ = this->get_parameter("base_frame").as_string();
+            imu_topic_ = this->get_parameter("imu_topic").as_string();
+            frequency_ = this->get_parameter("update_frequency").as_double();
+            use_magnetometer_ = this->get_parameter("use_magnetometer").as_bool();
+
+            // convert the frequency to a time interval in integer milliseconds and update the frequency
+            int time_interval = (int)1 / frequency_ * 1000;  // [ms]
+            frequency_ = 1000. / time_interval;
+
+            imu_values_publisher_ = this->create_publisher<sensor_msgs::msg::Imu>(imu_topic_, 20);
+            publish_timer_ = this->create_wall_timer(std::chrono::milliseconds(time_interval),
                                                      std::bind(&ImuNode::readImuValues, this));
+            tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+            tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
         }
 
         void ImuNode::startDevice() {
@@ -34,7 +37,7 @@ namespace racing_bot {
                 exit(EXIT_FAILURE);
             }
             imu_.calibrate();
-            filter_.begin(FILTER_SAMPLE_FREQUENCY);
+            filter_.begin(frequency_);
         }
 
         void ImuNode::readImuValues() {
@@ -75,15 +78,17 @@ namespace racing_bot {
             // Madgwick algorithm normalizes the accelerometer and magnetometer measurements
             //  and takes the gyroscope measurements in rad/sec
 
-            // filter_.updateIMU(gyroscope_x, gyroscope_y, gyroscope_z, accelerometer_x, accelerometer_y,
-            // accelerometer_z); filter_.update(gyroscope_x, gyroscope_y, gyroscope_z, accelerometer_x, accelerometer_y,
-            // accelerometer_z, magnetometer_x, magnetometer_y, magnetometer_z);
-
-            // Convert LHS to RHS: [x, y, z] --> [y, x, z]
-            filter_.update(gyroscope_y, gyroscope_x, gyroscope_z, accelerometer_y, accelerometer_x, accelerometer_z,
-                           magnetometer_x, magnetometer_y, magnetometer_z);
-
-            // Convert LHS to RHS: [x, y, z] --> [y, x, z]
+            // Convert LHS to RHS: [x, y, z] --> [-y, -x, z]
+            if ((magnetometer_x == 0.0f) && (magnetometer_y == 0.0f) && (magnetometer_z == 0.0f)) {
+                RCLCPP_WARN_ONCE(this->get_logger(), "No magnetometer readings available");
+            }
+            if (use_magnetometer_) {
+                filter_.update(gyroscope_y, gyroscope_x, gyroscope_z, accelerometer_y, accelerometer_x, accelerometer_z,
+                               magnetometer_x, magnetometer_y, magnetometer_z);
+            } else {
+                filter_.updateIMU(gyroscope_y, gyroscope_x, gyroscope_z, accelerometer_y, accelerometer_x,
+                                  accelerometer_z);
+            }
             publishImuMessage(accelerometer_y, accelerometer_x, accelerometer_z, gyroscope_y, gyroscope_x, gyroscope_z);
         }
 
@@ -93,7 +98,7 @@ namespace racing_bot {
             sensor_msgs::msg::Imu imu_data;
 
             imu_data.header.stamp = this->now();
-            imu_data.header.frame_id = FRAME_ID;
+            imu_data.header.frame_id = imu_frame_;
 
             imu_data.linear_acceleration.x = accelerometer_x;
             imu_data.linear_acceleration.y = accelerometer_y;
@@ -103,6 +108,8 @@ namespace racing_bot {
             imu_data.angular_velocity.y = gyroscope_y;
             imu_data.angular_velocity.z = gyroscope_z;
 
+            // This is the orientation with respect to its initial orientation -- has an initial orientation of pi/2 
+            // around the z-axis with respect to the base frame.
             float quaternion[4];
             filter_.getQuaternion(quaternion);
             imu_data.orientation.w = quaternion[0];
@@ -120,15 +127,15 @@ namespace racing_bot {
 
             // Transfer the message to the robot base_link frame
             sensor_msgs::msg::Imu imu_data_transformed;
-            std::string goal_frame = "base_link";
+            geometry_msgs::msg::TransformStamped t;
             try {
-                t = tf_buffer_->lookupTransform(goal_frame, FRAME_ID, tf2::TimePointZero);
+                t = tf_buffer_->lookupTransform(base_frame_, imu_frame_, tf2::TimePointZero);
             } catch (const tf2::TransformException& ex) {
-                RCLCPP_INFO(this->get_logger(), "Could not transform %s to %s: %s", FRAME_ID.c_str(),
-                            goal_frame.c_str(), ex.what());
+                RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Could not transform %s to %s: %s",
+                                     imu_frame_.c_str(), base_frame_.c_str(), ex.what());
                 return;
             }
-            tf2::doTransform(imu_data, imu_data_transformed, t)
+            tf2::doTransform(imu_data, imu_data_transformed, t);
 
             imu_values_publisher_->publish(imu_data_transformed);
         }

@@ -13,7 +13,7 @@ namespace racing_bot
     const std::string FRAME_ID = "imu_link";
     const int IMU_QUEUE_SIZE = 10;
     const int TIMER_MILLISECONDS = 10;
-    const int FILTER_SAMPLE_FREQUENCY = 25;
+    const int FILTER_SAMPLE_FREQUENCY = 100;
   }
 }
 #endif
