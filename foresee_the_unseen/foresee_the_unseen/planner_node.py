@@ -47,20 +47,14 @@ from foresee_the_unseen.lib.helper_functions import (
 )
 from foresee_the_unseen.lib.foresee_the_unseen import ForeseeTheUnseen, NoUpdatePossible
 from foresee_the_unseen.lib.triangulate import triangulate, remove_redudant_vertices_polygon
+from foresee_the_unseen.lib.filter_fov import get_underapproximation_fov
 
-
-RGBA = ["r", "g", "b", "a"]
-RED = [1.0, 0.0, 0.0, 1.0]
-GREEN = [0.0, 1.0, 0.0, 1.0]
-BLUE = [0.0, 0.0, 1.0, 1.0]
-TRANSPARENT_BLUE = [0.0, 0.0, 1.0, 0.6]
-BLACK = [0.0, 0.0, 0.0, 1.0]
-TRANSPARENT_GREY = [0.5, 0.5, 0.5, 0.8]
 
 Color = TypedDict("Color", {"r": float, "g": float, "r": float, "a": float})
 RED: Color = {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}
 GREEN: Color = {"r": 0.0, "g": 1.0, "b": 0.0, "a": 1.0}
 BLUE: Color = {"r": 0.0, "g": 0.0, "b": 1.0, "a": 1.0}
+YELLOW: Color = {"r": 1.0, "g": 1.0, "b": 0.0, "a": 1.0}
 BLACK: Color = {"r": 0.0, "g": 0.0, "b": 0.0, "a": 1.0}
 TRANSPARENT_BLUE: Color = {"r": 0.0, "g": 0.0, "b": 1.0, "a": 0.6}
 TRANSPARENT_GREY: Color = {"r": 0.5, "g": 0.5, "b": 0.5, "a": 0.8}
@@ -74,7 +68,7 @@ XYZ = ["x", "y", "z"]
 class PlannerNode(Node):
     def __init__(self):
         super().__init__("planner_node")
-        self.throttle_duration = 2  # s
+        self.throttle_duration = 3  # s
 
         self.declare_parameter("map_frame", "map")
         self.declare_parameter("base_frame", "base_link")
@@ -183,17 +177,17 @@ class PlannerNode(Node):
         """Calls the Foresee The Unseen Planner and updates the visualization"""
         start_time = time.time()
         try:
-            shadow_obstacles, sensor_view, trajectory = self.foresee_the_unseen_planner.update_scenario()
+            shadow_obstacles, sensor_view, trajectory, no_stop_zone = self.foresee_the_unseen_planner.update_scenario()
         except NoUpdatePossible:
             self.get_logger().warn("No planner update step possible", throttle_duration_sec=self.throttle_duration)
-            shadow_obstacles, sensor_view, trajectory = None, None, None
+            shadow_obstacles, sensor_view, trajectory, no_stop_zone = None, None, None, None
 
         if trajectory is not None:
             self.publish_trajectory(trajectory)
 
         start_viz_time = time.time()
         if self.do_visualize:
-            self.visualization_callback(shadow_obstacles, sensor_view, trajectory)
+            self.visualization_callback(shadow_obstacles, sensor_view, trajectory, no_stop_zone)
 
         end_time = time.time()
         tot_time = end_time - start_time
@@ -214,7 +208,7 @@ class PlannerNode(Node):
 
     @staticmethod
     def quaternion_from_yaw(yaw):
-        return [0., 0., np.sin(yaw / 2), np.cos(yaw / 2)]
+        return [0.0, 0.0, np.sin(yaw / 2), np.cos(yaw / 2)]
 
     def publish_trajectory(self, trajectory: TrajectoryCR) -> None:
         """Publishes the Commonroad trajectory on a topic for the trajectory follower node."""
@@ -240,6 +234,7 @@ class PlannerNode(Node):
         shadow_obstacles: Optional[List[Obstacle]] = None,
         sensor_view: Optional[ShapelyPolygon] = None,
         trajectory: Optional[TrajectoryCR] = None,
+        no_stop_zone: Optional[Obstacle] = None,
     ):
         # TODO: Only remove markers that need to and only add markers that need to be added every time step
         markers = []
@@ -255,12 +250,15 @@ class PlannerNode(Node):
             markers += self.get_trajectory_marker(trajectory)
         if shadow_obstacles is not None:
             markers += self.get_shadow_marker(shadow_obstacles)
+        if no_stop_zone is not None:
+            markers += self.get_no_stop_zone_marker(no_stop_zone)
+
 
         self.marker_array_publisher.publish(MarkerArray(markers=markers))
 
     def laser_callback(self, msg):
         self.filter_pointcloud(msg)
-        self.FOV_from_laser(msg)
+        self.fov_from_laser(msg)
 
     def datmo_callback(self, msg: TrackArray):
         """Converts DATMO detections to Commonroad obstacles"""
@@ -305,8 +303,8 @@ class PlannerNode(Node):
 
     # MARKER FUNCTIONS
 
-    def get_ego_vehicle_marker(self):
-        """Draw the ego vehicle bounding box"""
+    def get_ego_vehicle_marker(self) -> List[Marker]:
+        """Get the marker of the box representing the ego vehicle"""
         header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.base_frame)
         ego_vehicle_bb = Marker(
             header=header,
@@ -322,8 +320,9 @@ class PlannerNode(Node):
 
         return [ego_vehicle_bb]
 
-    def get_road_structure_marker(self):
-        markers_list = []
+    def get_road_structure_marker(self) -> List[Marker]:
+        """Get the markers that visualize the road boundaries."""
+        markers = []
         for lanelet_id, points in self.road_polygons.items():
             point_type_list = []
             points = points
@@ -342,10 +341,11 @@ class PlannerNode(Node):
                 ns="road structure",
             )
 
-            markers_list.append(lanelet_marker)
-        return markers_list
+            markers.append(lanelet_marker)
+        return markers
 
-    def get_filter_polygon_marker(self):
+    def get_filter_polygon_marker(self) -> List[Marker]:
+        """Get the marker that visualizes the boundaries of the environment within which the lidar points are stored."""
         point_list = []
         for point in [*self.filter_polygon, self.filter_polygon[0]]:
             point_list.append(Point(**dict(zip(XYZ, np.array(point, dtype=np.float_)))))
@@ -363,7 +363,8 @@ class PlannerNode(Node):
         )
         return [filter_marker]
 
-    def get_fov_marker(self, sensor_view: Optional[ShapelyPolygon] = None):
+    def get_fov_marker(self, sensor_view: Optional[ShapelyPolygon] = None) -> List[Marker]:
+        """Get the marker that visualizes the field of view (FOV)"""
         if sensor_view is not None:
             x, y = sensor_view.exterior.coords.xy
             points = np.asarray(tuple(zip(x, y)), dtype=np.float_)
@@ -387,7 +388,8 @@ class PlannerNode(Node):
         )
         return [fov_marker]
 
-    def get_goal_marker(self):
+    def get_goal_marker(self) -> List[Marker]:
+        """Get the marker for the goal position"""
         header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.planner_frame)
         goal_marker = Marker(
             header=header,
@@ -403,20 +405,8 @@ class PlannerNode(Node):
         )
         return [goal_marker]
 
-    def publish_fov(self):
-        polygon = PolygonStamped()
-        polygon.header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.base_frame)
-
-        angles = np.linspace(0, 2 * np.pi, 20)
-        points = np.array([np.cos(angles), np.sin(angles)], dtype=np.float_).T * 2
-        point32_list = []
-        for point in [*points, points[0]]:
-            point32_list.append(Point32(**dict(zip(XYZ, point))))
-
-        polygon.polygon.points = point32_list
-        self.fov_publisher.publish(polygon)
-
-    def get_trajectory_marker(self, trajectory: TrajectoryCR) -> None:
+    def get_trajectory_marker(self, trajectory: TrajectoryCR) -> List[Marker]:
+        """Get the markers for the Commonroad trajectory and the waypoints found by the planner"""
         header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.planner_frame)
         marker_list = []
         if trajectory is not None:
@@ -467,10 +457,12 @@ class PlannerNode(Node):
         namespace: str,
         marker_id: int = 0,
         use_triangulation: bool = False,
+        linewidth: float = 0.1,
         z: float = 0.0,
-    ) -> Marker:
-        """Converts a array of polygon which is defined by a numpy array (N, 2) to ROS marker"""
+    ) -> List[Marker]:
+        """Converts an array of polygons which is defined by a numpy array (N, 2) to a ROS marker message"""
         header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.planner_frame)
+        markers = []
         if use_triangulation:  # make filled polygons with triangles
             point_type_list, colors = [], []
             for polygon in polygons:
@@ -484,7 +476,7 @@ class PlannerNode(Node):
                             point_type_list.append(Point(x=float(x), y=float(y), z=float(z)))
                         colors.append(ColorRGBA(**color))
                 except ValueError as e:
-                    self.get_logger().warn(f"triangulation failed: {e}")
+                    self.get_logger().warn(f"triangulation failed: {e}", throttle_duration_sec=self.throttle_duration)
 
             marker = Marker(
                 header=header,
@@ -497,9 +489,8 @@ class PlannerNode(Node):
                 color=ColorRGBA(a=color.get("a", 1.0)),
                 ns=namespace,
             )
-            markers = []
+            markers.append(marker)
         else:  # plot polygons as lines
-            markers = []
             for idx, polygon in enumerate(polygons):
                 point_type_list = []
                 for x, y in polygon:
@@ -511,14 +502,14 @@ class PlannerNode(Node):
                     type=Marker.LINE_STRIP,
                     action=Marker.ADD,
                     points=point_type_list,
-                    scale=Vector3(x=0.1),
+                    scale=Vector3(x=float(linewidth)),
                     color=ColorRGBA(**color),
                     ns=namespace,
                 )
                 markers.append(marker)
         return markers
 
-    def get_shadow_marker(self, shadow_obstacles: List[Obstacle]):
+    def get_shadow_marker(self, shadow_obstacles: List[Obstacle]) -> List[Marker]:
         """Makes a marker for the shadow obstacles and their prediction."""
         markers = []
 
@@ -560,9 +551,14 @@ class PlannerNode(Node):
 
         return markers
 
+    def get_no_stop_zone_marker(self, zone: Obstacle) -> List[Marker]:
+        """Visualize the no stop zone at an intersection"""
+        polygon = zone.obstacle_shape.vertices
+        return self.polygons_to_ros_marker(polygons=[polygon], color=YELLOW, namespace="no stop zone", linewidth=0.05)
+
     # OTHER
 
-    def filter_pointcloud(self, scan_msg: LaserScan):
+    def filter_pointcloud(self, scan_msg: LaserScan) -> None:
         """Filter points from the pointcloud from the lidar to reduce the computation of the `datmo` package."""
         # Convert the ranges to a pointcloud
         laser_frame = scan_msg.header.frame_id
@@ -590,15 +586,24 @@ class PlannerNode(Node):
 
         self.filtered_laser_publisher.publish(new_msg)
 
-    def FOV_from_laser(self, scan_msg: LaserScan):
-        """Determines the FOV based on the LaserScan message"""
+    def fov_from_laser(self, scan_msg: LaserScan) -> None:
+        """Determines the field of view (FOV) based on the LaserScan message"""
         laser_frame = scan_msg.header.frame_id
-        points_laser = self.laserscan_to_pointcloud(scan_msg, max_range=self.configuration.get("view_range"))
+        fov = get_underapproximation_fov(
+            scan_msg=scan_msg,
+            max_range=self.configuration.get("view_range"),
+            min_resolution=self.configuration.get("min_resolution"),
+            angle_margin=self.configuration.get("angle_margin_fov"),
+            use_abs_angle_margin=self.configuration.get("abs_angle_margin_fov"),
+            range_margin=self.configuration.get("range_margin_fov"),
+            use_abs_range_margin=self.configuration.get("abs_range_margin_fov"),
+            padding=self.configuration.get("padding_fov"),
+        )
+        x, y = fov.exterior.coords.xy
+        points_laser = np.asarray(tuple(zip(x, y)), dtype=np.float_)
 
         try:
             points_planner = self.transform_pointcloud(points_laser, self.planner_frame, laser_frame)
-            # subsample the points to make the shape simpler
-            points_planner = points_planner[::10]
             sensor_FOV = ShapelyPolygon(points_planner) if len(points_planner) >= 3 else None
         except TransformException:
             sensor_FOV = None

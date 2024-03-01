@@ -179,15 +179,6 @@ def generate_launch_description():
         executable="controller_node",
         condition=UnlessCondition(play_rosbag),  # not play_rosbag
     )
-    trajectory_node = Node(
-        package="racing_bot_trajectory_follower",
-        executable="trajectory_follower_node",
-        parameters=[
-            PathJoinSubstitution(
-                [FindPackageShare("racing_bot_trajectory_follower"), "config", "trajectory_follower_node.yaml"]
-            ),
-        ],
-    )
     imu_node = Node(
         package="racing_bot_imu",
         executable="imu_node",
@@ -199,6 +190,16 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([FindPackageShare("sllidar_ros2"), "launch", "sllidar_a1_launch.py"])
         ),
+        condition=UnlessCondition(play_rosbag),  # not play_rosbag
+    )
+    trajectory_node = Node(
+        package="racing_bot_trajectory_follower",
+        executable="trajectory_follower_node",
+        parameters=[
+            PathJoinSubstitution(
+                [FindPackageShare("racing_bot_trajectory_follower"), "config", "trajectory_follower_node.yaml"]
+            ),
+        ],
         condition=UnlessCondition(play_rosbag),  # not play_rosbag
     )
 

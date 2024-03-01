@@ -17,7 +17,7 @@ planner_node:
     ego_vehicle_offset: [0., 0., 0.06]
     planner_frequency: 4. # [Hz]
 
-    use_triangulation: False
+    use_triangulation: True
     num_pred_to_visualize: 5
     do_visualize: True
     

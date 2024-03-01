@@ -23,8 +23,8 @@ minimum_distance_waypoint: 0.2
 
 #SENSOR
 field_of_view_degrees : 360
-min_resolution : 1  # Change this
-view_range : 6
+min_resolution : 0.5  # Significantly reduces computation time of FOV
+view_range : 3
 
 #OCCLUSION_TRACKER
 min_velocity : 0
@@ -43,3 +43,10 @@ orientation_margin: 0.1  # radians
 laser_scan_fov: True
 goal_on_road_check: True
 ego_state_on_road_check: True
+
+# FIELD OF VIEW 
+angle_margin_fov: 0.2  # [m] if absolute_margin_fov else [rad]
+abs_angle_margin_fov: True
+range_margin_fov: 0.1 # [m] if abs_range_margin_fov else [-] (ratio)
+abs_range_margin_fov: True
+padding_fov: 0.0 # [m] -- detection delay

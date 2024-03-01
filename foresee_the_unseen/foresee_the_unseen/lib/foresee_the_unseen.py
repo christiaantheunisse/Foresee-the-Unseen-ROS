@@ -210,7 +210,7 @@ class ForeseeTheUnseen:
         percieved_scenario.add_objects(shadow_obstacles)
 
         # Update the planner and plan a trajectory
-        add_no_stop_zone(
+        no_stop_zone_obstacle = add_no_stop_zone(
             percieved_scenario,
             self.planner_step + self.configuration.get("planning_horizon"),
             self.configuration.get("safety_margin"),
@@ -243,4 +243,4 @@ class ForeseeTheUnseen:
         self.planner_step += 1
         # self.logger.info(f"Scenario updated: planner step = {self.planner_step}")
 
-        return shadow_obstacles, sensor_view, self.trajectory
+        return shadow_obstacles, sensor_view, self.trajectory, no_stop_zone_obstacle
