@@ -50,22 +50,41 @@ namespace racing_bot
         ;
       imu_.readMag();
 
-      float accelerometer_x = imu_.calcAccel(imu_.ax);
-      float accelerometer_y = imu_.calcAccel(imu_.ay);
-      float accelerometer_z = imu_.calcAccel(imu_.az);
+      // The board has all three sensors:
+      // Datasheet: https://www.st.com/resource/en/datasheet/lsm9ds1.pdf
+      // FS = full scale 
 
-      float gyroscope_x = imu_.calcGyro(imu_.gx);
-      float gyroscope_y = imu_.calcGyro(imu_.gy);
-      float gyroscope_z = imu_.calcGyro(imu_.gz);
+      // Unit is g (gravitational constant), but should be m/s^2 for ROS msg; so multiply by g=9.81
+      // left-handed coordinate system
+      float g = 9.81;
+      float accelerometer_x = imu_.calcAccel(imu_.ax) * g;
+      float accelerometer_y = imu_.calcAccel(imu_.ay) * g;
+      float accelerometer_z = imu_.calcAccel(imu_.az) * g;
 
-      // float magnetometer_x = imu_.calcMag(imu_.mx);
-      // float magnetometer_y = imu_.calcMag(imu_.my);
-      // float magnetometer_z = imu_.calcMag(imu_.mz);
+      // Unit is dps (degrees/sec), but should be rad/s for ROS msg and Madgwick;
+      // left-handed coordinate system
+      float deg_to_rad = 0.0174533; // pi / 180
+      float gyroscope_x = imu_.calcGyro(imu_.gx) * deg_to_rad;
+      float gyroscope_y = imu_.calcGyro(imu_.gy) * deg_to_rad;
+      float gyroscope_z = imu_.calcGyro(imu_.gz) * deg_to_rad;
 
-      filter_.updateIMU(gyroscope_x, gyroscope_y, gyroscope_z, accelerometer_x, accelerometer_y, accelerometer_z);
-      // filter.update(gyroscope_x, gyroscope_y, gyroscope_z, accelerometer_x, accelerometer_y, accelerometer_z, magnetometer_x, magnetometer_y, magnetometer_z);
+      // Unit is Gauss
+      // right-handed coordinate system
+      float magnetometer_x = imu_.calcMag(imu_.mx);
+      float magnetometer_y = imu_.calcMag(imu_.my);
+      float magnetometer_z = imu_.calcMag(imu_.mz);
 
-      publishImuMessage(accelerometer_x, accelerometer_y, accelerometer_z, gyroscope_x, gyroscope_y, gyroscope_z);
+      // Madgwick algorithm normalizes the accelerometer and magnetometer measurements
+      //  and takes the gyroscope measurements in rad/sec
+      
+      // filter_.updateIMU(gyroscope_x, gyroscope_y, gyroscope_z, accelerometer_x, accelerometer_y, accelerometer_z);
+      // filter_.update(gyroscope_x, gyroscope_y, gyroscope_z, accelerometer_x, accelerometer_y, accelerometer_z, magnetometer_x, magnetometer_y, magnetometer_z);
+      
+      // Convert LHS to RHS: [x, y, z] --> [y, x, z]
+      filter_.update(gyroscope_y, gyroscope_x, gyroscope_z, accelerometer_y, accelerometer_x, accelerometer_z, magnetometer_x, magnetometer_y, magnetometer_z);
+
+      // Convert LHS to RHS: [x, y, z] --> [y, x, z]
+      publishImuMessage(accelerometer_y, accelerometer_x, accelerometer_z, gyroscope_y, gyroscope_x, gyroscope_z);
     }
 
     void ImuNode::publishImuMessage(const float accelerometer_x, const float accelerometer_y, const float accelerometer_z, const float gyroscope_x, const float gyroscope_y, const float gyroscope_z)
@@ -90,9 +109,9 @@ namespace racing_bot
       imu_data.orientation.y = quaternion[2];
       imu_data.orientation.z = quaternion[3];
 
-      imu_data.linear_acceleration_covariance[0] = 0.1;
-      imu_data.linear_acceleration_covariance[4] = 0.1;
-      imu_data.linear_acceleration_covariance[8] = 0.1;
+      imu_data.linear_acceleration_covariance[0] = 0.5;
+      imu_data.linear_acceleration_covariance[4] = 0.5;
+      imu_data.linear_acceleration_covariance[8] = 0.5;
 
       imu_data.angular_velocity_covariance[0] = 0.1;
       imu_data.angular_velocity_covariance[4] = 0.1;

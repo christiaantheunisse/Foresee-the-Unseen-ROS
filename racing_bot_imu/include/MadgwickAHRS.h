@@ -70,7 +70,6 @@ public:
         return yaw;
     }
     void getQuaternion(float* quaternion) {
-        if (!anglesComputed) computeAngles();
         quaternion[0] = q0;
         quaternion[1] = q1;
         quaternion[2] = q2;
