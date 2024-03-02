@@ -86,8 +86,8 @@ def generate_launch_description():
         choices=["mapping", "localization", "disabled"],
         description="Which mode of the slam_toolbox to use: SLAM, only localization or don't use.",
     )
-    map_file_name_launch_arg = DeclareLaunchArgument(
-        "map_file_name",
+    map_file_launch_arg = DeclareLaunchArgument(
+        "map_file",
         default_value=TextSubstitution(text="on_the_floor"),
         description="If applicable, the name of the map file used for localization.",
     )
@@ -98,7 +98,7 @@ def generate_launch_description():
     )
     use_foresee_launch_arg = DeclareLaunchArgument(
         "use_foresee",
-        default_value=TextSubstitution(text="true"),
+        default_value=TextSubstitution(text="false"),
         description="If true, launch the foresee_the_unseen node",
     )
 
@@ -106,7 +106,7 @@ def generate_launch_description():
     record_rosbag = LaunchConfiguration("record_rosbag")
     use_ekf = LaunchConfiguration("use_ekf")
     slam_mode = LaunchConfiguration("slam_mode")
-    map_file_name = LaunchConfiguration("map_file_name")
+    map_file = LaunchConfiguration("map_file")
     use_datmo = LaunchConfiguration("use_datmo")
     use_foresee = LaunchConfiguration("use_foresee")
 
@@ -183,12 +183,11 @@ def generate_launch_description():
         package="racing_bot_imu",
         executable="imu_node",
         parameters=[
-            PathJoinSubstitution(
-                [FindPackageShare("racing_bot_imu"), "config", "imu_node.yaml"]
-            ),
+            PathJoinSubstitution([FindPackageShare("racing_bot_imu"), "config", "imu_node.yaml"]),
         ],
         condition=IfCondition(
             AndSubstitution(NotSubstitution(play_rosbag), OrSubstitution(record_rosbag, use_ekf))
+            # NotSubstitution(play_rosbag)
         ),  # not play_rosbag and (record_rosbag or use_ekf)
     )
     lidar_launch = IncludeLaunchDescription(
@@ -253,7 +252,7 @@ def generate_launch_description():
             "slam_params_file": PathJoinSubstitution(
                 [FindPackageShare("foresee_the_unseen"), "config", "mapper_params_localization.yaml"]
             ),
-            "map_file_name": PathJoinSubstitution([map_files_dir, map_file_name]),
+            "map_file_name": PathJoinSubstitution([map_files_dir, map_file]),
         }.items(),
         condition=IfCondition(
             AndSubstitution(NotSubstitution(record_rosbag), EqualsSubstitution(slam_mode, "localization"))
@@ -366,9 +365,9 @@ def generate_launch_description():
         executable="static_transform_publisher",
         arguments=[
             "--x",
-            "3.80", # 1.80
+            "3.80",  # 1.80
             "--y",
-            "0.13", # 0.13
+            "0.13",  # 0.13
             "--z",
             "0",
             "--roll",
@@ -391,7 +390,7 @@ def generate_launch_description():
             record_rosbag_launch_arg,
             use_ekf_launch_arg,
             slam_mode_launch_argument,
-            map_file_name_launch_arg,
+            map_file_launch_arg,
             use_datmo_launch_arg,
             use_foresee_launch_arg,
             # log messages
@@ -406,7 +405,6 @@ def generate_launch_description():
             odometry_node,
             controller_node,
             trajectory_node,
-            # planner_node,
             imu_node,
             local_localization_node,
             datmo_node_with_remapping,
