@@ -7,3 +7,6 @@
     update_frequency: 100.0
     use_magnetometer: true
     use_sim_time: false
+
+    lin_acc_variances:  [0.5, 0.5, 0.5]
+    ang_vel_variances:  [0.1, 0.1, 0.1]

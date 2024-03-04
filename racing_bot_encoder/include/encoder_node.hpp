@@ -3,6 +3,7 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/int32.hpp"
+#include "racing_bot_interfaces/msg/encoder_values.hpp"
 #include "encoder_sensor.hpp"
 
 namespace racing_bot
@@ -29,8 +30,7 @@ namespace racing_bot
 
     private:
       void publishMessage();
-      rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr left_publisher_;
-      rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr right_publisher_;
+      rclcpp::Publisher<racing_bot_interfaces::msg::EncoderValues>::SharedPtr encoder_publisher_;
       rclcpp::TimerBase::SharedPtr publish_timer_;
       const int pi_handle_;
       const EncoderSensor left_encoder_;

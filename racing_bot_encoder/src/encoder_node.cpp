@@ -12,8 +12,7 @@ namespace racing_bot
           left_encoder_(pi_handle_, left_pin_a, left_pin_b),
           right_encoder_(pi_handle_, right_pin_a, right_pin_b)
     {
-      left_publisher_ = this->create_publisher<std_msgs::msg::Int32>(LEFT_PUBLISHER_TOPIC, WHEEL_QUEUE_SIZE);
-      right_publisher_ = this->create_publisher<std_msgs::msg::Int32>(RIGHT_PUBLISHER_TOPIC, WHEEL_QUEUE_SIZE);
+      encoder_publisher_ = this->create_publisher<racing_bot_interfaces::msg::EncoderValues>(PUBLISHER_TOPIC, WHEEL_QUEUE_SIZE);
       publish_timer_ = this->create_wall_timer(std::chrono::milliseconds(PUBLISH_RATE), std::bind(&EncoderNode::publishMessage, this));
     }
 
@@ -24,13 +23,20 @@ namespace racing_bot
 
     void EncoderNode::publishMessage()
     {
-      std_msgs::msg::Int32 left_count;
-      left_count.data = left_encoder_.getPosition();
-      left_publisher_->publish(left_count);
+      // std_msgs::msg::Int32 right_count, left_count;
+      racing_bot_interfaces::msg::EncoderValues encoder_values;
+      
+      encoder_values.header = std_msgs::msg::Header(this->now())
+      encoder_values.right_encoder = right_encoder_.getPosition();
+      encoder_values.left_encoder = left_encoder_.getPosition();
+      encoder_publisher_.publish(encoder_values);
 
-      std_msgs::msg::Int32 right_count;
-      right_count.data = right_encoder_.getPosition();
-      right_publisher_->publish(right_count);
+      // left_count.data = left_encoder_.getPosition();
+      // right_count.data = right_encoder_.getPosition();
+      // left_publisher_->publish(left_count);
+
+      // std_msgs::msg::Int32 right_count;
+      // right_publisher_->publish(right_count);
     }
   }
 }

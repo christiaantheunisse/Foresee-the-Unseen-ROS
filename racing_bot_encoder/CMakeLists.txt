@@ -6,14 +6,14 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(std_msgs REQUIRED)
+find_package(racing_bot_interfaces REQUIRED)
 
 find_library(PIGPIO_IF2_LIB pigpiod_if2)
 
 include_directories(include)
 
 add_executable(encoder_node src/main.cpp src/encoder_node.cpp src/encoder_sensor.cpp)
-ament_target_dependencies(encoder_node rclcpp std_msgs)
+ament_target_dependencies(encoder_node rclcpp racing_bot_interfaces)
 target_link_libraries(encoder_node ${PIGPIO_IF2_LIB})
 
 install(

@@ -54,6 +54,8 @@ namespace racing_bot
       std::string imu_topic_;
       float frequency_;
       bool use_magnetometer_;
+      std::vector<double> lin_acc_variances_;
+      std::vector<double> ang_vel_variances_;
     };
   }
 }
