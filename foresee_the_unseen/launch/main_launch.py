@@ -336,7 +336,7 @@ def generate_launch_description():
         ],
     )
     # The angular velocity and linear acceleration are correctly transformed, but the orientation is wrong
-    # $ ros2 run tf2_ros static_transform_publisher --x 0.025 --y -0.038 --z 0 --yaw 1.57080 --pitch 0 --roll 0 --frame-id base_link --child-frame-id imu_link
+    # $ ros2 run tf2_ros static_transform_publisher --x 0.025 --y -0.038 --z 0 --yaw -1.57080 --pitch 0 --roll 0 --frame-id base_link --child-frame-id imu_link
     static_trans_base_link_to_imu_link = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
@@ -352,7 +352,7 @@ def generate_launch_description():
             "--pitch",
             "0",
             "--yaw",
-            "1.57080",
+            "-1.57080",
             "--frame-id",
             "base_link",
             "--child-frame-id",
