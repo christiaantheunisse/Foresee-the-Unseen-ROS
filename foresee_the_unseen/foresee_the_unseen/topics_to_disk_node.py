@@ -3,12 +3,19 @@ import os
 import math
 import pickle
 import numpy as np
-from typing import List, Callable
+from typing import List, Callable, Tuple
 from rclpy.node import Node
 from dataclasses import dataclass
 from scipy.spatial.transform import Rotation as R
 
 from sensor_msgs.msg import LaserScan
+from racing_bot_interfaces.msg import EncoderValues
+from geometry_msgs.msg import PoseWithCovarianceStamped
+from nav_msgs.msg import Odometry
+
+from tf2_ros import TransformException
+from tf2_ros.buffer import Buffer
+from tf2_ros.transform_listener import TransformListener
 
 from foresee_the_unseen.lib.helper_functions import create_log_directory
 
@@ -21,7 +28,7 @@ class TopicToStore:
     queue_size: int = 15
 
     def __post_init__(self):
-        self.topic_name_stripped = self.topic_name.replace('/', '__')
+        self.topic_name_stripped = self.topic_name.replace("/", "__")
 
 
 class StoreTopicsNode(Node):
@@ -31,19 +38,32 @@ class StoreTopicsNode(Node):
 
         topics_to_store.extend(
             [
-                TopicToStore(topic_name="/scan", message_type=LaserScan),
-                TopicToStore(topic_name="/scan/road_env", message_type=LaserScan),
+                # TopicToStore(topic_name="/scan", message_type=LaserScan),
+                # TopicToStore(topic_name="/scan/road_env", message_type=LaserScan),
+                # TopicToStore(topic_name="/wheel_encoders", message_type=EncoderValues),
+                TopicToStore(topic_name="/odom", message_type=Odometry),
+                TopicToStore(topic_name="/pose", message_type=PoseWithCovarianceStamped),
             ]
         )
         assert self.unique_check(topics_to_store), "All topic names should be unique"
+
+        transforms_to_store: List[Tuple[str, str, float]] = []
+
+        transforms_to_store.extend([("map", "odom", 10)])
 
         # hardcoded directory
         self.base_dir = "/home/christiaan/thesis/topic_store_files"
         self.log_dir = create_log_directory(self.base_dir)
 
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+
         callbacks = [self.create_callback(topic) for topic in topics_to_store]
         for topic, callback in zip(topics_to_store, callbacks):
             self.create_subscription(topic.message_type, topic.topic_name, callback, topic.queue_size)
+
+        for source_frame, target_frame, rate in transforms_to_store:
+            self.create_transform_timer(source_frame, target_frame, rate)
 
     @staticmethod
     def unique_check(topics_to_store) -> bool:
@@ -54,16 +74,42 @@ class StoreTopicsNode(Node):
     def create_callback(self, topic: TopicToStore) -> Callable[[Callable[[], object]], None]:
         """Creates the callback function for this topic."""
         setattr(self, str(topic.topic_name_stripped + "_counter"), 0)
+
         def callback(msg: topic.message_type) -> None:
             counter = getattr(self, str(topic.topic_name_stripped + "_counter"))
             setattr(self, str(topic.topic_name_stripped + "_counter"), counter + 1)
-            
+
             if counter % topic.throttle_filter == 0:
                 filename = os.path.join(self.log_dir, f"{topic.topic_name_stripped} {counter}.pickle")
                 with open(filename, "wb") as handle:
                     pickle.dump(msg, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         return callback
+    
+    def create_transform_timer(self, source_frame: str, target_frame: str, frequency: float) -> None:
+        """ Creates a callback function for a timer to save a transform. """
+        name = "transform_" + source_frame + "_" + target_frame
+        setattr(self, str(name + "_counter"), 0)
+
+        def callback() -> None:
+            counter = getattr(self, str(name + "_counter"))
+            setattr(self, str(name + "_counter"), counter + 1)
+            
+            try:
+                transform = self.tf_buffer.lookup_transform(target_frame, source_frame, rclpy.time.Time())
+            except TransformException as ex:
+                self.get_logger().info(
+                    f"Could not transform {source_frame} to {target_frame}: {ex}",
+                    throttle_duration_sec=3,
+                )
+                return None
+            
+            filename = os.path.join(self.log_dir, f"{name} {counter}.pickle")
+            with open(filename, "wb") as handle:
+                    pickle.dump(transform, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+        self.create_timer(1/frequency, callback)
+
 
 def main(args=None):
     rclpy.init(args=args)
@@ -74,6 +120,6 @@ def main(args=None):
     store_topics_node.destroy_node()
     rclpy.shutdown()
 
+
 if __name__ == "__main__":
     main()
-

@@ -7,13 +7,19 @@ odom_node:
         encoder_queue_size: 1 # int
         left_encoder_topic: "left_wheel"
         right_encoder_topic: "right_wheel"
+        do_broadcast_transform: True
 
         # Wheel radius and base are tuned after measuring
         wheel_radius: 0.032 # [m] double (0.033)
-        ticks_per_rev: 1920. # double
-        wheel_base: 0.145 # [m] double 
+        ticks_per_rev: 3840. # double
+        wheel_base: 0.15 # [m] double (0.145) NOT SURE
 
-        do_broadcast_transform: true # set this in the launch file
-        pose_variances: [0.0001, 0.0001, 0.0001, 0.0001, 0.0001, 0.0001]
-        twist_variances: [0.0001, 0.0001, 0.0001, 0.0001, 0.0001, 0.0001]
+        # Amount of seconds to use previous updates of the wheel encoders to calculate the velocity and position(encoders update freq = 50 Hz)
+        max_history_time: 0.15  # [s]
+
+        # do_broadcast_transform: true # set this in the launch file
+        # 0.01 m on position and 10 deg = 0.17 rad on rotation
+        pose_variances: [0.01, 0.01, 0.01, 0.17, 0.17, 0.17] # position [x, y, z] orientation [roll, pitch, yaw]
+        # only linear.x and angular.z is used
+        twist_variances: [0.05, 0.0, 0.0, 0.0, 0.0, 0.17] # linear [x', y', z'] angular [roll', pitch', yaw']
 

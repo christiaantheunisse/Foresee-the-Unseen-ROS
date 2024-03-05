@@ -4,39 +4,33 @@ namespace racing_bot {
 
         OdometryNode::OdometryNode()
             : rclcpp::Node("odom_node"),
-            orientation_(0.0),
-            position_x_(0.0),
-            position_y_(0.0),
-            linear_velocity_x_(0.0),
-            linear_velocity_y_(0.0),
-            angular_velocity_(0.0),
-            left_ticks_(0),
-            right_ticks_(0),
-            previous_left_ticks_(0),
-            previous_right_ticks_(0),
-            last_time_(this->now()),
-            current_time_(this->now()) {
+              orientation_(0.),
+              position_x_(0.),
+              position_y_(0.),
+              linear_speed_(0.),
+              angular_speed_(0.) {
             // Declare the parameters with a default value
             this->declare_parameter("odom_frame", "odom");
             this->declare_parameter("base_frame", "base_link");
             this->declare_parameter("odometry_topic", "odom");
             this->declare_parameter("odometry_queue_size", 5);
             this->declare_parameter("encoder_queue_size", 1);
-            this->declare_parameter("left_encoder_topic", "left_wheel");
-            this->declare_parameter("right_encoder_topic", "right_wheel");
-            this->declare_parameter("wheel_radius", 0.033);
-            this->declare_parameter("ticks_per_rev", 1920.);
-            this->declare_parameter("wheel_base", 0.153);
+            // this->declare_parameter("left_encoder_topic", "left_wheel");
+            // this->declare_parameter("right_encoder_topic", "right_wheel");
+            this->declare_parameter("encoder_topic", "wheel_encoders");
+            this->declare_parameter("wheel_radius", 0.032);
+            this->declare_parameter("ticks_per_rev", 3840.);
+            this->declare_parameter("wheel_base", 0.145);
             this->declare_parameter("do_broadcast_transform", false);
-            this->declare_parameter("pose_variances", std::vector<double>({ 0., 0., 0., 0., 0., 0. }));
-            this->declare_parameter("twist_variances", std::vector<double>({ 0., 0., 0., 0., 0., 0. }));
+            this->declare_parameter("pose_variances", std::vector<double>({0., 0., 0., 0., 0., 0.}));
+            this->declare_parameter("twist_variances", std::vector<double>({0., 0., 0., 0., 0., 0.}));
+            this->declare_parameter("max_history_time", 0.15);
 
             // Set the variables by reading the parameters -> No callback needed
-            auto odometry_topic = this->get_parameter("odometry_topic").as_string();            // local
-            auto odometry_queue_size = this->get_parameter("odometry_queue_size").as_int();     // local
-            auto encoder_queue_size = this->get_parameter("encoder_queue_size").as_int();       // local
-            auto left_encoder_topic = this->get_parameter("left_encoder_topic").as_string();    // local
-            auto right_encoder_topic = this->get_parameter("right_encoder_topic").as_string();  // local
+            auto odometry_topic = this->get_parameter("odometry_topic").as_string();         // local
+            auto odometry_queue_size = this->get_parameter("odometry_queue_size").as_int();  // local
+            auto encoder_queue_size = this->get_parameter("encoder_queue_size").as_int();    // local
+            auto encoder_topic = this->get_parameter("encoder_topic").as_string();           // local
             odom_frame_ = this->get_parameter("odom_frame").as_string();
             base_frame_ = this->get_parameter("base_frame").as_string();
             wheel_radius_ = this->get_parameter("wheel_radius").as_double();
@@ -45,70 +39,85 @@ namespace racing_bot {
             do_broadcast_transform_ = this->get_parameter("do_broadcast_transform").as_bool();
             pose_variances_ = this->get_parameter("pose_variances").as_double_array();
             twist_variances_ = this->get_parameter("twist_variances").as_double_array();
+            max_lookback_t_ = this->get_parameter("max_history_time").as_double();
 
-            left_subscription_ = this->create_subscription<std_msgs::msg::Int32>(
-                left_encoder_topic, encoder_queue_size, std::bind(&OdometryNode::leftCallBack, this, std::placeholders::_1));
-            right_subscription_ = this->create_subscription<std_msgs::msg::Int32>(
-                right_encoder_topic, encoder_queue_size, std::bind(&OdometryNode::rightCallBack, this, std::placeholders::_1));
+            encoder_subscription_ = this->create_subscription<racing_bot_interfaces::msg::EncoderValues>(
+                encoder_topic, encoder_queue_size,
+                std::bind(&OdometryNode::EncoderCallback, this, std::placeholders::_1));
             odometry_publisher_ = this->create_publisher<nav_msgs::msg::Odometry>(odometry_topic, odometry_queue_size);
 
             tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
         }
 
-        void OdometryNode::leftCallBack(const std_msgs::msg::Int32 left_message) {
-            left_ticks_ = left_message.data;
-            updateOdometry();
-        }
-
-        void OdometryNode::rightCallBack(const std_msgs::msg::Int32 right_message) { right_ticks_ = right_message.data; }
-
-        void OdometryNode::updateOdometry() {
-            current_time_ = this->now();
-            const double delta_time = (current_time_ - last_time_).seconds();
-            // RCLCPP_INFO(this->get_logger(), "The delta_time: %f", delta_time);
-            if (delta_time < 1e-4) {
-                // RCLCPP_INFO(this->get_logger(), "No odom data published, since the delta_time is %f", delta_time);
+        void OdometryNode::EncoderCallback(const racing_bot_interfaces::msg::EncoderValues msg) {
+            // The very first message
+            if (first_update) {
+                prev_msg = msg;
+                first_update = false;
                 return;
             }
-            else if (delta_time > 1.) {
-                // RCLCPP_INFO(this->get_logger(), "No odom data published, since the delta_time is %f", delta_time);
-                last_time_ = current_time_;
-                previous_left_ticks_ = left_ticks_;
-                previous_right_ticks_ = right_ticks_;
-                return;
-            }
-            calculateVelocities(delta_time);
-            updatePosition(delta_time);
+
+            updatePose(msg);
+            calculateSpeed();
             publishOdometry();
+            prev_msg = msg;
         }
 
-        void OdometryNode::calculateVelocities(const double delta_time) {
-            const double left_ticks_delta = left_ticks_ - previous_left_ticks_;
-            const double right_ticks_delta = right_ticks_ - previous_right_ticks_;
+        // The robot is a differential-drive robot
+        void OdometryNode::updatePose(racing_bot_interfaces::msg::EncoderValues msg) {
+            // encoder difference
+            auto diff_left =
+                (msg.left_encoder.data - prev_msg.left_encoder.data) / ticks_per_rev_ * wheel_radius_ * 2 * M_PI;
+            auto diff_right =
+                (msg.right_encoder.data - prev_msg.right_encoder.data) / ticks_per_rev_ * wheel_radius_ * 2 * M_PI;
+            double dt = (rclcpp::Time(msg.header.stamp) - rclcpp::Time(prev_msg.header.stamp)).seconds();
 
-            const double wheel_distance_per_tick = (wheel_radius_ * M_PI) / ticks_per_rev_;
-            const double left_angular_velocity = (left_ticks_delta * wheel_distance_per_tick) / delta_time;
-            const double right_angular_velocity = (right_ticks_delta * wheel_distance_per_tick) / delta_time;
+            // orientation update
+            float dtheta = (diff_right - diff_left) / wheel_base_;
 
-            linear_velocity_x_ = ((right_angular_velocity + left_angular_velocity) / 2);
-            linear_velocity_y_ = 0.0;
-            angular_velocity_ = ((right_angular_velocity - left_angular_velocity) / wheel_base_);
+            // position update
+            float corner_radius, dx, dy;
+            if (dtheta != 0) {
+                corner_radius = (diff_right + diff_left) / (2 * dtheta);
+                dy = corner_radius * sin(dtheta);
+                dx = corner_radius * (1 - cos(dtheta));
+            } else {
+                dy = diff_left;
+                dx = 0;
+            }
+
+            // update position and account for current orientation
+            position_x_ += sin(orientation_) * dx + cos(orientation_) * dy;
+            position_y_ += cos(orientation_) * dx + sin(orientation_) * dy;
+            orientation_ += dtheta;
+
+            pose_changes.push_front(deltaPose({rclcpp::Time(msg.header.stamp), dt, dx, dy, dtheta}));
         }
 
-        void OdometryNode::updatePosition(const double delta_time) {
-            const double displacement_x = (linear_velocity_x_ * cos(orientation_)) * delta_time;
-            const double displacement_y = (linear_velocity_x_ * sin(orientation_)) * delta_time;
-            const double rotation_angle = angular_velocity_ * delta_time;
-
-            position_x_ += displacement_x;
-            position_y_ += displacement_y;
-            orientation_ += rotation_angle;
+        void OdometryNode::calculateSpeed() {
+            double distance = 0, angle = 0, time = 0;
+            for (auto it = pose_changes.crbegin(); it != pose_changes.crend(); it++) {
+                // Remove too old pose changes. Assumes that the values are chronologically ordered.
+                if (it->stamp < (this->now() - rclcpp::Duration::from_seconds(max_lookback_t_))) {
+                    pose_changes.pop_back();
+                } else {
+                    distance += sqrt(pow(it->dx, 2) + pow(it->dy, 2));
+                    angle += it->dtheta;
+                    time += it->dt;
+                }
+            }
+            if (time == 0.) {
+                RCLCPP_WARN(this->get_logger(), "The total time is 0.");
+            } else {
+                linear_speed_ = distance / time;
+                angular_speed_ = angle / time;
+            }
         }
 
         void OdometryNode::publishOdometry() {
             // Create the odom message
             nav_msgs::msg::Odometry odom;
-            odom.header.stamp = current_time_;
+            odom.header.stamp = this->now();
             odom.header.frame_id = odom_frame_;
             odom.child_frame_id = base_frame_;
 
@@ -118,7 +127,8 @@ namespace racing_bot {
             pose_msg.pose.position.y = position_y_;
             pose_msg.pose.position.z = 0.0;
 
-            geometry_msgs::msg::Quaternion odometry_quat = tf2::toMsg(tf2::Quaternion(tf2::Vector3(0, 0, 1), orientation_));
+            geometry_msgs::msg::Quaternion odometry_quat =
+                tf2::toMsg(tf2::Quaternion(tf2::Vector3(0, 0, 1), orientation_));
             pose_msg.pose.orientation = odometry_quat;
 
             pose_msg.covariance[0] = pose_variances_[0];
@@ -132,9 +142,9 @@ namespace racing_bot {
 
             // Set the twist
             geometry_msgs::msg::TwistWithCovariance twist_msg;
-            twist_msg.twist.linear.x = linear_velocity_x_;
-            twist_msg.twist.linear.y = linear_velocity_y_;
-            twist_msg.twist.angular.z = angular_velocity_;
+            twist_msg.twist.linear.x = linear_speed_;
+            twist_msg.twist.linear.y = 0.;
+            twist_msg.twist.angular.z = angular_speed_;
 
             twist_msg.covariance[0] = twist_variances_[0];
             twist_msg.covariance[7] = twist_variances_[1];
@@ -145,31 +155,11 @@ namespace racing_bot {
 
             odom.twist = twist_msg;
 
-            // odom.pose.pose.position.x = position_x_;
-            // odom.pose.pose.position.y = position_y_;
-            // odom.pose.pose.position.z = 0.0;
-            // odom.pose.pose.orientation = odometry_quat;
-
-            // Set the velocity
-            // odom.twist.twist.linear.x = linear_velocity_x_;
-            // odom.twist.twist.linear.y = linear_velocity_y_;
-            // odom.twist.twist.angular.z = angular_velocity_;
-
-            // Set covariance
-            // std_msgs::msg::Float64MultiArray covariance;
-            // covariance.data.resize(36);
-            // covariance.data[0] = 0.1;
-            // covariance.data[7] = 0.1;
-            // covariance.data[14] = 0.1;
-            // covariance.data[21] = 0.1;
-            // covariance.data[28] = 0.1;
-            // covariance.data[35] = 0.1;
-
             // Publish the odom message
             odometry_publisher_->publish(odom);
 
             if (do_broadcast_transform_) {
-                RCLCPP_INFO_ONCE(this->get_logger(), "Transform broadcasted");
+                RCLCPP_INFO_ONCE(this->get_logger(), "Transform broadcasted by odometry node");
 
                 // Create a transform
                 geometry_msgs::msg::TransformStamped t;
@@ -188,10 +178,6 @@ namespace racing_bot {
                 // Broadcast the transform
                 tf_broadcaster_->sendTransform(t);
             }
-
-            last_time_ = current_time_;
-            previous_left_ticks_ = left_ticks_;
-            previous_right_ticks_ = right_ticks_;
         }
     }  // namespace odometry
 }  // namespace racing_bot

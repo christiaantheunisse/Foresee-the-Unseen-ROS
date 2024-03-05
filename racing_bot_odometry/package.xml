@@ -3,7 +3,7 @@
 <package format="3">
   <name>racing_bot_odometry</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>Returns the position and the speed. The wheel encoders return an absolute value and no speed. The computed position can used for the positioning, but the speed should only be used for speed control, since it is just the differential. </description>
   <maintainer email="catuja.smit@student.fontys.nl">pi</maintainer>
   <license>TODO: License declaration</license>
 
