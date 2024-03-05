@@ -7,6 +7,8 @@
   <maintainer email="catuja.smit@student.fontys.nl">pi</maintainer>
   <license>TODO: License declaration</license>
   <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>racing_bot_interfaces</depend>
   
   <exec_depend>rclcpp</exec_depend>
   <exec_depend>std_msgs</exec_depend>
