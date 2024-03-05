@@ -5,9 +5,8 @@ odom_node:
         odometry_topic: "odom"
         odometry_queue_size: 5 # int
         encoder_queue_size: 1 # int
-        left_encoder_topic: "left_wheel"
-        right_encoder_topic: "right_wheel"
-        do_broadcast_transform: True
+        encoder_topic: "wheel_encoders"
+        # do_broadcast_transform: True
 
         # Wheel radius and base are tuned after measuring
         wheel_radius: 0.032 # [m] double (0.033)

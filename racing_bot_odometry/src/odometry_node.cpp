@@ -15,8 +15,6 @@ namespace racing_bot {
             this->declare_parameter("odometry_topic", "odom");
             this->declare_parameter("odometry_queue_size", 5);
             this->declare_parameter("encoder_queue_size", 1);
-            // this->declare_parameter("left_encoder_topic", "left_wheel");
-            // this->declare_parameter("right_encoder_topic", "right_wheel");
             this->declare_parameter("encoder_topic", "wheel_encoders");
             this->declare_parameter("wheel_radius", 0.032);
             this->declare_parameter("ticks_per_rev", 3840.);

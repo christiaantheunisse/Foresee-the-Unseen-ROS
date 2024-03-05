@@ -30,7 +30,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 ################################################
 
 ################ Record Ros Bag ##################
-### $ ros2 bag record -o some_name /scan /left_wheel /right_wheel /imu_data ###
+### $ ros2 bag record -o some_name /scan /wheel_encoders /imu_data ###
 ##################################################
 
 ######## Get tf2_ros tree ##############
@@ -213,7 +213,7 @@ def generate_launch_description():
         executable="odometry_node",
         parameters=[
             PathJoinSubstitution([FindPackageShare("racing_bot_odometry"), "config", "odometry_node.yaml"]),
-            # {"do_broadcast_transform": NotSubstitution(use_ekf)},  # Use either this or ekf transform (set in ekf.yaml)
+            {"do_broadcast_transform": NotSubstitution(use_ekf)},  # Use either this or ekf transform (set in ekf.yaml)
         ],
     )
     local_localization_node = Node(

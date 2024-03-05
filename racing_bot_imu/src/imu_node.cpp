@@ -137,6 +137,7 @@ namespace racing_bot {
             } catch (const tf2::TransformException& ex) {
                 RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Could not transform %s to %s: %s",
                                      imu_frame_.c_str(), base_frame_.c_str(), ex.what());
+                imu_values_publisher_->publish(imu_data);
                 return;
             }
             tf2::doTransform(imu_data, imu_data_transformed, t);
