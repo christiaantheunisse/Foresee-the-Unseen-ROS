@@ -1,4 +1,5 @@
 #include <pigpiod_if2.h>
+#include <string>
 
 #include "rclcpp/rclcpp.hpp"
 #include "encoder_sensor.hpp"
@@ -36,6 +37,9 @@ namespace racing_bot {
             const int pi_handle_;
             const EncoderSensor left_encoder_;
             const EncoderSensor right_encoder_;
+
+            std::string encoder_topic_;
+            float frequency_;
         };
     }  // namespace encoder
 }  // namespace racing_bot
