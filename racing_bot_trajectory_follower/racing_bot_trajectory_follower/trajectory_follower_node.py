@@ -5,7 +5,7 @@ from scipy.spatial.transform import Rotation as R
 import math
 import matplotlib as mpl
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 from tf2_ros import TransformException
 from tf2_ros.buffer import Buffer
@@ -116,7 +116,7 @@ class TrajectoryFollowerNode(Node):
 
     def __init__(self):
         super().__init__("trajectory_follower_node")
-        self.throttle_duration = 3  # s
+        self.throttle_duration = 1  # s
 
         # parameters
         self.declare_parameter("map_frame", "map")
@@ -134,9 +134,14 @@ class TrajectoryFollowerNode(Node):
         self.declare_parameter("wheel_base_width", 0.145)  # distance between the wheels on the rear axle [m]
         self.declare_parameter("wheel_base_length", 0.1)  # position of the front axle measured from the rear axle [m]
 
-        self.declare_parameter("velocity_PID", [5.0, 0.0, 0.0])  # velocity PID constants
+        # self.declare_parameter("velocity_PID", [5.0, 0.0, 0.0])  # velocity PID constants
+        self.declare_parameter("velocity_p", 1.0)  # velocity PID constants
         self.declare_parameter("steering_k", 0.5)  # steering control gain
-        self.declare_parameter("max_steering_angle", 25.0)  # max steering angle [deg]
+        self.declare_parameter("min_corner_radius", 0.5)  # max steering angle [deg]
+
+        self.declare_parameter("do_limit_acceleration", True)
+        self.declare_parameter("max_acceleration", 0.5)
+        self.declare_parameter("max_velocity", 0.7)
 
         self.map_frame = self.get_parameter("map_frame").get_parameter_value().string_value
         self.planner_frame = self.get_parameter("planner_frame").get_parameter_value().string_value
@@ -153,10 +158,23 @@ class TrajectoryFollowerNode(Node):
         self.wheel_base_W = self.get_parameter("wheel_base_width").get_parameter_value().double_value
         self.wheel_base_L = self.get_parameter("wheel_base_length").get_parameter_value().double_value
 
-        self.velocity_PID = self.get_parameter("velocity_PID").get_parameter_value().double_array_value
+        # self.velocity_PID = self.get_parameter("velocity_PID").get_parameter_value().double_array_value
+        self.velocity_Kp = self.get_parameter("velocity_p").get_parameter_value().double_value
         self.steering_k = self.get_parameter("steering_k").get_parameter_value().double_value
-        self.max_steering_angle = np.deg2rad(
-            self.get_parameter("max_steering_angle").get_parameter_value().double_value
+        self.min_corner_radius = self.get_parameter("min_corner_radius").get_parameter_value().double_value
+        
+
+        self.do_lim_acc = self.get_parameter("do_limit_acceleration").get_parameter_value().bool_value
+        self.max_abs_acc = self.get_parameter("max_acceleration").get_parameter_value().double_value
+        self.max_abs_vel = self.get_parameter("max_velocity").get_parameter_value().double_value
+
+        self.max_steering_angle, self.max_norm_vel, self.max_norm_acc = self.parameters_ddmr(
+            wheel_base_width=self.wheel_base_W,
+            wheel_base_length=self.wheel_base_L,
+            min_corner_radius=self.min_corner_radius,
+            do_limit_acceleration=self.do_lim_acc,
+            max_velocity=self.max_abs_vel,
+            max_acceleration=self.max_abs_acc,
         )
 
         self.tf_buffer = Buffer()
@@ -170,11 +188,53 @@ class TrajectoryFollowerNode(Node):
         self.trajectory = None
 
         self.create_subscription(Odometry, self.odom_topic, self.odom_callback, 5)
-        self.create_subscription(TrajectoryMsg, self.trajectory_topic, self.trajectory_callback, 5)
+        # self.create_subscription(TrajectoryMsg, self.trajectory_topic, self.trajectory_callback, 5)
+        self.create_timer(0.5, self.trajectory_callback)
         self.motor_publisher = self.create_publisher(Int16MultiArray, self.motor_cmd_topic, 10)
         self.traj_marker_publisher = self.create_publisher(MarkerArray, self.traj_marker_topic, 1)
 
         self.create_timer(1 / self.control_frequency, self.apply_control)
+
+    def parameters_ddmr(
+        self,
+        wheel_base_width: float,
+        wheel_base_length: float,
+        min_corner_radius: float,
+        do_limit_acceleration: bool = False,
+        max_velocity: Optional[float] = None,
+        max_acceleration: Optional[float] = None,
+    ) -> Tuple[float, float, float]:
+        """Determine all parameters relevant for the trajectory follower and motor control for a differential-drive
+        mobile robot (DDMR)
+
+        Arguments:
+            wheel_base_width -- width of the wheel base of the ddmr
+            wheel_base_length -- virtual front axle position of the ddmr measured from the rear wheels
+            min_corner_radius -- the smallest corner radius it should be able to make
+
+        Returns:
+            maximum steering angle, maximum normalized motor velocity, maximum normalized acceleration
+        """
+        max_steering_angle = np.arctan(wheel_base_length / min_corner_radius)
+        # Cannot use full motor velocity for forward driving, because steering is done by varying the speed
+        max_norm_motor_vel = 1 / (1 + 0.5 * wheel_base_width / wheel_base_length * np.tan(max_steering_angle))
+        if do_limit_acceleration and max_velocity is not None and max_acceleration is not None:
+            # limit the maximum normalised acceleration based on the absolute (hardware defined) max velocity
+            max_norm_acc = max_acceleration / max_velocity
+        else:
+            max_norm_acc = None
+
+        self.get_logger().info(
+            f"Predefined params: W = {wheel_base_width:.3f} m; L = {wheel_base_length:.3f} m,"
+            + f" R_min = {min_corner_radius:.3f} m"
+        )
+        self.get_logger().info(
+            f"Calculated params: delta_max = {max_steering_angle:.3f} rad; V_norm_max = {max_norm_motor_vel:.3f} /s,"
+            + f" A_norm_max = {max_norm_acc:.3f} /s2"
+        )
+
+        return max_steering_angle, max_norm_motor_vel, max_norm_acc
+
 
     def visualize_trajectory(self, target_idx: Optional[int] = None) -> None:
         if not self.do_visual_traj:
@@ -249,20 +309,23 @@ class TrajectoryFollowerNode(Node):
         # def trajectory_callback(self):
         self.last_target_idx = 0
         # FIXME: Temporary fix
-        # trajectory = get_sinus_and_circ_trajectory(velocity=0.2).repeat(1)[0.5]  # is in the planner frame
-        # trajectory = get_sinus_and_circ_trajectory(velocity=0.2).repeat(1)[0.9]  # is in the planner frame
-        # trajectory = get_circular_trajectory(velocity=0.2)[0.9]  # is in the planner frame
 
-        traj_frame = msg.path.header.frame_id
-        positions = np.array([[p.pose.position.x, p.pose.position.y] for p in msg.path.poses])
-        quaternions = [p.pose.orientation for p in msg.path.poses]
-        yaws = [
-            euler_from_quaternion(*map(lambda attr: getattr(q, attr), ["x", "y", "z", "w"]))[2] for q in quaternions
-        ]
-        velocities = [v.linear.x for v in msg.velocities]
-        trajectory = Trajectory(positions, yaws, velocities)
-        trajectory_transformed = self.transform_trajectory(trajectory, self.map_frame, traj_frame)
-        self.trajectory = trajectory_transformed if trajectory_transformed is not None else self.trajectory
+        positions = [[0.025, 0.0013], [0.0749, 0.0039], [0.1493, 0.0126], [0.2472, 0.0324], [0.366, 0.0708], [0.4792, 0.1234], [0.5852, 0.1893], [0.6814, 0.2691], [0.7668, 0.3601], [0.8406, 0.4608], [0.9016, 0.5697], [0.9489, 0.6853], [0.9804, 0.8062], [0.9963, 0.93], [1.0, 1.0549], [1.0, 1.1549], [1.0, 1.2299], [1.0, 1.2799], [1.0, 1.3049], [1.0, 1.3049]]
+        orientations = [0.0524, 0.0524, 0.0977, 0.1978, 0.3228, 0.4479, 0.5729, 0.698, 0.823, 0.9481, 1.0732, 1.1982, 1.3233, 1.4483, 1.5213, 1.5265, 1.5305, 1.5331, 1.5344, 1.5344]
+        velocities = [[0.025, 0.0013], [0.0749, 0.0039], [0.1493, 0.0126], [0.2472, 0.0324], [0.366, 0.0708], [0.4792, 0.1234], [0.5852, 0.1893], [0.6814, 0.2691], [0.7668, 0.3601], [0.8406, 0.4608], [0.9016, 0.5697], [0.9489, 0.6853], [0.9804, 0.8062], [0.9963, 0.93], [1.0, 1.0549], [1.0, 1.1549], [1.0, 1.2299], [1.0, 1.2799], [1.0, 1.3049], [1.0, 1.3049]]
+        self.trajectory = Trajectory(positions, orientations, velocities)
+
+        """ Original Code """
+        # traj_frame = msg.path.header.frame_id
+        # positions = np.array([[p.pose.position.x, p.pose.position.y] for p in msg.path.poses])
+        # quaternions = [p.pose.orientation for p in msg.path.poses]
+        # yaws = [
+        #     euler_from_quaternion(*map(lambda attr: getattr(q, attr), ["x", "y", "z", "w"]))[2] for q in quaternions
+        # ]
+        # velocities = [v.linear.x for v in msg.velocities]
+        # trajectory = Trajectory(positions, yaws, velocities)
+        # trajectory_transformed = self.transform_trajectory(trajectory, self.map_frame, traj_frame)
+        # self.trajectory = trajectory_transformed if trajectory_transformed is not None else self.trajectory
 
     def odom_callback(self, msg: Odometry):
         """Callback for the odometry topic. Converts the pose in the odometry to the map frame."""
@@ -338,14 +401,17 @@ class TrajectoryFollowerNode(Node):
         perp_error = dist_vec[target_idx] @ perp_vec
 
         # calculate the acceleration
-        acceleration = self.pd_control(self.trajectory.vs[target_idx], self.state.v)
+        acceleration = self.p_control(self.trajectory.vs[target_idx], self.state.v)
+        if self.do_lim_acc:
+            self.get_logger().warn(f"norm_acc > max_norm_acc; {acceleration:.3f} > {self.max_norm_acc:.3f}")
+            acceleration = np.clip(acceleration, -self.max_norm_acc, self.max_norm_acc)
         self.output_vel += acceleration / self.control_frequency
-        if abs(self.output_vel) > 1:
-            self.output_vel = np.clip(self.output_vel, -1, 1)
+        if abs(self.output_vel) > self.max_norm_vel:
+            self.output_vel = np.clip(self.output_vel, -self.max_norm_vel, self.max_norm_vel)
             self.get_logger().warn(
                 (
-                    f"Normalized output velocity > 1 (output vel = {self.output_vel})."
-                    + f"Speed most likely not reachable: acceleration = {acceleration}"
+                    f"norm_vel > max_norm_vel; {self.output_vel:.3f} > {self.max_norm_vel:.3f}"
+                    + f"Speed most likely not reachable: norm_acc = {acceleration}"
                 ),
                 throttle_duration_sec=self.throttle_duration,
             )
@@ -353,7 +419,7 @@ class TrajectoryFollowerNode(Node):
         # calculate the steering angle: ccw positive
         delta = self.stanley_controller(self.trajectory.yaws[target_idx], perp_error)
         if abs(delta) > self.max_steering_angle:
-            # self.get_logger().info(f"Maximum steering angle exceeded: delta = {delta}")
+            self.get_logger().warn(f"delta > max_steering_angle; {delta:.3f} > {self.max_steering_angle:.3f}")
             delta = np.clip(delta, -self.max_steering_angle, self.max_steering_angle)
         # convert the steering angle to a speed difference of the wheels: v_delta = (v / 2) * (W / L) * tan(delta)
         # v_delta is proportional to the velocity, so this all works with normalized velocities
@@ -363,8 +429,8 @@ class TrajectoryFollowerNode(Node):
         v_left, v_right = self.output_vel - v_delta, self.output_vel + v_delta
         if abs(v_left) > 1 or abs(v_right) > 1:
             v_left, v_right = self.scale_motor_vels(v_left, v_right)
-            self.get_logger().warn(
-                f"Maximum motor values exceed due to steering: v_delta = {v_delta} (normalized), delta = {delta} rad",
+            self.get_logger().error(
+                f"SHOULD NOT HAPPEN Maximum motor values exceed due to steering: v_delta = {v_delta}, delta = {delta} rad",
                 throttle_duration_sec=self.throttle_duration,
             )
 
@@ -372,11 +438,11 @@ class TrajectoryFollowerNode(Node):
         motor_command = Int16MultiArray(data=[v_left, v_right, 0, 0])  # 4 motors are implemented by the hat_node
         self.motor_publisher.publish(motor_command)
 
-        # self.get_logger().info(f"Control: [v_left, v_right] = {v_left, v_right}")
         self.visualize_trajectory(target_idx)
 
-    def pd_control(self, target, current) -> float:
+    def p_control(self, target, current) -> float:
         """PD controller for the speed."""
+        return self.velocity_Kp * (target - current)
         Kp, Ki, Kd = self.velocity_PID
         error = target - current
         derror = (error - self.prev_error) * self.control_frequency if self.prev_error is not None else 0
@@ -417,7 +483,10 @@ def main(args=None):
 
 
 if __name__ == "__main__":
+    main()
+
     node = TrajectoryFollowerNode()
+
 
     import matplotlib.pyplot as plt
 

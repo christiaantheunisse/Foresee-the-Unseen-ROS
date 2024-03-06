@@ -1,5 +1,5 @@
 #GENERAL
-simulation_duration : 20
+simulation_duration : 100
 
 #EGO_VEHICLE
 initial_state_x : 0.13
@@ -14,9 +14,9 @@ goal_point_x : -3
 goal_point_y : -0.13333
 
 #PLANNER
-reference_speed : 0.5
-max_acceleration : 0.5
-max_deceleration : 0.5
+reference_speed : 0.5 # trajectory planner limits norm_vel on 0.873 (r_min = 0.5)
+max_acceleration : 0.4
+max_deceleration : 0.4
 planning_horizon : 20
 safety_margin : 0.65
 minimum_distance_waypoint: 0.2
@@ -24,7 +24,7 @@ minimum_distance_waypoint: 0.2
 #SENSOR
 field_of_view_degrees : 360
 min_resolution : 0.5  # Significantly reduces computation time of FOV
-view_range : 3
+view_range : 6
 
 #OCCLUSION_TRACKER
 min_velocity : 0

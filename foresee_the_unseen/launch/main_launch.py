@@ -101,6 +101,11 @@ def generate_launch_description():
         default_value=TextSubstitution(text="false"),
         description="If true, launch the foresee_the_unseen node",
     )
+    save_topics_launch_arg = DeclareLaunchArgument(
+        "save_topics",
+        default_value=TextSubstitution(text="false"),
+        description="if true runs the node that saves certain topics as pickle files",
+    )
 
     play_rosbag = LaunchConfiguration("play_rosbag")
     record_rosbag = LaunchConfiguration("record_rosbag")
@@ -109,6 +114,7 @@ def generate_launch_description():
     map_file = LaunchConfiguration("map_file")
     use_datmo = LaunchConfiguration("use_datmo")
     use_foresee = LaunchConfiguration("use_foresee")
+    save_topics = LaunchConfiguration("save_topics")
 
     log_messages = []
     log_messages.append(LogInfo(msg="\n=========================== Launch file logging ==========================="))
@@ -221,7 +227,8 @@ def generate_launch_description():
         executable="ekf_node",
         name="my_ekf_filter_node",
         output="screen",
-        parameters=[PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "ekf.yaml"])],
+        # parameters=[PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "ekf.yaml"])],
+        parameters=[PathJoinSubstitution(["/home/christiaan/thesis/robot_ws/src/foresee_the_unseen/config/ekf.yaml"])],
         condition=IfCondition(use_ekf),  # use_ekf
     )
     datmo_node_with_remapping = Node(
@@ -238,6 +245,13 @@ def generate_launch_description():
         name="datmo_node",
         condition=IfCondition(AndSubstitution(use_datmo, NotSubstitution(use_foresee))),
         parameters=[{"min_pub_markers": True}],  # TODO: add .yaml file
+    )
+    # $ ros2 run foresee_the_unseen topics_to_disk_node
+    save_topics_node = Node(
+        package="foresee_the_unseen",
+        executable="topics_to_disk_node",
+        name="topics_to_disk_node",
+        condition=IfCondition(save_topics),
     )
 
     global_localization_launch = IncludeLaunchDescription(
@@ -359,29 +373,6 @@ def generate_launch_description():
             "imu_link",
         ],
     )
-    # $ ros2 run tf2_ros static_transform_publisher --x 3 --y 2 --z 0 --yaw 1.57 --pitch 0 --roll 0 --frame-id map --child-frame-id planner
-    static_trans_map_to_planner_frame = Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        arguments=[
-            "--x",
-            "3.80",  # 1.80
-            "--y",
-            "0.13",  # 0.13
-            "--z",
-            "0",
-            "--roll",
-            "0",
-            "--pitch",
-            "0",
-            "--yaw",
-            "-1.57079632679",
-            "--frame-id",
-            "map",
-            "--child-frame-id",
-            "planner",
-        ],
-    )
 
     return LaunchDescription(
         [
@@ -393,6 +384,7 @@ def generate_launch_description():
             map_file_launch_arg,
             use_datmo_launch_arg,
             use_foresee_launch_arg,
+            save_topics_launch_arg,
             # log messages
             *log_messages,
             # parameters
@@ -409,6 +401,7 @@ def generate_launch_description():
             local_localization_node,
             datmo_node_with_remapping,
             datmo_node_without_remapping,
+            save_topics_node,
             # launch files
             lidar_launch,
             global_localization_launch,
@@ -418,6 +411,5 @@ def generate_launch_description():
             static_trans_base_link_to_laser,
             static_trans_base_link_to_imu_link,
             static_trans_map_to_odom,
-            static_trans_map_to_planner_frame,
         ]
     )

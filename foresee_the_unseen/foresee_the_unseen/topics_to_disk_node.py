@@ -8,8 +8,9 @@ from rclpy.node import Node
 from dataclasses import dataclass
 from scipy.spatial.transform import Rotation as R
 
+from std_msgs.msg import Int16MultiArray
 from sensor_msgs.msg import LaserScan
-from racing_bot_interfaces.msg import EncoderValues
+from racing_bot_interfaces.msg import EncoderValues, Trajectory
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
 
@@ -43,6 +44,8 @@ class StoreTopicsNode(Node):
                 # TopicToStore(topic_name="/wheel_encoders", message_type=EncoderValues),
                 TopicToStore(topic_name="/odom", message_type=Odometry),
                 TopicToStore(topic_name="/pose", message_type=PoseWithCovarianceStamped),
+                TopicToStore(topic_name="/trajectory", message_type=Trajectory),
+                TopicToStore(topic_name="/cmd_motor", message_type=Int16MultiArray),
             ]
         )
         assert self.unique_check(topics_to_store), "All topic names should be unique"
