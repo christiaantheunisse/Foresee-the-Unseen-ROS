@@ -106,6 +106,11 @@ def generate_launch_description():
         default_value=TextSubstitution(text="false"),
         description="if true runs the node that saves certain topics as pickle files",
     )
+    follow_traject_launch_arg = DeclareLaunchArgument(
+        "follow_traject",
+        default_value=TextSubstitution(text="false"),
+        description="if true follows traject",
+    )
 
     play_rosbag = LaunchConfiguration("play_rosbag")
     record_rosbag = LaunchConfiguration("record_rosbag")
@@ -115,6 +120,7 @@ def generate_launch_description():
     use_datmo = LaunchConfiguration("use_datmo")
     use_foresee = LaunchConfiguration("use_foresee")
     save_topics = LaunchConfiguration("save_topics")
+    follow_traject = LaunchConfiguration("follow_traject")
 
     log_messages = []
     log_messages.append(LogInfo(msg="\n=========================== Launch file logging ==========================="))
@@ -210,7 +216,7 @@ def generate_launch_description():
                 [FindPackageShare("racing_bot_trajectory_follower"), "config", "trajectory_follower_node.yaml"]
             ),
         ],
-        condition=UnlessCondition(play_rosbag),  # not play_rosbag
+        condition=IfCondition(AndSubstitution(NotSubstitution(play_rosbag), follow_traject)),  # not play_rosbag and follow_traject
     )
 
     # Used ANYWAY
@@ -385,6 +391,7 @@ def generate_launch_description():
             use_datmo_launch_arg,
             use_foresee_launch_arg,
             save_topics_launch_arg,
+            follow_traject_launch_arg,
             # log messages
             *log_messages,
             # parameters
