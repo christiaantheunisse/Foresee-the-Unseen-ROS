@@ -16,7 +16,7 @@
     # velocity_PID: [5., 0., 0.5] # velocity control PID constants (double array) # no D needed. Do already set acceleration to control speed.
     velocity_p: 1. # velocity control PID constants (double array) # no D needed. Do already set acceleration to control speed.
     # was 1. during the first tests, but this is way too big
-    steering_k: 1. # steering control gain (double)
+    steering_k: 0.3 # steering control gain (double)
 
     do_limit_acceleration: True
     max_acceleration: 0.5 # [m/s^2] Can be chosen
@@ -25,6 +25,6 @@
     
     wheel_base_width: 0.145 # wheel base width [m] (double)
     wheel_base_length: 0.1 # wheel base length [m] (double)
-    min_corner_radius: 0.5 # minimum corner radius [m]
+    min_corner_radius: 0.25 # minimum corner radius [m]
     # max_steering_angle: 25.0 # max steering angle [deg] (double). Influences the minimum corner radius: r_min = wheel_base_length / tan(max_steering_angle)
 

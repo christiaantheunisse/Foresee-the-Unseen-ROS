@@ -304,7 +304,7 @@ class TrajectoryFollowerNode(Node):
         translation, rotation = trans_rot_from_euler(t)
         return trajectory.rotate(rotation).translate(translation[:2])
 
-    def trajectory_callback(self, msg: TrajectoryMsg):
+    def trajectory_callback(self, msg: TrajectoryMsg = None):
         """Callback for the trajectory topic."""
         # def trajectory_callback(self):
         self.last_target_idx = 0
@@ -312,7 +312,7 @@ class TrajectoryFollowerNode(Node):
 
         positions = [[0.025, 0.0013], [0.0749, 0.0039], [0.1493, 0.0126], [0.2472, 0.0324], [0.366, 0.0708], [0.4792, 0.1234], [0.5852, 0.1893], [0.6814, 0.2691], [0.7668, 0.3601], [0.8406, 0.4608], [0.9016, 0.5697], [0.9489, 0.6853], [0.9804, 0.8062], [0.9963, 0.93], [1.0, 1.0549], [1.0, 1.1549], [1.0, 1.2299], [1.0, 1.2799], [1.0, 1.3049], [1.0, 1.3049]]
         orientations = [0.0524, 0.0524, 0.0977, 0.1978, 0.3228, 0.4479, 0.5729, 0.698, 0.823, 0.9481, 1.0732, 1.1982, 1.3233, 1.4483, 1.5213, 1.5265, 1.5305, 1.5331, 1.5344, 1.5344]
-        velocities = [[0.025, 0.0013], [0.0749, 0.0039], [0.1493, 0.0126], [0.2472, 0.0324], [0.366, 0.0708], [0.4792, 0.1234], [0.5852, 0.1893], [0.6814, 0.2691], [0.7668, 0.3601], [0.8406, 0.4608], [0.9016, 0.5697], [0.9489, 0.6853], [0.9804, 0.8062], [0.9963, 0.93], [1.0, 1.0549], [1.0, 1.1549], [1.0, 1.2299], [1.0, 1.2799], [1.0, 1.3049], [1.0, 1.3049]]
+        velocities = [0.1, 0.2, 0.3, 0.4, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0]
         self.trajectory = Trajectory(positions, orientations, velocities)
 
         """ Original Code """
@@ -402,7 +402,7 @@ class TrajectoryFollowerNode(Node):
 
         # calculate the acceleration
         acceleration = self.p_control(self.trajectory.vs[target_idx], self.state.v)
-        if self.do_lim_acc:
+        if self.do_lim_acc and not -self.max_norm_acc <= acceleration <= self.max_norm_acc:
             self.get_logger().warn(f"norm_acc > max_norm_acc; {acceleration:.3f} > {self.max_norm_acc:.3f}")
             acceleration = np.clip(acceleration, -self.max_norm_acc, self.max_norm_acc)
         self.output_vel += acceleration / self.control_frequency
