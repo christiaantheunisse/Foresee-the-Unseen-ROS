@@ -1,5 +1,6 @@
 import rclpy
 from rclpy.node import Node
+from rclpy.time import Time, Duration
 import os
 import yaml
 import time
@@ -16,6 +17,7 @@ from commonroad.prediction.prediction import TrajectoryPrediction as TrajectoryC
 
 from shapely.geometry import Polygon as ShapelyPolygon
 
+from builtin_interfaces.msg import Time as TimeMsg
 from datmo.msg import TrackArray
 from nav_msgs.msg import Odometry, Path
 from visualization_msgs.msg import Marker, MarkerArray
@@ -30,6 +32,7 @@ from geometry_msgs.msg import (
     PoseStamped,
     Quaternion,
     Twist,
+    Accel,
 )
 from sensor_msgs.msg import LaserScan
 from rcl_interfaces.msg import ParameterDescriptor
@@ -214,18 +217,27 @@ class PlannerNode(Node):
         """Publishes the Commonroad trajectory on a topic for the trajectory follower node."""
         header_path = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.planner_frame)
         pose_stamped_list = []
+        init_time_step = trajectory.trajectory.state_list[0].time_step - 1
         for state in trajectory.trajectory.state_list:
             quaternion = Quaternion(
                 **{k: v for k, v in zip(["x", "y", "z", "w"], self.quaternion_from_yaw(state.orientation))}
             )
             position = Point(x=float(state.position[0]), y=float(state.position[1]))
-            time_diff = (state.time_step - self.foresee_the_unseen_planner.planner_step) * 1 / self.frequency
-            header_pose = Header(sec=int(time_diff), nanosec=int((time_diff % 1) * 1e9))
+            time_diff = (state.time_step - init_time_step) * 1 / self.frequency
+            header_pose = Header(
+                stamp=(
+                    self.get_clock().now() + Duration(seconds=int(time_diff), nanoseconds=int((time_diff % 1) * 1e9))
+                ).to_msg()
+            )
             pose_stamped_list.append(
                 PoseStamped(header=header_pose, pose=Pose(position=position, orientation=quaternion))
             )
-        twist_list = [Twist(linear=Vector3(x=s.velocity)) for s in trajectory.trajectory.state_list]
-        trajectory_msg = TrajectoryMsg(path=Path(header=header_path, poses=pose_stamped_list), velocities=twist_list)
+        twist_list = [Twist(linear=Vector3(x=float(s.velocity))) for s in trajectory.trajectory.state_list]
+        if trajectory.trajectory.state_list[0].acceleration is not None:
+            accel_list = [Accel(linear=Vector3(x=float(s.acceleration))) for s in trajectory.trajectory.state_list]
+        trajectory_msg = TrajectoryMsg(
+            path=Path(header=header_path, poses=pose_stamped_list), velocities=twist_list, accelerations=accel_list
+        )
 
         self.trajectory_publisher.publish(trajectory_msg)
 
@@ -252,7 +264,6 @@ class PlannerNode(Node):
             markers += self.get_shadow_marker(shadow_obstacles)
         if no_stop_zone is not None:
             markers += self.get_no_stop_zone_marker(no_stop_zone)
-
 
         self.marker_array_publisher.publish(MarkerArray(markers=markers))
 

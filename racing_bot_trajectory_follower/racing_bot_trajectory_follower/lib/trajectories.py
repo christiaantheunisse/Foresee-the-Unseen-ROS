@@ -12,7 +12,8 @@ class Trajectory:
     xys: np.ndarray  # xy-positions [m] [[x, y], ...]
     yaws: np.ndarray  # headings [rad] [yaw, ...]
     vs: np.ndarray  # velocties [m/s] [v, ...]
-    stamps: Optional[np.ndarray]
+    accs: Optional[np.ndarray] = None  # accelerations [m/s2] [a, ...]
+    stamps: Optional[np.ndarray] = None # time stamps [s] [t, ...]
 
     def __add__(self, other):
         return Trajectory(

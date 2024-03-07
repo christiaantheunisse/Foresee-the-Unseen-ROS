@@ -49,6 +49,7 @@ class Planner:
         # time_horizon=50,
         # dt=0.1,
         # min_dist_waypoint=0.1,
+        max_dist_corner_smoothing=0.1,
         waypoints=[],
     ):
         self.initial_state = initial_state
@@ -61,6 +62,7 @@ class Planner:
         self.time_horizon = time_horizon
         self.dt = dt
         self.min_dist_waypoint = min_dist_waypoint
+        self.max_dist_corner_smoothing = max_dist_corner_smoothing
 
     def update(self, state):
         self.initial_state = state
@@ -71,7 +73,15 @@ class Planner:
         trajectories = self.generate_trajectories(scenario.lanelet_network)
         safe_trajectories = self.get_safe_trajectories(trajectories, scenario)
         optimal_trajectory = self.get_optimal_trajectory(safe_trajectories)
-        return optimal_trajectory
+        return self.add_acceleration(optimal_trajectory) if optimal_trajectory else optimal_trajectory
+
+    def add_acceleration(self, trajectory: Trajectory) -> Trajectory:
+        velocity_profile = np.hstack(([self.initial_state.velocity], [s.velocity for s in trajectory.trajectory.state_list]))
+        acceleration_profile = (velocity_profile[1:] - velocity_profile[:-1]) / self.dt
+        for s, a in zip(trajectory.trajectory.state_list, acceleration_profile):
+            s.acceleration = a
+
+        return trajectory
 
     def generate_trajectories(self, lanelet_network):
         if not self.waypoints:
@@ -202,9 +212,19 @@ class Planner:
         y_along_time = np.interp(distance_along_time, distance_along_points, y_points)
 
         orientations_between_points = np.unwrap(np.arctan2(y_diffs, x_diffs))
-        # TODO: Some room for improvement: each point has the orientation of the previous hypot -> should be center
-        distance_along_centerpoints = np.cumsum(segment_lengths) - segment_lengths / 2
-        orientations_along_time = np.interp(distance_along_time, distance_along_centerpoints, orientations_between_points)
+        # create a list of points before and after the waypoints to smoothen the corner in between
+        dist_along_bef_points = np.cumsum(segment_lengths) - np.minimum(
+            segment_lengths / 2, self.max_dist_corner_smoothing
+        )
+        dist_along_aft_points = np.cumsum(segment_lengths)[:-1] + np.minimum(
+            segment_lengths[1:] / 2, self.max_dist_corner_smoothing
+        )
+        dist_along_points = np.vstack((dist_along_bef_points[:-1], dist_along_aft_points)).T.flatten()
+        dist_along_points = np.hstack((dist_along_points, dist_along_bef_points[-1]))
+        orientations_at_points = np.repeat(orientations_between_points, 2)[1:]
+
+        # distance_along_centerpoints = np.cumsum(segment_lengths) + np.minimum(segment_lengths / 2, MAX_CORNER_SMOOTH)
+        orientations_along_time = np.interp(distance_along_time, dist_along_points, orientations_at_points)
         state_list = []
         for time_step, velocity in enumerate(velocities):
             position = np.array([x_along_time[time_step], y_along_time[time_step]])
