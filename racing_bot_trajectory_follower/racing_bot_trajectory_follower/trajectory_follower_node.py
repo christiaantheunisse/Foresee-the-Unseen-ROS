@@ -1,5 +1,8 @@
 from rclpy.node import Node
 import rclpy
+import os
+import pickle
+import time
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 import math
@@ -26,6 +29,7 @@ class State:
     y: Optional[float] = None  # position along y-axis [m]
     yaw: Optional[float] = None  # heading (0 along x-axis, ccw positive) [rad]
     v: Optional[float] = None  # velocity [m/s]
+    t: Optional[float] = None  # time stamp [s]
 
 
 def euler_from_quaternion(x, y, z, w):
@@ -102,6 +106,26 @@ def matrix_yaw_from_transform(t):
     return t_matrix, yaw
 
 
+def make_unique_name(directory, counter: int = 0):
+    new_directory = directory if counter == 0 else directory + " (" + str(counter) + ")"
+    if os.path.exists(new_directory) and counter < 100:
+        return make_unique_name(directory, counter + 1)
+    else:
+        return new_directory
+
+
+def create_log_directory(base_dir: str):
+    if os.path.exists(base_dir):
+        t = time.localtime()
+        current_time = time.strftime("%Y-%m-%d %A at %H.%Mu", t)
+        log_dir = os.path.join(base_dir, current_time)
+        log_dir = make_unique_name(log_dir)
+        os.mkdir(log_dir)
+        return log_dir
+    else:
+        raise TypeError(f"The path specified for the log files does not exist: {base_dir}")
+
+
 class TrajectoryFollowerNode(Node):
     """
     This node implements Stanley steering control and PID speed control which is based on the code from the github
@@ -130,6 +154,7 @@ class TrajectoryFollowerNode(Node):
 
         self.declare_parameter("do_visualize_trajectory", False)
         self.declare_parameter("do_store_data", False)
+        self.declare_parameter("log_directory", "none")
 
         self.declare_parameter("control_frequency", 10.0)  # [Hz]
         self.declare_parameter("wheel_base_width", 0.145)  # distance between the wheels on the rear axle [m]
@@ -156,6 +181,9 @@ class TrajectoryFollowerNode(Node):
 
         self.do_visual_traj = self.get_parameter("do_visualize_trajectory").get_parameter_value().bool_value
         self.do_store_data = self.get_parameter("do_store_data").get_parameter_value().bool_value
+        self.log_directory = self.get_parameter("log_directory").get_parameter_value().string_value
+        self.do_store_data = self.do_store_data if os.path.isdir(self.log_directory) else False
+        self.log_directory = create_log_directory(self.log_directory)
 
         self.control_frequency = self.get_parameter("control_frequency").get_parameter_value().double_value
         self.wheel_base_W = self.get_parameter("wheel_base_width").get_parameter_value().double_value
@@ -348,27 +376,52 @@ class TrajectoryFollowerNode(Node):
         # FIXME: Temporary fix
         # fmt: off
         # straight line
-        positions = np.array([[0.025, 0.0], [0.075, 0.0], [0.15, 0.0], [0.25, 0.0], [0.375, 0.0], [0.5, 0.0], [0.625, 0.0], [0.75, 0.0], [0.875, 0.0], [1.0, 0.0], [1.125, 0.0], [1.25, 0.0], [1.375, 0.0], [1.5, 0.0], [1.625, 0.0], [1.725, 0.0], [1.8, 0.0], [1.85, 0.0], [1.875, 0.0], [1.875, 0.0]])
-        orientations = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        velocities = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0])
-        stamps = np.array([0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 3.25, 3.5, 3.75, 4.0, 4.25, 4.5, 4.75, 5.0])
+        # positions = np.array([[0.0125, 0.0], [0.0375, 0.0], [0.075, 0.0], [0.125, 0.0], [0.1875, 0.0], [0.2625, 0.0], [0.35, 0.0], [0.45, 0.0], [0.5625, 0.0], [0.6875, 0.0], [0.8125, 0.0], [0.9375, 0.0], [1.0625, 0.0], [1.1875, 0.0], [1.3125, 0.0], [1.4375, 0.0], [1.55, 0.0], [1.65, 0.0], [1.7375, 0.0], [1.8125, 0.0], [1.875, 0.0], [1.925, 0.0], [1.9625, 0.0], [1.9875, 0.0], [2.0, 0.0], [2.0, 0.0]])
+        # orientations = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        # velocities = np.array([0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2, 0.15, 0.1, 0.05, 0.0])
+        # stamps = np.array([0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 3.25, 3.5, 3.75, 4.0, 4.25, 4.5, 4.75, 5.0, 5.25, 5.5, 5.75, 6.0, 6.25, 6.5])
+
+        # straight line max speed not reached 
+        # positions = np.array([[0.0125, 0.0], [0.0375, 0.0], [0.075, 0.0], [0.125, 0.0], [0.1875, 0.0], [0.2625, 0.0], [0.3264, 0.0], [0.3778, 0.0], [0.4167, 0.0], [0.4431, 0.0], [0.4569, 0.0], [0.4583, 0.0], [0.4583, 0.0], [0.4583, 0.0], [0.4583, 0.0], [0.4583, 0.0], [0.4583, 0.0], [0.4583, 0.0], [0.4583, 0.0], [0.4583, 0.0], [0.4583, 0.0], [0.4583, 0.0], [0.4583, 0.0], [0.4583, 0.0], [0.4583, 0.0], [0.4583, 0.0]])
+        # orientations = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        # velocities = np.array([0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.2556, 0.2056, 0.1556, 0.1056, 0.0556, 0.0056, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        # stamps = np.array([0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 3.25, 3.5, 3.75, 4.0, 4.25, 4.5, 4.75, 5.0, 5.25, 5.5, 5.75, 6.0, 6.25, 6.5])
+
+        # straight line long 
+        # positions = np.array([[0.0125, 0.0], [0.0375, 0.0], [0.075, 0.0], [0.125, 0.0], [0.1875, 0.0], [0.2625, 0.0], [0.35, 0.0], [0.45, 0.0], [0.5625, 0.0], [0.6875, 0.0], [0.8125, 0.0], [0.9375, 0.0], [1.0625, 0.0], [1.1875, 0.0], [1.3125, 0.0], [1.4375, 0.0], [1.5625, 0.0], [1.6875, 0.0], [1.8125, 0.0], [1.9375, 0.0], [2.0625, 0.0], [2.1875, 0.0], [2.3125, 0.0], [2.4375, 0.0], [2.5625, 0.0], [2.6875, 0.0], [2.8125, 0.0], [2.9375, 0.0], [3.0625, 0.0], [3.1875, 0.0], [3.3125, 0.0], [3.4375, 0.0], [3.5625, 0.0], [3.6875, 0.0], [3.8125, 0.0], [3.9375, 0.0], [4.0625, 0.0], [4.1875, 0.0], [4.3125, 0.0], [4.4375, 0.0], [4.55, 0.0], [4.65, 0.0], [4.7375, 0.0], [4.8125, 0.0], [4.875, 0.0], [4.925, 0.0], [4.9625, 0.0], [4.9875, 0.0], [5.0, 0.0], [5.0, 0.0]])
+        # orientations = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        # velocities = np.array([0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2, 0.15, 0.1, 0.05, 0.0])
+        # stamps = np.array([0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 3.25, 3.5, 3.75, 4.0, 4.25, 4.5, 4.75, 5.0, 5.25, 5.5, 5.75, 6.0, 6.25, 6.5, 6.75, 7.0, 7.25, 7.5, 7.75, 8.0, 8.25, 8.5, 8.75, 9.0, 9.25, 9.5, 9.75, 10.0, 10.25, 10.5, 10.75, 11.0, 11.25, 11.5, 11.75, 12.0, 12.25, 12.5])
+
+        # left corner many zeros end points
+        # positions = np.array([[0.0125, 0.0007], [0.0374, 0.002], [0.0749, 0.0039], [0.1246, 0.0087], [0.1863, 0.0184], [0.2593, 0.0356], [0.3426, 0.0618], [0.4346, 0.1007], [0.5328, 0.1553], [0.634, 0.2284], [0.7256, 0.3133], [0.8062, 0.4087], [0.8732, 0.5141], [0.9265, 0.627], [0.9657, 0.7455], [0.9902, 0.8679], [0.9996, 0.9924], [1.0, 1.1174], [1.0, 1.2424], [1.0, 1.3674], [1.0, 1.4924], [1.0, 1.6174], [1.0, 1.7424], [1.0, 1.8674], [1.0, 1.9924], [1.0, 2.0], [1.0, 2.0], [1.0, 2.0], [1.0, 2.0], [1.0, 2.0], [1.0, 2.0], [1.0, 2.0], [1.0, 2.0], [1.0, 2.0], [1.0, 2.0]])
+        # orientations = np.array([0.0524, 0.0524, 0.075, 0.1251, 0.1876, 0.2626, 0.3502, 0.4502, 0.5628, 0.6878, 0.8129, 0.9379, 1.063, 1.188, 1.3131, 1.4382, 1.5227, 1.5345, 1.5464, 1.5582, 1.5701, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708, 1.5708])
+        # velocities = np.array([0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2, 0.15, 0.1, 0.05, 0.0])
+        # stamps = np.array([0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 3.25, 3.5, 3.75, 4.0, 4.25, 4.5, 4.75, 5.0, 5.25, 5.5, 5.75, 6.0, 6.25, 6.5, 6.75, 7.0, 7.25, 7.5, 7.75, 8.0, 8.25, 8.5, 8.75])
 
         # left corner 
-        positions = np.array([[0.025, 0.0013], [0.0749, 0.0039], [0.1493, 0.0126], [0.2472, 0.0324], [0.366, 0.0708], [0.4792, 0.1234], [0.5852, 0.1893], [0.6814, 0.2691], [0.7668, 0.3601], [0.8406, 0.4608], [0.9016, 0.5697], [0.9489, 0.6853], [0.9804, 0.8062], [0.9963, 0.93], [1.0, 1.0549], [1.0, 1.1549], [1.0, 1.2299], [1.0, 1.2799], [1.0, 1.3049], [1.0, 1.3049]])
-        orientations = np.array([0.0524, 0.0524, 0.0977, 0.1978, 0.3228, 0.4479, 0.5729, 0.698, 0.823, 0.9481, 1.0732, 1.1982, 1.3233, 1.4483, 1.5213, 1.5265, 1.5305, 1.5331, 1.5344, 1.5344])
-        velocities = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0])
-        stamps = np.array([0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 3.25, 3.5, 3.75, 4.0, 4.25, 4.5, 4.75, 5.0])
+        # positions = np.array([[0.0125, 0.0007], [0.0374, 0.002], [0.0749, 0.0039], [0.1246, 0.0087], [0.1863, 0.0184], [0.2593, 0.0356], [0.3426, 0.0618], [0.4346, 0.1007], [0.5328, 0.1553], [0.634, 0.2284], [0.7256, 0.3133], [0.8062, 0.4087], [0.8732, 0.5141], [0.9265, 0.627], [0.9657, 0.7455], [0.9902, 0.8679], [0.9989, 0.9799], [1.0, 1.0799], [1.0, 1.1674], [1.0, 1.2424], [1.0, 1.3049], [1.0, 1.3549], [1.0, 1.3924], [1.0, 1.4174], [1.0, 1.4299], [1.0, 1.4299]])
+        # orientations = np.array([0.0524, 0.0524, 0.075, 0.1251, 0.1876, 0.2626, 0.3502, 0.4502, 0.5628, 0.6878, 0.8129, 0.9379, 1.063, 1.188, 1.3131, 1.4382, 1.5215, 1.531, 1.5393, 1.5464, 1.5523, 1.557, 1.5606, 1.563, 1.5642, 1.5642])
+        # velocities = np.array([0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2, 0.15, 0.1, 0.05, 0.0])
+        # stamps = np.array([0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 3.25, 3.5, 3.75, 4.0, 4.25, 4.5, 4.75, 5.0, 5.25, 5.5, 5.75, 6.0, 6.25, 6.5])
 
         # slow left corner
         # positions = np.array([[0.0125, 0.0007], [0.0374, 0.002], [0.0749, 0.0039], [0.1246, 0.0087], [0.1863, 0.0184], [0.2472, 0.0324], [0.3076, 0.0486], [0.366, 0.0708], [0.4235, 0.095], [0.4792, 0.1234], [0.5328, 0.1553], [0.5852, 0.1893], [0.634, 0.2284], [0.6814, 0.2691], [0.7256, 0.3133], [0.7668, 0.3601], [0.8062, 0.4087], [0.8406, 0.4608], [0.8732, 0.5141], [0.9016, 0.5697], [0.9265, 0.627], [0.9489, 0.6853], [0.9657, 0.7455], [0.9804, 0.8062], [0.9902, 0.8679], [0.9963, 0.93], [0.9996, 0.9924], [1.0, 1.0549], [1.0, 1.1174], [1.0, 1.1799], [1.0, 1.2299], [1.0, 1.2674], [1.0, 1.2924], [1.0, 1.3049], [1.0, 1.3049]])
-        # orientations = np.array([0.0524, 0.0524, 0.0524, 0.0727, 0.1352, 0.1978, 0.2603, 0.3228, 0.3853, 0.4479, 0.5104, 0.5729, 0.6355, 0.698, 0.7605, 0.823, 0.8856, 0.9481, 1.0106, 1.0732, 1.1357, 1.1982, 1.2607, 1.3233, 1.3858, 1.4483, 1.5109, 1.5213, 1.5246, 1.5279, 1.5305, 1.5324, 1.5337, 1.5344, 1.5344])
+        # orientations = np.array([0.0524, 0.0524, 0.075, 0.1251, 0.1876, 0.2501, 0.3126, 0.3752, 0.4377, 0.5002, 0.5628, 0.6253, 0.6878, 0.7503, 0.8129, 0.8754, 0.9379, 1.0005, 1.063, 1.1255, 1.188, 1.2506, 1.3131, 1.3756, 1.4382, 1.5007, 1.5227, 1.5286, 1.5345, 1.5405, 1.5452, 1.5487, 1.5511, 1.5523, 1.5523])
         # velocities = np.array([0.05, 0.1, 0.15, 0.2, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.2, 0.15, 0.1, 0.05, 0.0])
         # stamps = np.array([0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 3.25, 3.5, 3.75, 4.0, 4.25, 4.5, 4.75, 5.0, 5.25, 5.5, 5.75, 6.0, 6.25, 6.5, 6.75, 7.0, 7.25, 7.5, 7.75, 8.0, 8.25, 8.5, 8.75])
+        
+        # small corner before 1 meter
+        positions = np.array([[0.0125, 0.0], [0.0375, 0.0], [0.075, 0.0], [0.125, 0.0], [0.1875, 0.0], [0.2625, 0.0], [0.35, 0.0], [0.45, 0.0], [0.5625, 0.0], [0.6875, 0.0], [0.8125, 0.0], [0.9375, 0.0], [1.0623, 0.0049], [1.185, 0.0267], [1.3021, 0.0698], [1.4099, 0.1327], [1.5036, 0.2151], [1.5812, 0.3128], [1.6404, 0.4225], [1.6795, 0.5408], [1.6962, 0.6517], [1.7, 0.7516], [1.7, 0.8391], [1.7, 0.9141], [1.7, 0.9766], [1.7, 1.0266], [1.7, 1.0641], [1.7, 1.0891], [1.7, 1.1016], [1.7, 1.1016]])
+        orientations = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0088, 0.0265, 0.0442, 0.0619, 0.0894, 0.2681, 0.4469, 0.6256, 0.8044, 0.9832, 1.1619, 1.3407, 1.4932, 1.5073, 1.5197, 1.5303, 1.5392, 1.5463, 1.5516, 1.5551, 1.5569, 1.5569])
+        velocities = np.array([0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2, 0.15, 0.1, 0.05, 0.0])
+        stamps = np.array([0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 3.25, 3.5, 3.75, 4.0, 4.25, 4.5, 4.75, 5.0, 5.25, 5.5, 5.75, 6.0, 6.25, 6.5, 6.75, 7.0, 7.25, 7.5])
         # fmt: on
 
         # stamps = stamps + self.get_clock().now().seconds_nanoseconds()[0] + 3  # 5 seconds margin
         self.trajectory = Trajectory(positions, orientations, velocities, stamps)
         self.first_call = True
+        self.counter = 0
 
         """ Original Code """
         # traj_frame = msg.path.header.frame_id
@@ -411,7 +464,9 @@ class TrajectoryFollowerNode(Node):
         transf_position = (t_mat @ np.array([*position, 0, 1]))[:2]
         transf_yaw = yaw + yaw_rot
         self.prev_state = self.state
-        self.state = State(*transf_position, transf_yaw, velocity)
+        self.state = State(
+            *transf_position, transf_yaw, velocity, msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+        )
 
     def get_closest_idx(self) -> int:
         """Finds the index of the closest point on the trajectory"""
@@ -428,8 +483,14 @@ class TrajectoryFollowerNode(Node):
     def first_future_idx(self) -> int:
         """Finds the index of the first future stamp on the trajectory"""
         if self.first_call:
-            self.first_call = False
-            self.trajectory.stamps = self.trajectory.stamps + (np.array(self.get_clock().now().seconds_nanoseconds()) * [1, 1e-9]).sum()
+            self.counter += 1
+            if self.counter > 60:
+                self.first_call = False
+                self.trajectory.stamps = (
+                    self.trajectory.stamps + (np.array(self.get_clock().now().seconds_nanoseconds()) * [1, 1e-9]).sum()
+                )
+            else:
+                return None
         current = np.sum(np.array(self.get_clock().now().seconds_nanoseconds()) * [1, 1e-9])
         mask = self.trajectory.stamps > current
         target_idx = np.argmax(mask) if mask.sum() > 0 else -1  # index of first True and else the last element
@@ -467,15 +528,18 @@ class TrajectoryFollowerNode(Node):
         # calculate target index
         # target_idx = self.get_closest_idx()
         target_idx = self.first_future_idx()
+        if target_idx is None:
+            self.visualize_trajectory()
+            return
 
-        # perpendicular distance error
+        # perpendicular distance error # TODO: Think about which perpendicular
         dist_vec = np.array([self.state.x, self.state.y]) - self.trajectory.xys
-        # perp_vec = -np.array([np.cos(self.state.yaw + np.pi / 2), np.sin(self.state.yaw + np.pi / 2)])
-        goal_yaw = self.trajectory.yaws[target_idx]
-        perp_vec = -np.array([np.cos(goal_yaw + np.pi / 2), np.sin(goal_yaw + np.pi / 2)])
+        perp_vec = -np.array([np.cos(self.state.yaw + np.pi / 2), np.sin(self.state.yaw + np.pi / 2)])
+        # goal_yaw = self.trajectory.yaws[target_idx]
+        # perp_vec = -np.array([np.cos(goal_yaw + np.pi / 2), np.sin(goal_yaw + np.pi / 2)])
         perp_error = dist_vec[target_idx] @ perp_vec
 
-        # calculate the acceleration
+        # calculate the acceleration and subsequently the velocity
         acceleration = self.p_control(self.trajectory.vs[target_idx], self.state.v)
         if self.do_lim_acc and not -self.max_norm_acc <= acceleration <= self.max_norm_acc:
             self.get_logger().warn(f"norm_acc > max_norm_acc; {acceleration:.3f} > {self.max_norm_acc:.3f}")
@@ -500,7 +564,8 @@ class TrajectoryFollowerNode(Node):
         # calculate the steering angle: ccw positive
         delta = self.stanley_controller(self.trajectory.yaws[target_idx], perp_error)
         if abs(delta) > self.max_steering_angle:
-            self.get_logger().warn(f"delta > max_steering_angle; {delta:.3f} > {self.max_steering_angle:.3f}")
+            if self.state.v > 0.01:  # low velocities result in high delta
+                self.get_logger().warn(f"delta > max_steering_angle; {delta:.3f} > {self.max_steering_angle:.3f}")
             delta = np.clip(delta, -self.max_steering_angle, self.max_steering_angle)
         # convert the steering angle to a speed difference of the wheels: v_delta = (v / 2) * (W / L) * tan(delta)
         # v_delta is proportional to the velocity, so this all works with normalized velocities
@@ -529,10 +594,27 @@ class TrajectoryFollowerNode(Node):
         self.visualize_trajectory(target_idx=target_idx, debug_string=debug_string)
 
         if self.do_store_data:
-            self.store_data_on_disk()
+            self.store_data_on_disk(target_idx)
 
-    def store_data_on_disk(self):
+    def store_data_on_disk(self, target_idx):
         """Stores the data on disk to investigate the trajectory follower performance."""
+        data_dict = {
+            "current": self.state,
+            "target": State(
+                *self.trajectory.xys[target_idx],
+                self.trajectory.yaws[target_idx],
+                self.trajectory.vs[target_idx],
+                self.trajectory.stamps[target_idx],
+            ),
+        }
+        time_stamp = (
+            str(self.get_clock().now().seconds_nanoseconds()[0])
+            + "_"
+            + str(self.get_clock().now().seconds_nanoseconds()[1])
+        )
+        filename = os.path.join(self.log_directory, f"step {time_stamp}.pickle")
+        with open(filename, "wb") as handle:
+            pickle.dump(data_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     def p_control(self, target, current) -> float:
         """PD controller for the speed."""
@@ -552,7 +634,7 @@ class TrajectoryFollowerNode(Node):
         """Calculates the steering angle in radians according Stanley steering algorithm"""
         # theta_e corrects the heading error
         theta_e = angle_mod(goal_yaw - self.state.yaw)
-        # theta_d corrects the cross track error
+        # theta_d corrects the cross track error; np.arctan2(y, x) -> so x and y are inverted (arctan(y / x))
         theta_d = np.arctan2(self.steering_k * perp_error, self.state.v)
 
         return theta_e + theta_d  # [rad]

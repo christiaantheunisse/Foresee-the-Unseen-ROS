@@ -193,7 +193,8 @@ class Planner:
         direction_vectors_between_points = np.diff(self.waypoints, axis=0)
         x_diffs, y_diffs = zip(*direction_vectors_between_points)
 
-        distance_along_points = np.concatenate(([0], np.cumsum(np.hypot(y_diffs, x_diffs))))
+        segment_lengths = np.hypot(y_diffs, x_diffs)
+        distance_along_points = np.concatenate(([0], np.cumsum(segment_lengths)))
 
         # This gives the x and y coordinate for each step of the velocity profile
         x_points, y_points = zip(*self.waypoints)
@@ -201,8 +202,9 @@ class Planner:
         y_along_time = np.interp(distance_along_time, distance_along_points, y_points)
 
         orientations_between_points = np.unwrap(np.arctan2(y_diffs, x_diffs))
-        # Some room for improvement: each point has the orientation of the previous hypot
-        orientations_along_time = np.interp(distance_along_time, distance_along_points[1:], orientations_between_points)
+        # TODO: Some room for improvement: each point has the orientation of the previous hypot -> should be center
+        distance_along_centerpoints = np.cumsum(segment_lengths) - segment_lengths / 2
+        orientations_along_time = np.interp(distance_along_time, distance_along_centerpoints, orientations_between_points)
         state_list = []
         for time_step, velocity in enumerate(velocities):
             position = np.array([x_along_time[time_step], y_along_time[time_step]])

@@ -11,14 +11,15 @@
 
     do_visualize_trajectory: True
     do_store_data: True
+    log_directory: "/home/christiaan/thesis/trajectory_log_files"
     
     # was 10.0 during the first tests, but bigger might help
     control_frequency: 30.0 # frequency of the motor controls send to the motor [Hz] (double)
     # velocity_PID: [5., 0., 0.5] # velocity control PID constants (double array) # no D needed. Do already set acceleration to control speed.
-    velocity_pi: [5., 2.] # velocity control PID constants (double array) # no D needed. Do already set acceleration to control speed.
+    velocity_pi: [5., 0.] # velocity control PID constants (double array) # no D needed. Do already set acceleration to control speed.
     velocity_p: 5. # velocity control PID constants (double array) # no D needed. Do already set acceleration to control speed.
     # was 1. during the first tests, but this is way too big
-    steering_k: 0.8 # steering control gain (double)
+    steering_k: 0.5 # steering control gain (double)
 
     do_limit_acceleration: True
     max_acceleration: 0.5 # [m/s^2] Can be chosen

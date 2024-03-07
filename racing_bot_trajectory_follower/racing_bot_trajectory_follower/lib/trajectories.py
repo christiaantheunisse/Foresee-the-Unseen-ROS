@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib import transforms
 from dataclasses import dataclass
 
-from typing import List, Union
+from typing import List, Union, Optional
 
 
 @dataclass
@@ -12,6 +12,7 @@ class Trajectory:
     xys: np.ndarray  # xy-positions [m] [[x, y], ...]
     yaws: np.ndarray  # headings [rad] [yaw, ...]
     vs: np.ndarray  # velocties [m/s] [v, ...]
+    stamps: Optional[np.ndarray]
 
     def __add__(self, other):
         return Trajectory(
