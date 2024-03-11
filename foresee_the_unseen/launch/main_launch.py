@@ -201,6 +201,7 @@ def generate_launch_description():
             AndSubstitution(NotSubstitution(play_rosbag), OrSubstitution(record_rosbag, use_ekf))
             # NotSubstitution(play_rosbag)
         ),  # not play_rosbag and (record_rosbag or use_ekf)
+        condition=IfCondition(NotSubstitution(play_rosbag)),  # not play_rosbag
     )
     lidar_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -216,7 +217,9 @@ def generate_launch_description():
                 [FindPackageShare("racing_bot_trajectory_follower"), "config", "trajectory_follower_node.yaml"]
             ),
         ],
-        condition=IfCondition(AndSubstitution(NotSubstitution(play_rosbag), follow_traject)),  # not play_rosbag and follow_traject
+        condition=IfCondition(
+            AndSubstitution(NotSubstitution(play_rosbag), follow_traject)
+        ),  # not play_rosbag and follow_traject
     )
 
     # Used ANYWAY

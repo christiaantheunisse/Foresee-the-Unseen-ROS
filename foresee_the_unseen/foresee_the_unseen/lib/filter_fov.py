@@ -58,8 +58,12 @@ def make_valid(
     angles_valid, ranges_valid = angles[~has_start_end_overlap], ranges[~has_start_end_overlap]
 
     # start angle < previous end angle; account for the 2 pi difference between first and last point
+    # Check for element n if it has overlap with the previous element
     has_overlap_previous = angles_valid[:, 0] < np.hstack((angles_valid[-1:, 1] - np.pi * 2, angles_valid[:-1, 1]))
-    has_smallest_range = ranges_valid[has_overlap_previous] < ranges_valid[np.roll(has_overlap_previous, -1)]
+    # Check if element n has the smallest range
+    has_smallest_range = ranges_valid[has_overlap_previous] < np.roll(ranges_valid, 1)[has_overlap_previous]
+    # has_smallest_range = ranges_valid[has_overlap_previous] < ranges_valid[np.roll(has_overlap_previous, -1)]
+
     # if has smallest range and overlap: update the end angle of the previous section
     # else has smallest range and NOT overlap: update own start angle
     # angles_valid[np.roll(has_overlp_and_small, -1), 1] = angles_valid[has_overlp_and_small, 0]
@@ -96,11 +100,11 @@ def get_underapproximation_fov(
         min_resolution -- Minimum resolution in meters at the boundaries of the FOV (default: {0.25})
         angle_margin -- The margin on the rays around detected obstacles to account for uncertainty; unit is
             [m] or [rad] depending on use_abs_angle_margin (default: {0.0})
-        use_abs_angle_margin -- Determines whether the angle_margin is an absolute distance to the closest object [m] or 
-            a fixed angle [rad] (default: {False})
-        range_margin -- The margin on the ranges to account for the uncertainty; unit is [m] or [-] (rate) depending on 
+        use_abs_angle_margin -- Determines whether the angle_margin is an absolute distance to the closest object [m] or
+            a fixed angle [rad]. Very conservative for close by points, so clipped at np.pi/2. (default: {False})
+        range_margin -- The margin on the ranges to account for the uncertainty; unit is [m] or [-] (rate) depending on
             use_abs_range_margin (default: {0.0})
-        use_abs_range_margin -- Determines whether the range_margin is an absolute distance [m] or a relative 
+        use_abs_range_margin -- Determines whether the range_margin is an absolute distance [m] or a relative
             distance [-] (default: {False})
         padding -- Padding on the FOV [m] applied after the ray margin. To account for detection delays. (default: {0.0})
 
@@ -113,9 +117,9 @@ def get_underapproximation_fov(
     """
     # """Need to account for range value uncertainty"""
     ranges = np.array(scan_msg.ranges)
+    ranges[ranges < scan_msg.range_min] = max_range # remove invalid values
     N = len(ranges)
     angles = scan_msg.angle_min + np.arange(N) * scan_msg.angle_increment
-    cos_sin_map = np.array([np.cos(angles), np.sin(angles)]).T
 
     angle_range = scan_msg.angle_max - scan_msg.angle_min
     min_num_of_sec = math.ceil(angle_range * max_range * 2 / min_resolution)  # circumference / minimum resolution
@@ -127,10 +131,12 @@ def get_underapproximation_fov(
     ranges_min[ranges_min > max_range] = max_range
 
     if use_abs_range_margin:
-        ranges_min = np.clip(ranges_min - range_margin, 0, None)
+        ranges_min = np.clip(ranges_min - range_margin, 1 * padding , None)
     else:
-        assert range_margin < 1, f"The margin on the ranges should be smaller than 1: range_margin = {range_margin}"
-        ranges_min *= (1 - range_margin)
+        assert (
+            range_margin < 1
+        ), f"The relative margin on the ranges should be smaller than 1: range_margin = {range_margin}"
+        ranges_min *= 1 - range_margin
 
     diff_ranges_backward = ranges_min - np.roll(ranges_min, 1)  # compare to previous range
     mask_extend_backward = diff_ranges_backward < 0
@@ -143,8 +149,9 @@ def get_underapproximation_fov(
     # angle margin dependant on range; so ray should always be x [m] from closest point
     dist_margin = angle_margin
     if use_abs_angle_margin:
-        angle_margin_backward = np.arcsin(dist_margin / 2 / ranges_min[mask_extend_backward]) * 2
-        angle_margin_forward = np.arcsin(dist_margin / 2 / ranges_min[mask_extend_forward]) * 2
+        # biggest margin is np.pi/2 for very close points
+        angle_margin_backward = np.arcsin(np.clip(dist_margin / 2 / ranges_min[mask_extend_backward], 0, 0.707107)) * 2
+        angle_margin_forward = np.arcsin(np.clip(dist_margin / 2 / ranges_min[mask_extend_forward], 0, 0.707107)) * 2
     else:
         angle_margin_backward = angle_margin
         angle_margin_forward = angle_margin
@@ -158,11 +165,13 @@ def get_underapproximation_fov(
     angle_range_per_sec[np.roll(mask_extend_forward, 1), 0] += angle_margin_forward
 
     # remove invisible parts due to the angle margin
+    angles_gl = copy.deepcopy(angle_range_per_sec)
     angles, ranges = make_valid(angle_range_per_sec, ranges_min)
-
+    
     points = angles_ranges_to_points(angles.flatten(), np.repeat(ranges, 2))
+    fov_points = points
     shapely_polygon = ShapelyPolygon(points)
-    if abs(padding) > 1e-10: # do not apply near 0 paddings
+    if abs(padding) > 1e-10:  # do not apply near 0 paddings
         shapely_polygon = shapely_polygon.buffer(-padding)
 
     # polygon might split into multiple polygons when applying a buffer
@@ -172,6 +181,6 @@ def get_underapproximation_fov(
             if polygon.contains(origin):
                 return polygon
         else:
-            assert False, "None of the polygons contains the origin"
+            return shapely_polygon[np.argmin([p.distance(origin) for p in list(shapely_polygon)])]
     else:
         return shapely_polygon

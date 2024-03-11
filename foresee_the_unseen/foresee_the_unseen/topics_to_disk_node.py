@@ -40,12 +40,12 @@ class StoreTopicsNode(Node):
         topics_to_store.extend(
             [
                 # TopicToStore(topic_name="/scan", message_type=LaserScan),
-                # TopicToStore(topic_name="/scan/road_env", message_type=LaserScan),
+                TopicToStore(topic_name="/scan/road_env", message_type=LaserScan),
                 # TopicToStore(topic_name="/wheel_encoders", message_type=EncoderValues),
-                TopicToStore(topic_name="/odom", message_type=Odometry),
-                TopicToStore(topic_name="/pose", message_type=PoseWithCovarianceStamped),
-                TopicToStore(topic_name="/trajectory", message_type=Trajectory),
-                TopicToStore(topic_name="/cmd_motor", message_type=Int16MultiArray),
+                # TopicToStore(topic_name="/odom", message_type=Odometry),
+                # TopicToStore(topic_name="/pose", message_type=PoseWithCovarianceStamped),
+                # TopicToStore(topic_name="/trajectory", message_type=Trajectory),
+                # TopicToStore(topic_name="/cmd_motor", message_type=Int16MultiArray),
             ]
         )
         assert self.unique_check(topics_to_store), "All topic names should be unique"
