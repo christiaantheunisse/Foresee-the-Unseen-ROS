@@ -50,7 +50,7 @@ def generate_launch_description():
         ],
     )
 
-    # $ ros2 run tf2_ros static_transform_publisher --x 3 --y 2 --z 0 --yaw 1.57 --pitch 0 --roll 0 --frame-id map --child-frame-id planner
+    # $ ros2 run tf2_ros static_transform_publisher --x 3.8 --y 0.13 --z 0 --yaw -1.57 --pitch 0 --roll 0 --frame-id map --child-frame-id planner
     static_trans_map_to_planner_frame = Node(
         package="tf2_ros",
         executable="static_transform_publisher",

@@ -197,11 +197,7 @@ def generate_launch_description():
         parameters=[
             PathJoinSubstitution([FindPackageShare("racing_bot_imu"), "config", "imu_node.yaml"]),
         ],
-        condition=IfCondition(
-            AndSubstitution(NotSubstitution(play_rosbag), OrSubstitution(record_rosbag, use_ekf))
-            # NotSubstitution(play_rosbag)
-        ),  # not play_rosbag and (record_rosbag or use_ekf)
-        condition=IfCondition(NotSubstitution(play_rosbag)),  # not play_rosbag
+        condition=UnlessCondition(play_rosbag),  # not play_rosbag
     )
     lidar_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -276,6 +272,7 @@ def generate_launch_description():
                 [FindPackageShare("foresee_the_unseen"), "config", "mapper_params_localization.yaml"]
             ),
             "map_file_name": PathJoinSubstitution([map_files_dir, map_file]),
+            # "autostart": False,
         }.items(),
         condition=IfCondition(
             AndSubstitution(NotSubstitution(record_rosbag), EqualsSubstitution(slam_mode, "localization"))

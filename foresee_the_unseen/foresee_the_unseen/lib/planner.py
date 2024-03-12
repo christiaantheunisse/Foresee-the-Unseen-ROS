@@ -28,6 +28,9 @@ class GoalAndPositionNotSameLane(Exception):
     def __init__(self, message: Optional[str] = None):
         self.message = message
 
+class TooLongTrajectory(Exception):
+    """The velocity profile makes the trajectory extend beyond the last waypoint."""
+
 
 class Planner:
     def __init__(
@@ -206,6 +209,9 @@ class Planner:
         segment_lengths = np.hypot(y_diffs, x_diffs)
         distance_along_points = np.concatenate(([0], np.cumsum(segment_lengths)))
 
+        if distance_along_time[-1] > distance_along_points[-1]:
+            raise TooLongTrajectory
+    
         # This gives the x and y coordinate for each step of the velocity profile
         x_points, y_points = zip(*self.waypoints)
         x_along_time = np.interp(distance_along_time, distance_along_points, x_points)
