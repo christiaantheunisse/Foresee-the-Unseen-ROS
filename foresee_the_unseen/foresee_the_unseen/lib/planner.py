@@ -195,7 +195,10 @@ class Planner:
     def create_trajectories(self, velocity_profiles):
         trajectories = []
         for velocities in velocity_profiles:
-            trajectories.append(self.create_trajectory(velocities))
+            try:
+                trajectories.append(self.create_trajectory(velocities))
+            except TooLongTrajectory:
+                continue
         return trajectories
 
     def create_trajectory(self, velocities):
