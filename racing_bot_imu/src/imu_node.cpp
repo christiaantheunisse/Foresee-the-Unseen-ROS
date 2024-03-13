@@ -10,10 +10,13 @@ namespace racing_bot {
             this->declare_parameter("imu_frame", "imu_link");
             this->declare_parameter("base_frame", "base_link");
             this->declare_parameter("imu_topic", "imu_data");
-            this->declare_parameter("update_frequency", 100.);  // [Hz]
+            this->declare_parameter("update_frequency", 80.);  // [Hz]
             this->declare_parameter("use_magnetometer", true);
-            this->declare_parameter("lin_acc_variances", std::vector<double>({ 0., 0., 0.}));
-            this->declare_parameter("ang_vel_variances", std::vector<double>({ 0., 0., 0.}));
+            this->declare_parameter("lin_acc_variances", std::vector<double>({0.002, 0.002, 0.002}));
+            this->declare_parameter("ang_vel_variances", std::vector<double>({0.04, 0.04, 0.04}));
+            this->declare_parameter("orient_variances", std::vector<double>({0.002, 0.004, 0.1}));
+            this->declare_parameter("madgwick_gain", 0.035);
+            this->declare_parameter("freq_scale_factor", 0.85);
 
             imu_frame_ = this->get_parameter("imu_frame").as_string();
             base_frame_ = this->get_parameter("base_frame").as_string();
@@ -22,6 +25,9 @@ namespace racing_bot {
             use_magnetometer_ = this->get_parameter("use_magnetometer").as_bool();
             lin_acc_variances_ = this->get_parameter("lin_acc_variances").as_double_array();
             ang_vel_variances_ = this->get_parameter("ang_vel_variances").as_double_array();
+            orient_variances_ = this->get_parameter("orient_variances").as_double_array();
+            madgwick_gain_ = this->get_parameter("madgwick_gain").as_double();
+            freq_scale_factor_ = this->get_parameter("freq_scale_factor").as_double();
 
             // convert the frequency to a time interval in integer milliseconds and update the frequency
             int time_interval = (int)1 / frequency_ * 1000;  // [ms]
@@ -41,7 +47,10 @@ namespace racing_bot {
                 exit(EXIT_FAILURE);
             }
             imu_.calibrate();
-            filter_.begin(frequency_);
+            // The `freq_scale_factor_` is necessary because the IMU underestimates the angular velocity. Or at least,
+            // that's what I think, because it significantly increase the performance. Otherwise the estimated 
+            // orientation is always to small.
+            filter_.begin(freq_scale_factor_ * frequency_, madgwick_gain_);
         }
 
         void ImuNode::readImuValues() {
@@ -121,13 +130,20 @@ namespace racing_bot {
             imu_data.orientation.y = quaternion[2];
             imu_data.orientation.z = quaternion[3];
 
-            imu_data.linear_acceleration_covariance[0] = lin_acc_variances_[0]; // 0.5
+            imu_data.linear_acceleration_covariance[0] = lin_acc_variances_[0];
             imu_data.linear_acceleration_covariance[4] = lin_acc_variances_[1];
             imu_data.linear_acceleration_covariance[8] = lin_acc_variances_[2]; 
 
-            imu_data.angular_velocity_covariance[0] = ang_vel_variances_[0]; // 0.1
+            imu_data.angular_velocity_covariance[0] = ang_vel_variances_[0];
             imu_data.angular_velocity_covariance[4] = ang_vel_variances_[1];
             imu_data.angular_velocity_covariance[8] = ang_vel_variances_[2];
+            
+            imu_data.orientation_covariance[0] = orient_variances_[0]; 
+            imu_data.orientation_covariance[4] = orient_variances_[1];
+            imu_data.orientation_covariance[8] = orient_variances_[2];
+
+            RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 100, "Roll %f, pitch %f, yaw %f",
+                                     filter_.getRoll(), filter_.getPitch(), filter_.getYaw());
 
             // Transfer the message to the robot base_link frame
             sensor_msgs::msg::Imu imu_data_transformed;

@@ -56,6 +56,9 @@ namespace racing_bot
       bool use_magnetometer_;
       std::vector<double> lin_acc_variances_;
       std::vector<double> ang_vel_variances_;
+      std::vector<double> orient_variances_;
+      float madgwick_gain_;
+      float freq_scale_factor_;
     };
   }
 }
