@@ -23,6 +23,8 @@ namespace racing_bot {
             this->declare_parameter("pose_variances", std::vector<double>({0., 0., 0., 0., 0., 0.}));
             this->declare_parameter("twist_variances", std::vector<double>({0., 0., 0., 0., 0., 0.}));
             this->declare_parameter("max_history_time", 0.15);
+            this->declare_parameter("linear_var", 0.00642);
+            this->declare_parameter("angular_var", 0.01610);
 
             // Set the variables by reading the parameters -> No callback needed
             auto odometry_topic = this->get_parameter("odometry_topic").as_string();         // local
@@ -38,6 +40,8 @@ namespace racing_bot {
             pose_variances_ = this->get_parameter("pose_variances").as_double_array();
             twist_variances_ = this->get_parameter("twist_variances").as_double_array();
             max_lookback_t_ = this->get_parameter("max_history_time").as_double();
+            linear_var_ = this->get_parameter("linear_var").as_double();
+            angular_var_ = this->get_parameter("angular_var").as_double();
 
             encoder_subscription_ = this->create_subscription<racing_bot_interfaces::msg::EncoderValues>(
                 encoder_topic, encoder_queue_size,
@@ -59,6 +63,13 @@ namespace racing_bot {
             calculateSpeed();
             publishOdometry();
             prev_msg = msg;
+        }
+
+        // Not used; has problems
+        std::vector<float> OdometryNode::CalculatePoseVariances(float d_distance, float d_angle) {
+            // angles should be in radians
+            float position_var, orientation_var;
+            // orientation_var = pow(d_angle, 2) * pow(angular_var_, 2);
         }
 
         // The robot is a differential-drive robot

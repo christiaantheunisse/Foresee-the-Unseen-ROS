@@ -20,5 +20,8 @@ odom_node:
         # 0.01 m on position and 10 deg = 0.17 rad on rotation
         pose_variances: [0.01, 0.01, 0.01, 0.17, 0.17, 0.17] # position [x, y, z] orientation [roll, pitch, yaw]
         # only linear.x and angular.z is used
-        twist_variances: [0.05, 0.0, 0.0, 0.0, 0.0, 0.17] # linear [x', y', z'] angular [roll', pitch', yaw']
+        twist_variances: [0.03, 0.0, 0.0, 0.0, 0.0, 0.04] # linear [x', y', z'] angular [roll', pitch', yaw']
+
+        # linear_var: 0.0000412267  # variance / error for linear displacement (m/m so unitless)
+        # angular_var: 0.0002592797  # variance / error for angular displacement (rad/rad so unitless)
 

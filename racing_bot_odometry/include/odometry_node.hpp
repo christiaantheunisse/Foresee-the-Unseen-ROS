@@ -1,8 +1,9 @@
 #ifndef ODOMNODE_H
 #define ODOMNODE_H
 
-#include <deque>
 #include <cmath>
+#include <deque>
+#include <tuple>
 
 #include "geometry_msgs/msg/pose_with_covariance.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
@@ -26,7 +27,7 @@ namespace racing_bot {
             double dy;
             double dtheta;
         };
-        
+
         /**
          * @brief Constructs an Odometry Node object with the specified wheel radius, ticks per revolution, and
          * wheelbase.
@@ -51,11 +52,13 @@ namespace racing_bot {
             void updatePose(racing_bot_interfaces::msg::EncoderValues msg);
             void calculateSpeed();
             void publishOdometry();
-            
+
+            std::vector<float> CalculatePoseVariances(float d_distance, float d_angle);
+
             double position_x_, position_y_, orientation_;
             double linear_speed_, angular_speed_;
             bool first_update = true;
-            
+
             racing_bot_interfaces::msg::EncoderValues prev_msg;
             std::deque<deltaPose> pose_changes;
             double wheel_radius_, ticks_per_rev_, wheel_base_;
@@ -68,6 +71,7 @@ namespace racing_bot {
             std::string odom_frame_, base_frame_;
             bool do_broadcast_transform_;
             std::vector<double> pose_variances_, twist_variances_;
+            double linear_var_, angular_var_;
         };
     }  // namespace odometry
 }  // namespace racing_bot
