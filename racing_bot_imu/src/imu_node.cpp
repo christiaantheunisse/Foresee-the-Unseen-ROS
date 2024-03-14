@@ -50,6 +50,9 @@ namespace racing_bot {
             // The `freq_scale_factor_` is necessary because the IMU underestimates the angular velocity. Or at least,
             // that's what I think, because it significantly increase the performance. Otherwise the estimated 
             // orientation is always to small.
+            if (use_magnetometer_) {
+                imu_.calibrateMag();
+            }
             filter_.begin(freq_scale_factor_ * frequency_, madgwick_gain_);
         }
 
