@@ -145,8 +145,8 @@ namespace racing_bot {
             imu_data.orientation_covariance[4] = orient_variances_[1];
             imu_data.orientation_covariance[8] = orient_variances_[2];
 
-            // RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 100, "Roll %f, pitch %f, yaw %f",
-            //                          filter_.getRoll(), filter_.getPitch(), filter_.getYaw());
+            RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 100, "Roll %f, pitch %f, yaw %f",
+                                     filter_.getRoll(), filter_.getPitch(), filter_.getYaw());
 
             // Transfer the message to the robot base_link frame
             sensor_msgs::msg::Imu imu_data_transformed;

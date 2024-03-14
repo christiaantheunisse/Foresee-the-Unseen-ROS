@@ -9,9 +9,9 @@ odom_node:
         # do_broadcast_transform: True
 
         # Wheel radius and base are tuned after measuring
-        wheel_radius: 0.0329 # [m] double (0.033)
+        wheel_radius: 0.0315 # [m] double (0.033)
         ticks_per_rev: 3840. # double
-        wheel_base: 0.1405 # [m] double (0.145) NOT SURE
+        wheel_base: 0.152 # [m] double (0.145) NOT SURE
 
         # Amount of seconds to use previous updates of the wheel encoders to calculate the velocity and position(encoders update freq = 50 Hz)
         max_history_time: 0.15  # [s]
