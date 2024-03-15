@@ -18,7 +18,7 @@ odom_node:
 
         # do_broadcast_transform: true # set this in the launch file
         # 0.01 m on position and 10 deg = 0.17 rad on rotation
-        pose_variances: [0.01, 0.01, 0.01, 0.17, 0.17, 0.17] # position [x, y, z] orientation [roll, pitch, yaw]
+        pose_variances: [0.01, 0.01, 0., 0., 0., 0.01] # position [x, y, z] orientation [roll, pitch, yaw]
         # only linear.x and angular.z is used
         twist_variances: [0.03, 0.0, 0.0, 0.0, 0.0, 0.04] # linear [x', y', z'] angular [roll', pitch', yaw']
 

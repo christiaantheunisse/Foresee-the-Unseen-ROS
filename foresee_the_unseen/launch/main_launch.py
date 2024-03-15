@@ -229,16 +229,16 @@ def generate_launch_description():
         executable="odometry_node",
         parameters=[
             PathJoinSubstitution([FindPackageShare("racing_bot_odometry"), "config", "odometry_node.yaml"]),
-            {"do_broadcast_transform": NotSubstitution(use_ekf)},  # Use either this or ekf transform (set in ekf.yaml)
+            {"do_broadcast_transform": True},  # Use either this or ekf transform (set in ekf.yaml)
         ],
     )
-    local_localization_node = Node(
+    ekf_node = Node(
         package="robot_localization",
         executable="ekf_node",
         name="my_ekf_filter_node",
         output="screen",
-        # parameters=[PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "ekf.yaml"])],
-        parameters=[PathJoinSubstitution(["/home/christiaan/thesis/robot_ws/src/foresee_the_unseen/config/ekf.yaml"])],
+        parameters=[PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "ekf.yaml"])],
+        # parameters=[PathJoinSubstitution(["/home/christiaan/thesis/robot_ws/src/foresee_the_unseen/config/ekf.yaml"])],
         condition=IfCondition(use_ekf),  # use_ekf
     )
     datmo_node_with_remapping = Node(
@@ -264,43 +264,124 @@ def generate_launch_description():
         condition=IfCondition(save_topics),
     )
 
-    global_localization_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            # This launch file from the slam_toolbox is downloaded from github, because the version shipped with apt
-            # does not provide the same arguments.
-            PathJoinSubstitution(
-                [FindPackageShare("foresee_the_unseen"), "launch", "slam_toolbox", "localization_launch.py"]
-            )
-        ),
-        launch_arguments={
-            "slam_params_file": PathJoinSubstitution(
-                [FindPackageShare("foresee_the_unseen"), "config", "mapper_params_localization.yaml"]
+    from launch.actions import GroupAction
+    from launch_ros.actions import SetRemap
+
+    slam_launch_with_remapping = GroupAction(
+        actions=[
+            SetRemap(src="/pose", dst="/slam_pose"),  # remapping for the nodes in the launch files
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    # This launch file from the slam_toolbox is downloaded from github, because the version shipped with apt
+                    # does not provide the same arguments.
+                    PathJoinSubstitution(
+                        [FindPackageShare("foresee_the_unseen"), "launch", "slam_toolbox", "localization_launch.py"]
+                    )
+                ),
+                launch_arguments={
+                    "slam_params_file": PathJoinSubstitution(
+                        [FindPackageShare("foresee_the_unseen"), "config", "mapper_params_localization_ekf.yaml"]
+                    ),
+                    "map_file_name": PathJoinSubstitution([map_files_dir, map_file]),
+                    # "autostart": False,
+                }.items(),
+                condition=IfCondition(
+                    AndSubstitution(use_ekf, EqualsSubstitution(slam_mode, "localization"))
+                ),  # use_ekf and slam_mode == "localization"
             ),
-            "map_file_name": PathJoinSubstitution([map_files_dir, map_file]),
-            # "autostart": False,
-        }.items(),
-        condition=IfCondition(
-            AndSubstitution(NotSubstitution(record_rosbag), EqualsSubstitution(slam_mode, "localization"))
-        ),  # (not record_rosbag) and (slam_mode == "localization")
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    # This launch file from the slam_toolbox is downloaded from github, because the version shipped with apt
+                    # does not provide the same arguments.
+                    PathJoinSubstitution(
+                        [FindPackageShare("foresee_the_unseen"), "launch", "slam_toolbox", "online_async_launch.py"]
+                    )
+                ),
+                launch_arguments={
+                    "slam_params_file": PathJoinSubstitution(
+                        [FindPackageShare("foresee_the_unseen"), "config", "mapper_params_online_async_ekf.yaml"]
+                    ),
+                }.items(),
+                condition=IfCondition(
+                    AndSubstitution(use_ekf, EqualsSubstitution(slam_mode, "mapping"))
+                ),  # use_ekf and slam_mode == "mapping"
+            ),
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    # This launch file from the slam_toolbox is downloaded from github, because the version shipped with apt
+                    # does not provide the same arguments.
+                    PathJoinSubstitution(
+                        [FindPackageShare("foresee_the_unseen"), "launch", "slam_toolbox", "localization_launch.py"]
+                    )
+                ),
+                launch_arguments={
+                    "slam_params_file": PathJoinSubstitution(
+                        [FindPackageShare("foresee_the_unseen"), "config", "mapper_params_localization.yaml"]
+                    ),
+                    "map_file_name": PathJoinSubstitution([map_files_dir, map_file]),
+                    # "autostart": False,
+                }.items(),
+                condition=IfCondition(
+                    AndSubstitution(NotSubstitution(use_ekf), EqualsSubstitution(slam_mode, "localization"))
+                ),  # not use_ekf and slam_mode == "localization"
+            ),
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    # This launch file from the slam_toolbox is downloaded from github, because the version shipped with apt
+                    # does not provide the same arguments.
+                    PathJoinSubstitution(
+                        [FindPackageShare("foresee_the_unseen"), "launch", "slam_toolbox", "online_async_launch.py"]
+                    )
+                ),
+                launch_arguments={
+                    "slam_params_file": PathJoinSubstitution(
+                        [FindPackageShare("foresee_the_unseen"), "config", "mapper_params_online_async.yaml"]
+                    ),
+                }.items(),
+                condition=IfCondition(
+                    AndSubstitution(NotSubstitution(use_ekf), EqualsSubstitution(slam_mode, "mapping"))
+                ),  # use_ekf and slam_mode == "mapping"
+            ),
+        ]
     )
 
-    global_localization_and_mapping_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            # This launch file from the slam_toolbox is downloaded from github, because the version shipped with apt
-            # does not provide the same arguments.
-            PathJoinSubstitution(
-                [FindPackageShare("foresee_the_unseen"), "launch", "slam_toolbox", "online_async_launch.py"]
-            )
-        ),
-        launch_arguments={
-            "slam_params_file": PathJoinSubstitution(
-                [FindPackageShare("foresee_the_unseen"), "config", "mapper_params_online_async.yaml"]
-            ),
-        }.items(),
-        condition=IfCondition(
-            AndSubstitution(NotSubstitution(record_rosbag), EqualsSubstitution(slam_mode, "mapping"))
-        ),  # (not record_rosbag) and (slam_mode = "mapping")
-    )
+    # global_localization_launch = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource(
+    #         # This launch file from the slam_toolbox is downloaded from github, because the version shipped with apt
+    #         # does not provide the same arguments.
+    #         PathJoinSubstitution(
+    #             [FindPackageShare("foresee_the_unseen"), "launch", "slam_toolbox", "localization_launch.py"]
+    #         )
+    #     ),
+    #     launch_arguments={
+    #         "slam_params_file": PathJoinSubstitution(
+    #             [FindPackageShare("foresee_the_unseen"), "config", "mapper_params_localization.yaml"]
+    #         ),
+    #         "map_file_name": PathJoinSubstitution([map_files_dir, map_file]),
+    #         # "autostart": False,
+    #     }.items(),
+    #     condition=IfCondition(
+    #         AndSubstitution(NotSubstitution(record_rosbag), EqualsSubstitution(slam_mode, "localization"))
+    #     ),  # (not record_rosbag) and (slam_mode == "localization")
+    # )
+
+    # global_localization_and_mapping_launch = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource(
+    #         # This launch file from the slam_toolbox is downloaded from github, because the version shipped with apt
+    #         # does not provide the same arguments.
+    #         PathJoinSubstitution(
+    #             [FindPackageShare("foresee_the_unseen"), "launch", "slam_toolbox", "online_async_launch.py"]
+    #         )
+    #     ),
+    #     launch_arguments={
+    #         "slam_params_file": PathJoinSubstitution(
+    #             [FindPackageShare("foresee_the_unseen"), "config", "mapper_params_online_async.yaml"]
+    #         ),
+    #     }.items(),
+    #     condition=IfCondition(
+    #         AndSubstitution(NotSubstitution(record_rosbag), EqualsSubstitution(slam_mode, "mapping"))
+    #     ),  # (not record_rosbag) and (slam_mode = "mapping")
+    # )
 
     planner_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -410,14 +491,13 @@ def generate_launch_description():
             controller_node,
             trajectory_node,
             imu_node,
-            local_localization_node,
+            ekf_node,
             datmo_node_with_remapping,
             datmo_node_without_remapping,
             save_topics_node,
             # launch files
             lidar_launch,
-            global_localization_launch,
-            global_localization_and_mapping_launch,
+            slam_launch_with_remapping,
             planner_launch,
             # transforms
             static_trans_base_link_to_laser,
