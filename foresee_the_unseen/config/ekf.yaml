@@ -17,10 +17,15 @@ my_ekf_filter_node:
         # https://answers.ros.org/question/50870/what-frame-is-sensor_msgsimuorientation-relative-to/
         odom0: /odom
         # Pose (position and orientation) is in the header.frame_id (odom) and Twist (linear and angular velocity) is in the child_frame_id (base_link)
-        odom0_config: [true, true, false,    # x, y, z
-                       false, false, true ,     # roll, pitch, yaw
-                       false, true, false,    # x', y', z'
-                       false, false, false,    # roll', pitch', yaw'
+        # odom0_config: [true, true, false,    # x, y, z
+        #                false, false, true ,     # roll, pitch, yaw
+        #                false, true, false,    # x', y', z'
+        #                false, false, false,    # roll', pitch', yaw'
+        #                false, false, false]    # x'', y'', z''
+        odom0_config: [false, false, false,    # x, y, z
+                       false, false, false ,     # roll, pitch, yaw
+                       true, true, false,    # x', y', z'
+                       false, false, true,    # roll', pitch', yaw'
                        false, false, false]    # x'', y'', z''
         odom0_queue_size: 2
         odom0_differential: false

@@ -31,7 +31,12 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 ################ Record Ros Bag ##################
 ### $ ros2 bag record -o some_name /scan /wheel_encoders /imu_data ###
+### $ ros2 bag record -o tune_ekf /scan /wheel_encoders /imu_data /visualization/trajectory ###
 ##################################################
+
+################################################ Run localization on laptop ###############################################################################################################################################
+# ros2 launch foresee_the_unseen localization_launch.py slam_params_file:=/home/christiaan/thesis/robot_ws/src/foresee_the_unseen/config/mapper_params_localization.yaml map_file_name:=$ROS_MAP_FILES_DIR/on_the_floor ###
+###########################################################################################################################################################################################################################
 
 ######## Get tf2_ros tree ##############
 ### $ ros2 run tf2_tools view_frames ###

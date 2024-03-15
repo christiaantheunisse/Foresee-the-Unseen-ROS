@@ -83,7 +83,7 @@ namespace tf2 {
     template <>
     inline void doTransform(const sensor_msgs::msg::Imu &imu_in, sensor_msgs::msg::Imu &imu_out,
                             const geometry_msgs::msg::TransformStamped &t_in) {
-        imu_out.header = t_in.header;
+        imu_out.header = imu_in.header;
 
         // Discard translation, only use orientation for IMU transform
         Eigen::Quaternion<double> r(t_in.transform.rotation.w, t_in.transform.rotation.x, t_in.transform.rotation.y,

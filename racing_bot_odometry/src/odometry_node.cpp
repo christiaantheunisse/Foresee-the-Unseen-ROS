@@ -116,7 +116,8 @@ namespace racing_bot {
                 }
             }
             if (time == 0.) {
-                RCLCPP_WARN(this->get_logger(), "The total time is 0.");
+                RCLCPP_WARN(this->get_logger(), "The total time for velocity calculations is 0. Queue size: %lu",
+                            pose_changes.size());
             } else {
                 linear_speed_ = distance / time;
                 angular_speed_ = angle / time;
