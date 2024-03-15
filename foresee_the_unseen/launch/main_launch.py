@@ -88,8 +88,9 @@ def generate_launch_description():
     slam_mode_launch_argument = DeclareLaunchArgument(
         "slam_mode",
         default_value=TextSubstitution(text="disabled"),
-        choices=["mapping", "localization", "disabled"],
-        description="Which mode of the slam_toolbox to use: SLAM, only localization or don't use.",
+        choices=["mapping", "localization", "elsewhere", "disabled"],
+        description="Which mode of the slam_toolbox to use: SLAM (=mapping), only localization (=localization),"
+        + " on another device (=elsewhere) or don't use so map frame is odom frame (=disabled).",
     )
     map_file_launch_arg = DeclareLaunchArgument(
         "map_file",
