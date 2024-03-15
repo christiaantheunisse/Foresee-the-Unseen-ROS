@@ -18,11 +18,6 @@ my_ekf_filter_node:
         # Slides: https://roscon.ros.org/2015/presentations/robot_localization.pdf
         odom0: /odom
         # Pose (position and orientation) is in the header.frame_id (odom) and Twist (linear and angular velocity) is in the child_frame_id (base_link)
-        # odom0_config: [true, true, false,    # x, y, z
-        #                false, false, true ,     # roll, pitch, yaw
-        #                false, true, false,    # x', y', z'
-        #                false, false, false,    # roll', pitch', yaw'
-        #                false, false, false]    # x'', y'', z''
         odom0_config: [false, false, false,    # x, y, z
                        false, false, false ,     # roll, pitch, yaw
                        true, true, false,    # x', y', z'
@@ -30,9 +25,6 @@ my_ekf_filter_node:
                        false, false, false]    # x'', y'', z''
         odom0_queue_size: 2
         odom0_differential: false
-        # odom0_relative: false
-        # odom0_pose_rejection_threshold: 5.0
-        # odom0_twist_rejection_threshold: 1.0
 
         imu0: /imu_data
         imu0_config: [false, false, false,  # x, y, z
@@ -45,9 +37,6 @@ my_ekf_filter_node:
         imu0_differential: true # velocity from pose 
         imu0_relative: true  # first orientation is zero-point
         imu0_queue_size: 7
-        # imu0_pose_rejection_threshold: 0.8             
-        # imu0_twist_rejection_threshold: 0.8                
-        # imu0_linear_acceleration_rejection_threshold: 0.8  
 
         pose0: /slam_pose
         pose0_config: [true, true, false,  # x, y, z
@@ -58,10 +47,7 @@ my_ekf_filter_node:
         pose0_queue_size: 3
 
         # Uncertainty in the prediction step; uncertainty in the update step follows from the sensor messages
-        # process_noise_covariance: [999., 999., 999., 999., 999., 999., 999., 999., 999., 999., 999., 999., 999., 999., 999.]
         process_noise_covariance: [0.001, 0.001, 0., 0., 0., 0.001, 0.01, 0., 0., 0., 0., 0.01, 0.1, 0.1, 0.]
         # [x, y, z, roll, pitch, yaw, x', y', z', roll', pitch', yaw', x'', y'', z'']
-        # process_noise_covariance: [0.03, 0.03, 0., 0., 0., 0.01, 0.01, 0., 0., 0., 0., 0.01, 0.01, 0.01, 0.01]
-        # initial_estimate_covariance: [1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1.]
         initial_estimate_covariance: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
-        # initial_estimate_covariance: [0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001]
+        

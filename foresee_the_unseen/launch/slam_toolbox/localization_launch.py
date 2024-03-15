@@ -55,6 +55,7 @@ def generate_launch_description():
         name="slam_toolbox",
         output="screen",
         namespace="",
+        remappings=[("/pose", "/slam_pose")],
     )
 
     configure_event = EmitEvent(
