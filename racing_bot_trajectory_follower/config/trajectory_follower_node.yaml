@@ -12,10 +12,10 @@
     control_mode: acceleration # `velocity` or `acceleration`
 
     do_visualize_trajectory: True
-    do_store_data: True
-    log_directory: /home/christiaan/thesis/trajectory_log_files
+    do_store_data: False
+    log_directory: /home/ubuntu/trajectory_log_files
     
-    control_frequency: 30.0  # frequency of the motor controls send to the motor [Hz] (double)
+    control_frequency: 20.0  # frequency of the motor controls send to the motor [Hz] (double)
     velocity_p: 5.  # proportional constant for the speed
     steering_k: 0.5  # steering control gain (double)
 
