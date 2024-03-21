@@ -35,7 +35,7 @@ my_ekf_filter_node:
 
         imu0_nodelay: false
         imu0_differential: true # velocity from pose 
-        imu0_relative: true  # first orientation is zero-point
+        # imu0_relative: true  # first orientation is zero-point
         imu0_queue_size: 7
 
         pose0: /slam_pose

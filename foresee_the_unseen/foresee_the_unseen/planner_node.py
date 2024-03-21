@@ -13,7 +13,8 @@ from typing import Optional, List, Union, Tuple, Dict, TypedDict
 from commonroad.scenario.state import InitialState, State
 from commonroad.scenario.obstacle import Obstacle, ObstacleType, DynamicObstacle
 from commonroad.geometry.shape import Rectangle
-from commonroad.prediction.prediction import TrajectoryPrediction as TrajectoryCR
+# from commonroad.prediction.prediction import TrajectoryPrediction as TrajectoryCR
+from commonroad.scenario.trajectory import Trajectory as TrajectoryCR
 
 from shapely.geometry import Polygon as ShapelyPolygon
 
@@ -38,7 +39,7 @@ from sensor_msgs.msg import LaserScan
 from rcl_interfaces.msg import ParameterDescriptor
 from racing_bot_interfaces.msg import Trajectory as TrajectoryMsg
 
-from tf2_ros import TransformException
+from tf2_ros import TransformException  # type: ignore
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 
@@ -53,7 +54,7 @@ from foresee_the_unseen.lib.triangulate import triangulate, remove_redudant_vert
 from foresee_the_unseen.lib.filter_fov import get_underapproximation_fov
 
 
-Color = TypedDict("Color", {"r": float, "g": float, "r": float, "a": float})
+Color = TypedDict("Color", {"r": float, "g": float, "b": float, "a": float})
 RED: Color = {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}
 GREEN: Color = {"r": 0.0, "g": 1.0, "b": 0.0, "a": 1.0}
 BLUE: Color = {"r": 0.0, "g": 0.0, "b": 1.0, "a": 1.0}
@@ -87,7 +88,7 @@ class PlannerNode(Node):
 
         self.declare_parameter(
             "road_xml",
-            os.path.join(get_package_share_directory("foresee_the_unseen"), "resource/road_structure_15.xml"),
+            os.path.join(get_package_share_directory("foresee_the_unseen"), "resource/road_structure_15_reduced_points.xml"),
             ParameterDescriptor(
                 description="The file name of the .xml file in the resources folder describing the road structure"
             ),
@@ -217,8 +218,8 @@ class PlannerNode(Node):
         """Publishes the Commonroad trajectory on a topic for the trajectory follower node."""
         header_path = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.planner_frame)
         pose_stamped_list = []
-        init_time_step = trajectory.trajectory.state_list[0].time_step - 1
-        for state in trajectory.trajectory.state_list:
+        init_time_step = trajectory.state_list[0].time_step - 1
+        for state in trajectory.state_list:
             quaternion = Quaternion(
                 **{k: v for k, v in zip(["x", "y", "z", "w"], self.quaternion_from_yaw(state.orientation))}
             )
@@ -232,9 +233,10 @@ class PlannerNode(Node):
             pose_stamped_list.append(
                 PoseStamped(header=header_pose, pose=Pose(position=position, orientation=quaternion))
             )
-        twist_list = [Twist(linear=Vector3(x=float(s.velocity))) for s in trajectory.trajectory.state_list]
-        if trajectory.trajectory.state_list[0].acceleration is not None:
-            accel_list = [Accel(linear=Vector3(x=float(s.acceleration))) for s in trajectory.trajectory.state_list]
+        twist_list = [Twist(linear=Vector3(x=float(s.velocity))) for s in trajectory.state_list]
+        if trajectory.state_list[0].acceleration is not None:  
+            accel_list = [Accel(linear=Vector3(x=float(s.acceleration))) for s in trajectory.state_list]
+        # FIXME: accel_list might be undefined
         trajectory_msg = TrajectoryMsg(
             path=Path(header=header_path, poses=pose_stamped_list), velocities=twist_list, accelerations=accel_list
         )
@@ -425,7 +427,7 @@ class PlannerNode(Node):
             color_rgba_list = []
             cmap = mpl.cm.get_cmap("cool")
             # o in the list below is of type InitialState
-            positions = [o.position for o in trajectory.trajectory.state_list]
+            positions = [o.position for o in trajectory.state_list]
             for x, y in positions:
                 point_list.append(Point(x=x, y=y))
                 r, g, b, a = cmap(len(point_list) / len(positions))
@@ -638,7 +640,7 @@ class PlannerNode(Node):
             odom.twist.twist.linear.x,
             odom.twist.twist.linear.y,
         ]
-        velocity_along_heading = np.array([np.cos(yaw), np.sin(yaw)]) @ velocity
+        velocity_along_heading = float(np.array([np.cos(yaw), np.sin(yaw)]) @ velocity)
         return InitialState(
             position=np.array(position),
             orientation=yaw,  # along x is 0, ccw is positive
@@ -647,7 +649,7 @@ class PlannerNode(Node):
         )
 
     @staticmethod
-    def transform_state(state: State, transform: TransformStamped) -> State:
+    def transform_state(state: InitialState, transform: TransformStamped) -> State:
         """Converts a Commonroad state (2D position, orientation and scalar velocity) based on a ROS transform"""
         t_matrix = matrix_from_transform(transform)
         position = np.hstack((state.position, [0, 1]))  # 4D position

@@ -194,7 +194,8 @@ class TrajectoryFollowerNode(Node):
         self.do_store_data = self.get_parameter("do_store_data").get_parameter_value().bool_value
         self.log_directory = self.get_parameter("log_directory").get_parameter_value().string_value
         self.do_store_data = self.do_store_data if os.path.isdir(self.log_directory) else False
-        self.log_directory = create_log_directory(self.log_directory)
+        if self.do_store_data:
+            self.log_directory = create_log_directory(self.log_directory)
 
         self.control_frequency = self.get_parameter("control_frequency").get_parameter_value().double_value
         self.wheel_base_W = self.get_parameter("wheel_base_width").get_parameter_value().double_value

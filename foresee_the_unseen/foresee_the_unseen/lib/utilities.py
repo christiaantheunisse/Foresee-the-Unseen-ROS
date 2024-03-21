@@ -12,7 +12,11 @@ from commonroad.geometry.shape import Circle, Rectangle, Polygon as CommonRoadPo
 from commonroad.prediction.prediction import Occupancy, SetBasedPrediction
 from commonroad.scenario.state import InitialState
 from commonroad.scenario.obstacle import ObstacleType, DynamicObstacle, StaticObstacle
-from commonroad.planning.planning_problem import PlanningProblemSet, PlanningProblem, GoalRegion
+from commonroad.planning.planning_problem import (
+    PlanningProblemSet,
+    PlanningProblem,
+    GoalRegion,
+)
 from commonroad.common.util import Interval, AngleInterval
 from commonroad.scenario.scenario import Lanelet
 
@@ -21,10 +25,30 @@ import yaml
 from datetime import datetime
 
 
+class Logger:
+    @staticmethod
+    def info(message: str, **kwargs):
+        return
+
+    @staticmethod
+    def warn(message: str, **kwargs):
+        return
+
+
+class PrintLogger(Logger):
+    @staticmethod
+    def info(message: str, **kwargs):
+        print("[INFO]", message)
+
+    @staticmethod
+    def warn(message: str, **kwargs):
+        print("[WARN]", message)
+
+
 def ShapelyPolygon2Polygon(shapely_polygon):
     assert isinstance(shapely_polygon, ShapelyPolygon)
-    assert hasattr(shapely_polygon, 'exterior')
-    assert hasattr(shapely_polygon.exterior, 'xy')
+    assert hasattr(shapely_polygon, "exterior")
+    assert hasattr(shapely_polygon.exterior, "xy")
     vertices = np.array(list(zip(*shapely_polygon.exterior.xy)))
     return CommonRoadPolygon(vertices)
 
@@ -39,8 +63,11 @@ def Lanelet2ShapelyPolygon(lanelet):
     if not lanelet_shapely.is_valid:
         lanelet_shapely = lanelet_shapely.buffer(0)
         if not lanelet_shapely.is_valid:
-            print("Note: Shape of lanelet", lanelet.lanelet_id,
-                  "is not valid, creating valid shape with convex hull of lane boundary.")
+            print(
+                "Note: Shape of lanelet",
+                lanelet.lanelet_id,
+                "is not valid, creating valid shape with convex hull of lane boundary.",
+            )
             lanelet_shapely = MultiPoint(lanelet_boundary).convex_hull
             assert lanelet_shapely.is_valid, "Failed to convert lanelet to polygon"
     return lanelet_shapely
@@ -99,7 +126,7 @@ def cut_line(line, bottom_dis, top_dis):
     # Line cutting algorithm
     points = []
     points.append(line.interpolate(bottom_dis).coords[0])
-    
+
     for edge in line.coords:
         edge_dis = line.project(Point(edge))
         if bottom_dis < edge_dis:
@@ -113,99 +140,143 @@ def cut_line(line, bottom_dis, top_dis):
 
 
 def add_building_DEU_Ffb(scenario):
-    scenario.add_objects(StaticObstacle(scenario.generate_object_id(),
-                                        ObstacleType.BUILDING,
-                                        Rectangle(10, 15),
-                                        InitialState(position=np.array([83.6288, -11.5553]),
-                                              orientation=0, time_step=0)))
+    scenario.add_objects(
+        StaticObstacle(
+            scenario.generate_object_id(),
+            ObstacleType.BUILDING,
+            Rectangle(10, 15),
+            InitialState(
+                position=np.array([83.6288, -11.5553]), orientation=0, time_step=0
+            ),
+        )
+    )
 
 
 def add_no_stop_zone(scenario, planning_horizon, safety_margin=5):
     if scenario.scenario_id.map_name == "MyIntersection":
-        no_stop_shapely = [scenario.lanelet_network.find_lanelet_by_id(32).convert_to_polygon()._shapely_polygon]
+        no_stop_shapely = [
+            scenario.lanelet_network.find_lanelet_by_id(32)
+            .convert_to_polygon()
+            ._shapely_polygon
+        ]
     elif scenario.scenario_id.map_name == "Ffb":
         lanelet_1 = scenario.lanelet_network.find_lanelet_by_id(
-            49602).convert_to_polygon()
+            49602
+        ).convert_to_polygon()
         lanelet_2 = scenario.lanelet_network.find_lanelet_by_id(
-            49600).convert_to_polygon()
+            49600
+        ).convert_to_polygon()
         lanelet_3 = scenario.lanelet_network.find_lanelet_by_id(
-            49598).convert_to_polygon()
+            49598
+        ).convert_to_polygon()
         lanelet_4 = scenario.lanelet_network.find_lanelet_by_id(
-            49596).convert_to_polygon()
+            49596
+        ).convert_to_polygon()
         horizontal_lanes = polygon_union(
-            [lanelet_1._shapely_polygon, lanelet_2._shapely_polygon])
+            [lanelet_1._shapely_polygon, lanelet_2._shapely_polygon]
+        )
         vertical_lanes = polygon_union(
-            [lanelet_3._shapely_polygon, lanelet_4._shapely_polygon])
-        no_stop_shapely = polygon_intersection(
-            horizontal_lanes[0], vertical_lanes[0])
+            [lanelet_3._shapely_polygon, lanelet_4._shapely_polygon]
+        )
+        no_stop_shapely = polygon_intersection(horizontal_lanes[0], vertical_lanes[0])
 
         ### Remove lanelets
-        scenario.remove_lanelet(scenario.lanelet_network.find_lanelet_by_id(49598), referenced_elements=True)
-        scenario.remove_lanelet(scenario.lanelet_network.find_lanelet_by_id(49596), referenced_elements=True)
+        scenario.remove_lanelet(
+            scenario.lanelet_network.find_lanelet_by_id(49598), referenced_elements=True
+        )
+        scenario.remove_lanelet(
+            scenario.lanelet_network.find_lanelet_by_id(49596), referenced_elements=True
+        )
 
-    no_stop_polygon = ShapelyPolygon2Polygon(no_stop_shapely[0].convex_hull.buffer(safety_margin))
+    no_stop_polygon = ShapelyPolygon2Polygon(
+        no_stop_shapely[0].convex_hull.buffer(safety_margin)
+    )
 
-    dummy_state = InitialState(position=np.array(
-        [0, 0]), orientation=0, velocity=0, time_step=planning_horizon)
+    dummy_state = InitialState(
+        position=np.array([0, 0]), orientation=0, velocity=0, time_step=planning_horizon
+    )
     occupancy = Occupancy(planning_horizon, no_stop_polygon)
     prediction = SetBasedPrediction(planning_horizon, [occupancy])
 
-    no_stop_object = DynamicObstacle(scenario.generate_object_id(),
-                                     ObstacleType.ROAD_BOUNDARY,
-                                     no_stop_polygon,
-                                     dummy_state,
-                                     prediction)
+    no_stop_object = DynamicObstacle(
+        scenario.generate_object_id(),
+        ObstacleType.ROAD_BOUNDARY,
+        no_stop_polygon,
+        dummy_state,
+        prediction,
+    )
 
     scenario.add_objects(no_stop_object)
 
 
 def create_planning_problem_DEU_Ffb(configuration, planning_id=0):
-    initial_state = InitialState(position=np.array([configuration.get('initial_state_x'),
-                                             configuration.get('initial_state_y')]),
-                          orientation=configuration.get(
-                              'initial_state_orientation'),
-                          velocity=configuration.get('initial_state_velocity'),
-                          time_step=0,
-                          yaw_rate=0,
-                          slip_angle=0)
+    initial_state = InitialState(
+        position=np.array(
+            [configuration.get("initial_state_x"), configuration.get("initial_state_y")]
+        ),
+        orientation=configuration.get("initial_state_orientation"),
+        velocity=configuration.get("initial_state_velocity"),
+        time_step=0,
+        yaw_rate=0,
+        slip_angle=0,
+    )
 
-    goal_state = InitialState(position=Circle(2, np.array([configuration.get('goal_point_x'),
-                                           configuration.get('goal_point_y')])),
-                       orientation=AngleInterval(-np.pi, np.pi-0.0000000000001),
-                       velocity=Interval(0, 20),
-                       time_step=Interval(0, configuration.get('simulation_duration')))
+    goal_state = InitialState(
+        position=Circle(
+            2,
+            np.array(
+                [configuration.get("goal_point_x"), configuration.get("goal_point_y")]
+            ),
+        ),
+        orientation=AngleInterval(-np.pi, np.pi - 0.0000000000001),
+        velocity=Interval(0, 20),
+        time_step=Interval(0, configuration.get("simulation_duration")),
+    )
 
     goal_region = GoalRegion([goal_state])
     planning_problem = PlanningProblem(planning_id, initial_state, goal_region)
     return PlanningProblemSet([planning_problem])
 
+
 def clamp(x):
     return max(0, min(x, 255))
 
-def rgb2hex(r,g,b):
+
+def rgb2hex(r, g, b):
     return "#{0:02x}{1:02x}{2:02x}".format(clamp(r), clamp(g), clamp(b))
 
-def simulation_log(percieved_scenarios, sensor_range_shapes, directory, goal_reached, simulation_failed, Simulation_length):
+
+def simulation_log(
+    percieved_scenarios,
+    sensor_range_shapes,
+    directory,
+    goal_reached,
+    simulation_failed,
+    Simulation_length,
+):
     # Calculate the average occluded area
     occluded_areas = []
     for scenario, sensor_range_shape in zip(percieved_scenarios, sensor_range_shapes):
         occluded_areas.append(calculate_occluded_area(scenario, sensor_range_shape))
     print(len(occluded_areas))
-    average_occluded_area = sum(occluded_areas)/len(occluded_areas)
+    average_occluded_area = sum(occluded_areas) / len(occluded_areas)
 
     # Save the logs in a file
-    dict_file = {'Time': datetime.now(),
-                 'Average occluded area': average_occluded_area,
-                 'Goal reached': goal_reached,
-                 'Simulation failed': simulation_failed,
-                 'Simulation length': Simulation_length,
-                 'List of occluded areas': occluded_areas}
-    with open(directory + '/simulation_log.yaml', 'w') as file:
+    dict_file = {
+        "Time": datetime.now(),
+        "Average occluded area": average_occluded_area,
+        "Goal reached": goal_reached,
+        "Simulation failed": simulation_failed,
+        "Simulation length": Simulation_length,
+        "List of occluded areas": occluded_areas,
+    }
+    with open(directory + "/simulation_log.yaml", "w") as file:
         documents = yaml.dump(dict_file, file, sort_keys=False)
+
 
 def calculate_occluded_area(scenario, sensor_range_shape):
     # Find the shadow objects
-    shadows = scenario.obstacles_by_role_and_type(obstacle_type = ObstacleType.UNKNOWN)
+    shadows = scenario.obstacles_by_role_and_type(obstacle_type=ObstacleType.UNKNOWN)
 
     # Get all the polygons
     polygons = []
@@ -226,11 +297,20 @@ def calculate_occluded_area(scenario, sensor_range_shape):
     # Return the area
     return total_area
 
-def scenario_generation_log(directory, traffic_density, min_initial_vel, max_initial_vel, distance_to_intersection):
-    dict_file = {'Time': datetime.now(),
-                 'Traffic density': traffic_density,
-                 'Minimum initial velocity': min_initial_vel,
-                 'Maximum initial velicity': max_initial_vel,
-                 'Distance to intersection': distance_to_intersection}
-    with open(directory + '/scenario_generation_log.yaml', 'w') as file:
+
+def scenario_generation_log(
+    directory,
+    traffic_density,
+    min_initial_vel,
+    max_initial_vel,
+    distance_to_intersection,
+):
+    dict_file = {
+        "Time": datetime.now(),
+        "Traffic density": traffic_density,
+        "Minimum initial velocity": min_initial_vel,
+        "Maximum initial velicity": max_initial_vel,
+        "Distance to intersection": distance_to_intersection,
+    }
+    with open(directory + "/scenario_generation_log.yaml", "w") as file:
         documents = yaml.dump(dict_file, file, sort_keys=False)

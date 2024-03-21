@@ -10,6 +10,11 @@ initial_state_velocity: 0
 vehicle_type : car
 vehicle_length : 0.3
 vehicle_width : 0.18
+
+# Distance the rectangle shape has to move from the actual center point of the robot to fit the robot. 
+#  Positive values if the actual center point is more on the back and the left side of the robot.
+vehicle_length_offset : 0.05
+vehicle_width_offset : 0.0
 goal_point_x : -3
 goal_point_y : -0.13333
 
@@ -19,7 +24,8 @@ max_acceleration : 0.2
 max_deceleration : 0.2
 planning_horizon : 60
 safety_margin : 0.65
-minimum_distance_waypoint: 0.4
+minimum_distance_waypoint: 0.01
+max_dist_corner_smoothing: 0.1
 
 #SENSOR
 field_of_view_degrees : 360

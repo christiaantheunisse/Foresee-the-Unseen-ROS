@@ -35,7 +35,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 ##################################################
 
 ################################################ Run localization on laptop ###############################################################################################################################################
-# ros2 launch foresee_the_unseen localization_launch.py slam_params_file:=/home/christiaan/thesis/robot_ws/src/foresee_the_unseen/config/mapper_params_localization.yaml map_file_name:=$ROS_MAP_FILES_DIR/on_the_floor ###
+### ros2 launch foresee_the_unseen localization_launch.py slam_params_file:=/home/christiaan/thesis/robot_ws/src/foresee_the_unseen/config/mapper_params_localization.yaml map_file_name:=$ROS_MAP_FILES_DIR/on_the_floor ###
 ###########################################################################################################################################################################################################################
 
 ######## Get tf2_ros tree ##############
