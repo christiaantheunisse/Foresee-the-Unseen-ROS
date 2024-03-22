@@ -2,6 +2,7 @@ import numpy as np
 import math
 from typing import Optional, List, Union, Tuple, Any, TypedDict, Type
 import nptyping as npt
+import multiprocessing
 
 from commonroad.scenario.scenario import Scenario, LaneletNetwork
 from commonroad.scenario.trajectory import Trajectory
@@ -23,10 +24,7 @@ from shapely.geometry import Point
 from shapely.geometry import LineString
 
 Scalar = Union[float, int]
-PlanningResult = TypedDict(
-    "PlanningResult",
-    {"trajectory": Optional[Trajectory], "prediction": Optional[SetBasedPrediction]},
-)
+PlanningResult = TypedDict("PlanningResult", {"trajectory": Trajectory, "prediction": SetBasedPrediction})
 
 
 class PositionNotOnALane(Exception):
@@ -87,7 +85,6 @@ class Planner:
         self.max_dist_corner_smoothing = max_dist_corner_smoothing
 
         self.goal_reached = False
-
 
     @property
     def waypoints(self) -> npt.NDArray[npt.Shape["N, 2"], npt.Float]:
@@ -157,6 +154,8 @@ class Planner:
         elif isinstance(state.velocity, Interval):
             state.velocity.start = max(state.velocity.start, 0.0)
             state.velocity.end = max(state.velocity.end, 0.0)
+        else:
+            raise TypeError
         self.initial_state = state
         if self.waypoints is None:
             self.find_waypoints()
@@ -164,10 +163,12 @@ class Planner:
         self.update_passed_waypoints()
 
     def plan(self, scenario: Scenario) -> Tuple[Trajectory, SetBasedPrediction]:
-        """This function tries to find an as fast as possible path in a limited amount of time."""
-        # TODO: test and improve this!!!
+        """Finds the fastest possible trajectory by iterative trying different velocity profiles."""
+        # TODO: make comp time dependant
         if self.goal_reached:
             raise NoSafeTrajectoryFound
+
+        best_result_so_far: Optional[PlanningResult] = None
 
         loc_pos_error = 0.0
         loc_orient_error = 0.0
@@ -177,9 +178,6 @@ class Planner:
 
         velocity_profiles = self.generate_velocity_profiles()
         self.collision_checker = create_collision_checker(scenario)
-
-        best_result_so_far: PlanningResult = {"trajectory": None, "prediction": None}
-        best_result_so_far: PlanningResult = {"trajectory": None, "prediction": None}
 
         def check_velocity_profile(idx: int) -> bool:
             velocity_profile = velocity_profiles[idx]
@@ -193,10 +191,10 @@ class Planner:
             )
             is_safe = self.is_safe_trajectory(set_based_prediction)
             if is_safe:
-                best_result_so_far["trajectory"] = self.velocity_profile_to_state_list(
-                    velocity_profile
-                )
-                best_result_so_far["prediction"] = set_based_prediction
+                best_result_so_far = {
+                    "trajectory": self.velocity_profile_to_state_list(velocity_profile),
+                    "prediction": set_based_prediction,
+                }
 
             return is_safe
 
@@ -209,14 +207,9 @@ class Planner:
             step_N, current_N = N / 2, N / 2
             while step_N >= 0.5 and -1e-6 < current_N < N + 1e-6:
                 step_N /= 2
-                current_N -= (
-                    step_N if check_velocity_profile(round(current_N) - 1) else -step_N
-                )
+                current_N -= step_N if check_velocity_profile(round(current_N) - 1) else -step_N
 
-        if (
-            best_result_so_far["trajectory"] is not None
-            and best_result_so_far["prediction"] is not None
-        ):
+        if best_result_so_far is not None:
             return best_result_so_far["trajectory"], best_result_so_far["prediction"]
         else:
             raise NoSafeTrajectoryFound
@@ -225,19 +218,13 @@ class Planner:
         if isinstance(self.initial_state.velocity, Scalar):
             assert velocity_profile.ndim == 1
             velocity_profile_avg = velocity_profile
-            v_diffs = velocity_profile - np.insert(
-                velocity_profile[:-1], 0, self.initial_state.velocity
-            )
+            v_diffs = velocity_profile - np.insert(velocity_profile[:-1], 0, self.initial_state.velocity)
             accelerations = v_diffs / self.dt
         elif isinstance(self.initial_state.velocity, Interval):
             assert velocity_profile.ndim == 2
-            init_velocity = (
-                self.initial_state.velocity.start + self.initial_state.velocity.end
-            ) / 2
+            init_velocity = (self.initial_state.velocity.start + self.initial_state.velocity.end) / 2
             velocity_profile_avg = velocity_profile.mean(axis=1)
-            v_diffs = velocity_profile_avg - np.insert(
-                velocity_profile_avg[:-1], 0, init_velocity
-            )
+            v_diffs = velocity_profile_avg - np.insert(velocity_profile_avg[:-1], 0, init_velocity)
             accelerations = v_diffs / self.dt
 
         # use the 'trapezoidal rule' for integrating the velocity
@@ -246,37 +233,23 @@ class Planner:
         # velocity_trapez = (velocity_extend[:-1] + velocity_extend[1:]) / 2
         # dist = np.cumsum(velocity_trapez * self.dt)
         dist = np.cumsum(velocity_profile_avg * self.dt)
-        x_coords = np.interp(
-            dist, self.dist_along_points, self.waypoints_w_ego_pos[:, 0]
-        )
-        y_coords = np.interp(
-            dist, self.dist_along_points, self.waypoints_w_ego_pos[:, 1]
-        )
+        x_coords = np.interp(dist, self.dist_along_points, self.waypoints_w_ego_pos[:, 0])
+        y_coords = np.interp(dist, self.dist_along_points, self.waypoints_w_ego_pos[:, 1])
 
         # The trajectory orientation on the parts between the waypoints is constant, but the trajectory  orientation
         #  around the waypoints is smoothed. The smoothening happens within a distance of the minimum of
         #  (`self.max_dist_corner_smoothing`) and half of the length of the part between two waypoints.
-        dist_along_bef_points = self.dist_along_points[
-            1 + self.passed_waypoints : -1
-        ] - np.minimum(
+        dist_along_bef_points = self.dist_along_points[1 + self.passed_waypoints : -1] - np.minimum(
             np.diff(self.dist_along_points[self.passed_waypoints : -1]) / 2,
             self.max_dist_corner_smoothing,
         )
-        dist_along_aft_points = self.dist_along_points[
-            1 + self.passed_waypoints : -1
-        ] + np.minimum(
+        dist_along_aft_points = self.dist_along_points[1 + self.passed_waypoints : -1] + np.minimum(
             np.diff(self.dist_along_points[self.passed_waypoints + 1 :]) / 2,
             self.max_dist_corner_smoothing,
         )
-        dist_along_bef_aft_points = np.vstack(
-            (dist_along_bef_points, dist_along_aft_points)
-        ).T.flatten()
-        orientations_at_points = np.repeat(
-            self.orient_bw_points[self.passed_waypoints :], 2
-        )[1:-1]
-        orientations = np.interp(
-            dist, dist_along_bef_aft_points, orientations_at_points
-        )
+        dist_along_bef_aft_points = np.vstack((dist_along_bef_points, dist_along_aft_points)).T.flatten()
+        orientations_at_points = np.repeat(self.orient_bw_points[self.passed_waypoints :], 2)[1:-1]
+        orientations = np.interp(dist, dist_along_bef_aft_points, orientations_at_points)
 
         state_list = []
         for time_step, (
@@ -285,9 +258,7 @@ class Planner:
             orientation,
             velocity,
             acceleration,
-        ) in enumerate(
-            zip(x_coords, y_coords, orientations, velocity_profile_avg, accelerations)
-        ):
+        ) in enumerate(zip(x_coords, y_coords, orientations, velocity_profile_avg, accelerations, strict=True)):
             state = InitialState(
                 position=np.array([x_coord, y_coord]),
                 orientation=orientation,
@@ -305,15 +276,11 @@ class Planner:
             raise PositionNotOnALane(f"Current position: {self.initial_state.position}")
         starting_lanelets = []
         for lanelet_id in starting_lanelet_ids:
-            starting_lanelets.append(
-                self.lanelet_network.find_lanelet_by_id(lanelet_id)
-            )
+            starting_lanelets.append(self.lanelet_network.find_lanelet_by_id(lanelet_id))
 
         starting_lane = None
         for lanelet in starting_lanelets:
-            starting_lanes = lanelet.all_lanelets_by_merging_successors_from_lanelet(
-                lanelet, self.lanelet_network
-            )[0]
+            starting_lanes = lanelet.all_lanelets_by_merging_successors_from_lanelet(lanelet, self.lanelet_network)[0]
             for lane in starting_lanes:
                 lane_shape = Lanelet2ShapelyPolygon(lane)
                 if lane_shape.intersects(Point(*self.goal_point)):
@@ -332,12 +299,8 @@ class Planner:
         center_line_shapely = LineString(center_vertices)
         goal_shapely = Point(self.goal_point)
         dist_along_line = center_line_shapely.project(goal_shapely)
-        dists = np.cumsum(
-            np.linalg.norm(center_vertices[1:] - center_vertices[:-1], axis=1)
-        )
-        assert (
-            dist_along_line < dists[-1]
-        ), f"Goal point lies beyond the last waypoint: goal_point={self.goal_point}"
+        dists = np.cumsum(np.linalg.norm(center_vertices[1:] - center_vertices[:-1], axis=1))
+        assert dist_along_line < dists[-1], f"Goal point lies beyond the last waypoint: goal_point={self.goal_point}"
         idx_before = np.argmax(dist_along_line < dists)
         self.goal_waypoint_idx = idx_before + 1
 
@@ -354,13 +317,9 @@ class Planner:
             direction_vector = waypoint - self.initial_state.position
             angle_to_next_point = np.arctan2(*np.flip(direction_vector))
             angle_diff_to_next_point = abs(
-                (np.pi + angle_to_next_point - self.initial_state.orientation)
-                % (2 * np.pi)
-                - np.pi
+                (np.pi + angle_to_next_point - self.initial_state.orientation) % (2 * np.pi) - np.pi
             )
-            next_point_is_too_close = bool(
-                np.hypot(*direction_vector) < self.min_dist_waypoint
-            )
+            next_point_is_too_close = bool(np.hypot(*direction_vector) < self.min_dist_waypoint)
             if next_point_is_too_close or (angle_diff_to_next_point > np.pi / 2):
                 self.passed_waypoints += 1
             else:
@@ -387,11 +346,7 @@ class Planner:
         if velocity <= reference_speed:
             # maximum reachable velocity within the limited distance
             v_reachable = np.sqrt(
-                2
-                * (dist_to_goal + velocity**2 / (2 * max_acc))
-                * max_acc
-                * max_dec
-                / (max_acc + max_dec)
+                2 * (dist_to_goal + velocity**2 / (2 * max_acc)) * max_acc * max_dec / (max_acc + max_dec)
             )
 
             if v_reachable < reference_speed:
@@ -402,9 +357,7 @@ class Planner:
                 num_incr_steps = t_increasing / dt
 
                 acc_profile[: int(num_incr_steps)] = max_acc
-                acc_profile[int(num_incr_steps)] = max_acc * (
-                    num_incr_steps % 1
-                ) + max_dec * (num_incr_steps % -1)
+                acc_profile[int(num_incr_steps)] = max_acc * (num_incr_steps % 1) + max_dec * (num_incr_steps % -1)
             else:
                 #              .--.     <- reference velocity (reached)
                 # v-profile:  /    \
@@ -424,30 +377,20 @@ class Planner:
                 acc_profile[int(num_incr_steps)] = (
                     num_incr_steps % 1 * max_acc
                 )  # smaller acc to just reach reference speed
-                acc_profile[
-                    int(num_incr_steps) + 1 : int(num_incr_steps + num_horz_steps)
-                ] = 0  # constant velocity
-                acc_profile[-int(num_decr_steps) - 1 :] = (
-                    -max_dec
-                )  # ensure that decelerating part is long enough
-        elif (
-            velocity > reference_speed
-        ):  # the current velocity is above the reference velocity
+                acc_profile[int(num_incr_steps) + 1 : int(num_incr_steps + num_horz_steps)] = 0  # constant velocity
+                acc_profile[-int(num_decr_steps) - 1 :] = -max_dec  # ensure that decelerating part is long enough
+        elif velocity > reference_speed:  # the current velocity is above the reference velocity
             #             \                 #             \
             # v-profile:   '--.     OR      # v-profile:   \      <- reference velocity
             #                  \            #               \
             t_decreasing = (velocity - reference_speed) / max_dec
             num_decr_steps = t_decreasing / dt
-            t_horizontal = max(
-                (dist_to_goal - velocity**2 / (2 * max_dec)) / reference_speed, 0
-            )
+            t_horizontal = max((dist_to_goal - velocity**2 / (2 * max_dec)) / reference_speed, 0)
             num_horz_steps = t_horizontal / dt
 
             acc_profile[: int(num_decr_steps)] = -max_dec
             acc_profile[int(num_decr_steps)] = num_decr_steps % 1 * -max_dec
-            acc_profile[
-                int(num_decr_steps) + 1 : int(num_decr_steps + num_horz_steps)
-            ] = 0
+            acc_profile[int(num_decr_steps) + 1 : int(num_decr_steps + num_horz_steps)] = 0
 
         velocity_incs = velocity + np.cumsum(acc_profile * dt)
         max_velocity_increase = np.max(velocity_incs - velocity_decs)
@@ -459,12 +402,8 @@ class Planner:
         assert velocity_decs[-1] <= 0
 
         velocity_profiles = []
-        for velocity_increase in np.linspace(
-            max_velocity_increase, 0, number_of_trajectories
-        ):
-            unbounded_velocity_profile = np.minimum(
-                velocity_incs, velocity_increase + velocity_decs
-            )
+        for velocity_increase in np.linspace(max_velocity_increase, 0, number_of_trajectories):
+            unbounded_velocity_profile = np.minimum(velocity_incs, velocity_increase + velocity_decs)
             velocity_profile = np.maximum(unbounded_velocity_profile, 0)
             velocity_profiles.append(velocity_profile)
 
@@ -495,13 +434,9 @@ class Planner:
                 dist_to_goal=dist_to_goal,
             )
             velocity_profiles_max = velocity_profiles_max[..., np.newaxis]
-            v_range = (
-                self.initial_state.velocity.end - self.initial_state.velocity.start
-            )
+            v_range = self.initial_state.velocity.end - self.initial_state.velocity.start
             velocity_profiles_min = np.maximum(velocity_profiles_max - v_range, 0)
-            velocity_profiles = np.concatenate(
-                (velocity_profiles_min, velocity_profiles_max), axis=2
-            )
+            velocity_profiles = np.concatenate((velocity_profiles_min, velocity_profiles_max), axis=2)
         else:
             raise TypeError
 
@@ -524,13 +459,11 @@ class Planner:
 
         # Get the indices of the intermediate points within the distance range
         idcs_interm_start = np.argmax(
-            start_dist_time
-            <= np.tile(dist_along_points.reshape(-1, 1), (1, len(start_dist_time))),
+            start_dist_time <= np.tile(dist_along_points.reshape(-1, 1), (1, len(start_dist_time))),
             axis=0,
         )
         idcs_interm_end = np.argmax(
-            end_dist_time
-            <= np.tile(dist_along_points.reshape(-1, 1), (1, len(end_dist_time))),
+            end_dist_time <= np.tile(dist_along_points.reshape(-1, 1), (1, len(end_dist_time))),
             axis=0,
         )
         th_start, th_end = (
@@ -538,18 +471,14 @@ class Planner:
             orient_bw_points[idcs_interm_end - 1],
         )
         idcs_in_range = np.vstack((idcs_interm_start, idcs_interm_end)).T
-        assert (
-            not 0 in idcs_in_range
-        ), "The first waypoint lies within the predicted occupancy."
+        assert not 0 in idcs_in_range, "The first waypoint lies within the predicted occupancy."
         # return an array with 3d vectors consisting of x-coordinate, y-coordinate and yaw angle (theta (th)) for all the
         #  points within the distance range where the orientation changes.
         xyth_start, xyth_end = (
             np.vstack((x_start, y_start, th_start)).T,
             np.vstack((x_end, y_end, th_end)).T,
         )
-        for start_point, end_point, point_idcs in zip(
-            xyth_start, xyth_end, idcs_in_range
-        ):
+        for start_point, end_point, point_idcs in zip(xyth_start, xyth_end, idcs_in_range):
             points_in_range = np.hstack(
                 (
                     waypoints[slice(*point_idcs)],
@@ -570,17 +499,11 @@ class Planner:
         th_diffs = th[2:] - th[1:-1]
         th[1:-1] += th_diffs / 2
         w_scale_interm_points = 1 / np.cos(th_diffs / 2)
-        left_ws = np.hstack(
-            ([left_width], w_scale_interm_points * left_width, [left_width])
-        )
-        right_ws = np.hstack(
-            ([right_width], w_scale_interm_points * right_width, [right_width])
-        )
+        left_ws = np.hstack(([left_width], w_scale_interm_points * left_width, [left_width]))
+        right_ws = np.hstack(([right_width], w_scale_interm_points * right_width, [right_width]))
         # Calculate the points that make up the polygon
         perp_vecs = np.array([np.cos(th + np.pi / 2), np.sin(th + np.pi / 2)]).T
-        left_points, right_points = xy + perp_vecs * left_ws.reshape(
-            -1, 1
-        ), xy - perp_vecs * right_ws.reshape(-1, 1)
+        left_points, right_points = xy + perp_vecs * left_ws.reshape(-1, 1), xy - perp_vecs * right_ws.reshape(-1, 1)
 
         # The polygon might intersect with itself at to the start and end point
         d_end = np.hypot(*np.diff(xy[-2:], axis=0).T)
@@ -588,24 +511,10 @@ class Planner:
         d_th_end = th[-1] - th[-2]
         d_th_start = th[1] - th[0]
 
-        left_points = (
-            left_points if np.tan(d_th_end) * left_width < d_end else left_points[:-1]
-        )
-        right_points = (
-            right_points
-            if np.tan(-d_th_end) * right_width < d_end
-            else right_points[:-1]
-        )
-        left_points = (
-            left_points
-            if np.tan(d_th_start) * left_width < d_start
-            else left_points[1:]
-        )
-        right_points = (
-            right_points
-            if np.tan(-d_th_start) * right_width < d_start
-            else right_points[1:]
-        )
+        left_points = left_points if np.tan(d_th_end) * left_width < d_end else left_points[:-1]
+        right_points = right_points if np.tan(-d_th_end) * right_width < d_end else right_points[:-1]
+        left_points = left_points if np.tan(d_th_start) * left_width < d_start else left_points[1:]
+        right_points = right_points if np.tan(-d_th_start) * right_width < d_start else right_points[1:]
 
         if not left_points.size or not right_points.size:
             raise FlatOccupancy
@@ -661,45 +570,19 @@ class Planner:
         )
 
         # overapproximate added length and width because of the rotation errors
-        orient_error_l = (
-            np.sin(loc_orient_error + traj_orient_error)
-            * max(veh_left_w, veh_right_w)
-            / 2
-        )
-        orient_error_w = (
-            np.sin(loc_orient_error + traj_orient_error)
-            * max(veh_front_l, veh_back_l)
-            / 2
-        )
+        orient_error_l = np.sin(loc_orient_error + traj_orient_error) * max(veh_left_w, veh_right_w) / 2
+        orient_error_w = np.sin(loc_orient_error + traj_orient_error) * max(veh_front_l, veh_back_l) / 2
 
         # Calculate the range of reachable positions along the centerline of the path given the errors and (optionally)
         #  velocity range
         velocity_profile = np.maximum(velocity_profile, 0)
         if velocity_profile.ndim == 1:  # single velocities
             # TODO: trapezoidal integration rule
-            vel_integr = np.cumsum(
-                velocity_profile * self.dt
-            )  # the distance along the centerline
-            dist_time_max = (
-                vel_integr
-                + veh_front_l
-                + loc_pos_error
-                + traj_long_error
-                + orient_error_l
-            )
-            dist_time_min = (
-                vel_integr
-                - veh_back_l
-                - loc_pos_error
-                - traj_long_error
-                + orient_error_l
-            )
-            width_offset_left = (
-                veh_left_w + loc_pos_error + traj_lat_error + orient_error_w
-            )
-            width_offset_right = (
-                veh_right_w + loc_pos_error + traj_lat_error + orient_error_w
-            )
+            vel_integr = np.cumsum(velocity_profile * self.dt)  # the distance along the centerline
+            dist_time_max = vel_integr + veh_front_l + loc_pos_error + traj_long_error + orient_error_l
+            dist_time_min = vel_integr - veh_back_l - loc_pos_error - traj_long_error + orient_error_l
+            width_offset_left = veh_left_w + loc_pos_error + traj_lat_error + orient_error_w
+            width_offset_right = veh_right_w + loc_pos_error + traj_lat_error + orient_error_w
         elif velocity_profile.ndim == 2:  # range of velocities
             # TODO: trapezoidal integration rule
             # the distance along centerline for highest velocity
@@ -707,26 +590,10 @@ class Planner:
             # TODO: trapezoidal integration rule
             # the distance along centerline for lowest velocity
             vel_integr_min = np.cumsum(velocity_profile[:, 0] * self.dt)
-            dist_time_max = (
-                vel_integr_max
-                + veh_front_l
-                + loc_pos_error
-                + traj_long_error
-                + orient_error_l
-            )
-            dist_time_min = (
-                vel_integr_min
-                - veh_back_l
-                - loc_pos_error
-                - traj_long_error
-                + orient_error_l
-            )
-            width_offset_left = (
-                veh_left_w + loc_pos_error + traj_lat_error + orient_error_w
-            )
-            width_offset_right = (
-                veh_right_w + loc_pos_error + traj_lat_error + orient_error_w
-            )
+            dist_time_max = vel_integr_max + veh_front_l + loc_pos_error + traj_long_error + orient_error_l
+            dist_time_min = vel_integr_min - veh_back_l - loc_pos_error - traj_long_error + orient_error_l
+            width_offset_left = veh_left_w + loc_pos_error + traj_lat_error + orient_error_w
+            width_offset_right = veh_right_w + loc_pos_error + traj_lat_error + orient_error_w
         else:
             raise TypeError
 
@@ -742,9 +609,7 @@ class Planner:
                 self.waypoints_w_ego_pos,
             )
         ):
-            polygon = self.xy_ths_to_polygon(
-                xy_ths, left_width=width_offset_left, right_width=width_offset_right
-            )
+            polygon = self.xy_ths_to_polygon(xy_ths, left_width=width_offset_left, right_width=width_offset_right)
             occupancies.append(Occupancy(idx + 1 + self.initial_state.time_step, polygon))  # type: ignore
 
         return SetBasedPrediction(self.initial_state.time_step, occupancies)  # type: ignore
@@ -777,14 +642,10 @@ def visualize_velocity_profiles(
     ts = np.arange(velocity_profiles.shape[1] + 1) * dt
     if isinstance(initial_velocity, Scalar):
         # add current velocity for visualization
-        velocity_profiles = np.hstack(
-            (np.full((len(velocity_profiles), 1), initial_velocity), velocity_profiles)
-        )
+        velocity_profiles = np.hstack((np.full((len(velocity_profiles), 1), initial_velocity), velocity_profiles))
 
         axs[0].plot(ts, velocity_profiles.T)
-        axs[0].scatter(
-            0, initial_velocity, color="k", zorder=10, label="initial velocity"
-        )
+        axs[0].scatter(0, initial_velocity, color="k", zorder=10, label="initial velocity")
         for v_profile in velocity_profiles:
             dist = trapezoidal_integrate(np.insert(v_profile, 0, initial_velocity), dt)
             axs[1].plot((np.arange(len(v_profile)) + 1) * dt, dist)
@@ -822,15 +683,9 @@ def visualize_velocity_profiles(
 
         initial_velocity_avg = (initial_velocity.start + initial_velocity.end) / 2
         for v_profile in velocity_profiles:
-            dist_min = trapezoidal_integrate(
-                np.insert(v_profile[:, 0], 0, initial_velocity.start), dt
-            )
-            dist_avg = trapezoidal_integrate(
-                np.insert(v_profile.mean(axis=1), 0, initial_velocity_avg), dt
-            )
-            dist_max = trapezoidal_integrate(
-                np.insert(v_profile[:, 1], 0, initial_velocity.end), dt
-            )
+            dist_min = trapezoidal_integrate(np.insert(v_profile[:, 0], 0, initial_velocity.start), dt)
+            dist_avg = trapezoidal_integrate(np.insert(v_profile.mean(axis=1), 0, initial_velocity_avg), dt)
+            dist_max = trapezoidal_integrate(np.insert(v_profile[:, 1], 0, initial_velocity.end), dt)
 
             axs[1].plot(ts, dist_avg)
             axs[1].fill_between(ts, dist_min, dist_max, alpha=0.2)

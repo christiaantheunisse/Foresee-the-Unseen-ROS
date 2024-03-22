@@ -2,14 +2,15 @@ import os
 import yaml
 import pickle
 import copy
+import time
 import numpy as np
-from typing import Dict, Optional, Callable, List, Type
+from typing import Dict, Optional, Callable, List, Type, Tuple
 
 from commonroad.common.file_reader import CommonRoadFileReader
 from commonroad.scenario.scenario import Scenario
 from commonroad.scenario.trajectory import Trajectory
 from commonroad.scenario.state import InitialState, State
-from commonroad.prediction.prediction import TrajectoryPrediction
+from commonroad.prediction.prediction import SetBasedPrediction
 from commonroad.scenario.obstacle import (
     DynamicObstacle,
     ObstacleType,
@@ -67,9 +68,8 @@ class ForeseeTheUnseen:
         self.road_xml = road_xml
         self.logger = logger
         self.frequency = frequency
-        self.throttle_duration = (
-            3  # set the throttle duration for the logging when used with ROS
-        )
+        self.throttle_duration = 3  # set the throttle duration for the logging when used with ROS
+        self.do_track_exec_time = False
 
         if self.logger is not None:
             assert hasattr(self.logger, "info") and hasattr(
@@ -98,12 +98,10 @@ class ForeseeTheUnseen:
 
         # Setup the objects necessary for the planner
         ego_shape = Rectangle(
-            self.configuration.get("vehicle_length"),
-            self.configuration.get("vehicle_width"),
+            self.configuration["vehicle_length"],
+            self.configuration["vehicle_width"],
         )
-        ego_vehicle_initial_state = InitialState(
-            position=np.array([0, 0]), orientation=0, velocity=0, time_step=0
-        )
+        ego_vehicle_initial_state = InitialState(position=np.array([0, 0]), orientation=0, velocity=0, time_step=0)
         self.ego_vehicle = DynamicObstacle(
             self.scenario.generate_object_id(),
             ObstacleType.CAR,
@@ -114,31 +112,28 @@ class ForeseeTheUnseen:
         self.sensor = Sensor(
             position=self.ego_vehicle.initial_state.position,
             orientation=self.ego_vehicle.initial_state.orientation,
-            field_of_view=self.configuration.get("field_of_view_degrees")
-            * 2
-            * np.pi
-            / 360,
-            min_resolution=self.configuration.get("min_resolution"),
-            view_range=self.configuration.get("view_range"),
+            field_of_view=self.configuration["field_of_view_degrees"] * 2 * np.pi / 360,
+            min_resolution=self.configuration["min_resolution"],
+            view_range=self.configuration["view_range"],
         )
 
         self.occ_track = Occlusion_tracker(
             scenario=self.scenario,
-            min_vel=self.configuration.get("min_velocity"),
-            max_vel=self.configuration.get("max_velocity"),
-            min_shadow_area=self.configuration.get("min_shadow_area"),
-            prediction_horizon=self.configuration.get("prediction_horizon"),
-            steps_per_occ_pred=self.configuration.get("prediction_step_size"),
+            min_vel=self.configuration["min_velocity"],
+            max_vel=self.configuration["max_velocity"],
+            min_shadow_area=self.configuration["min_shadow_area"],
+            prediction_horizon=self.configuration["prediction_horizon"],
+            steps_per_occ_pred=self.configuration["prediction_step_size"],
             dt=1 / self.frequency,
-            tracking_enabled=self.configuration.get("tracking_enabled"),
+            tracking_enabled=self.configuration["tracking_enabled"],
         )
 
         self.planner = Planner(
             lanelet_network=self.scenario.lanelet_network,
             initial_state=self.ego_vehicle.initial_state,
             goal_point=[
-                self.configuration.get("goal_point_x"),
-                self.configuration.get("goal_point_y"),
+                self.configuration["goal_point_x"],
+                self.configuration["goal_point_y"],
             ],
             vehicle_size=(
                 self.configuration["vehicle_length"],
@@ -205,7 +200,7 @@ class ForeseeTheUnseen:
         return self.detected_obstacles
 
     @staticmethod
-    def update_vehicle(vehicle: DynamicObstacle, state: State):
+    def update_vehicle(vehicle: DynamicObstacle, state: InitialState):
         """Update the ego vehicle based on the state"""
         return DynamicObstacle(
             obstacle_id=vehicle.obstacle_id,
@@ -214,18 +209,26 @@ class ForeseeTheUnseen:
             initial_state=state,
         )
 
-    def update_scenario(self):
+    def update_scenario(
+        self,
+    ) -> Tuple[
+        List[DynamicObstacle],
+        ShapelyPolygon,
+        Optional[Trajectory],
+        ShapelyPolygon,
+        Optional[SetBasedPrediction],
+    ]:
         """Gets called at a certain rate"""
+        if self.do_track_exec_time:
+            execution_times = {}
+            start_time = time.time()
+            interm_time = time.time()
+
         # Do not require detected obstacles
         # TODO: Remove detected obstacles
-        self.detected_obstacles = (
-            [] if self.detected_obstacles is None else self.detected_obstacles
-        )
+        self.detected_obstacles = [] if self.detected_obstacles is None else self.detected_obstacles
         no_obstacles = self.detected_obstacles is None
-        no_updated_state = (
-            self.ego_vehicle_state is None
-            or self.ego_vehicle_state.time_step < self.planner_step
-        )
+        no_updated_state = self.ego_vehicle_state is None or self.ego_vehicle_state.time_step < self.planner_step
         if no_obstacles or no_updated_state:
             if no_obstacles:
                 self.logger_warn("No detected obstacles available")
@@ -234,22 +237,26 @@ class ForeseeTheUnseen:
             raise NoUpdatePossible()
 
         percieved_scenario = copy.deepcopy(self.scenario)  # start with a clean scenario
-        self.ego_vehicle = self.update_vehicle(
-            self.ego_vehicle, self.ego_vehicle_state
-        )  # update ego vehicle
+        self.ego_vehicle = self.update_vehicle(self.ego_vehicle, self.ego_vehicle_state)
         percieved_scenario.add_objects(self.get_obstacles(percieved_scenario))  # type: ignore
 
+        if self.do_track_exec_time:
+            execution_times["init + make scenario"] = time.time() - interm_time
+            interm_time = time.time()
+
         # Update the sensor view:
-        if self.configuration.get("laser_scan_fov"):
+        if self.configuration.get("laser_scan_fov", False):
             sensor_view = self.sensor_view  # Based on laser scan
             if sensor_view is None:
                 self.logger_warn("No FOV available")
                 raise NoUpdatePossible()
         else:
             self.sensor.update(self.ego_vehicle.initial_state)
-            sensor_view = self.sensor.get_sensor_view(
-                percieved_scenario
-            )  # Based on detected obstacles
+            sensor_view = self.sensor.get_sensor_view(percieved_scenario)  # Based on detected obstacles
+
+        if self.do_track_exec_time:
+            execution_times["sensor_view"] = time.time() - interm_time
+            interm_time = time.time()
 
         # Update the tracker with the new sensor view and get the shadows and their prediction
         self.occ_track.update(sensor_view, self.ego_vehicle.initial_state.time_step)
@@ -263,31 +270,39 @@ class ForeseeTheUnseen:
             self.configuration.get("safety_margin"),
         )  # should not be necessary in every timestep
 
+        if self.do_track_exec_time:
+            execution_times["shadows + no_stop"] = time.time() - interm_time
+            interm_time = time.time()
+
         try:
             self.planner.update(self.ego_vehicle.initial_state)  # type: ignore
-            # FIXME: Throws an attribute error if the ego_vehicle or goal_position is not on the road
-            collision_free_trajectory, set_based_prediction = self.planner.plan(
-                percieved_scenario
-            )
-            self.ego_vehicle.prediction = set_based_prediction
-            self.trajectory = collision_free_trajectory
-            # self.logger.info("new trajectory found")
+            trajectory, prediction = self.planner.plan(percieved_scenario)
+            self.ego_vehicle.prediction = prediction
+            # self.trajectory = trajectory
         except NoSafeTrajectoryFound:
-            pass
+            self.logger_info("No safe trajectory found")
+            trajectory, prediction = None, None
         except PositionNotOnALane as p:
+            trajectory, prediction = None, None
             self.logger_warn(f"Position not on a lane: {p.message}")
             raise NoUpdatePossible()
         except GoalAndPositionNotSameLane as g:
+            trajectory, prediction = None, None
             self.logger_warn(f"Goal and position not on the same lane: {g.message}")
             raise NoUpdatePossible()
+
+        if self.do_track_exec_time:
+            execution_times["planner"] = time.time() - interm_time
+            interm_time = time.time()
 
         percieved_scenario.add_objects(self.ego_vehicle)
 
         if self.log_dir is not None:
             log_dict = {
-                "ego_vehicle": self.ego_vehicle,
+                "ego_vehicle": self.ego_vehicle,  # with the set_based_prediction
                 "scenario": percieved_scenario,
                 "sensor_view": sensor_view,
+                "trajectory": trajectory,
             }
             filename = os.path.join(self.log_dir, f"step {self.planner_step}.pickle")
             with open(filename, "wb") as handle:
@@ -296,4 +311,15 @@ class ForeseeTheUnseen:
         self.planner_step += 1
         # self.logger.info(f"Scenario updated: planner step = {self.planner_step}")
 
-        return shadow_obstacles, sensor_view, self.trajectory, no_stop_zone_obstacle
+        if self.do_track_exec_time:
+            execution_times["logging"] = time.time() - interm_time
+            execution_times["total"] = time.time() - start_time
+            self.logger.info(str({key: (value * 1000) for key, value in execution_times.items()}))
+
+        return (
+            shadow_obstacles,
+            sensor_view,
+            trajectory,
+            no_stop_zone_obstacle,
+            prediction,
+        )  # type: ignore

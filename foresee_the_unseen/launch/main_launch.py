@@ -31,7 +31,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 ################ Record Ros Bag ##################
 ### $ ros2 bag record -o some_name /scan /wheel_encoders /imu_data ###
-### $ ros2 bag record -o tune_ekf /scan /wheel_encoders /imu_data /visualization/trajectory ###
+### $ ros2 bag record -o debug_trajectory1 /scan /wheel_encoders /imu_data /trajectory ###
 ##################################################
 
 ################################################ Run localization on laptop ###############################################################################################################################################

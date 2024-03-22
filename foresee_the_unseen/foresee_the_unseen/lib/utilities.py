@@ -153,6 +153,7 @@ def add_building_DEU_Ffb(scenario):
 
 
 def add_no_stop_zone(scenario, planning_horizon, safety_margin=5):
+
     if scenario.scenario_id.map_name == "MyIntersection":
         no_stop_shapely = [
             scenario.lanelet_network.find_lanelet_by_id(32)
@@ -207,6 +208,8 @@ def add_no_stop_zone(scenario, planning_horizon, safety_margin=5):
     )
 
     scenario.add_objects(no_stop_object)
+
+    return no_stop_object
 
 
 def create_planning_problem_DEU_Ffb(configuration, planning_id=0):

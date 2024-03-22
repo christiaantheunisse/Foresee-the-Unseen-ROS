@@ -43,9 +43,9 @@ class StoreTopicsNode(Node):
                 # TopicToStore(topic_name="/scan/road_env", message_type=LaserScan),
                 # TopicToStore(topic_name="/wheel_encoders", message_type=EncoderValues),
                 TopicToStore(topic_name="/odom", message_type=Odometry),
-                TopicToStore(topic_name="/odometry/filtered", message_type=Odometry),
-                TopicToStore(topic_name="/slam_pose", message_type=PoseWithCovarianceStamped),
-                # TopicToStore(topic_name="/trajectory", message_type=Trajectory),
+                # TopicToStore(topic_name="/odometry/filtered", message_type=Odometry),
+                # TopicToStore(topic_name="/slam_pose", message_type=PoseWithCovarianceStamped),
+                TopicToStore(topic_name="/trajectory", message_type=Trajectory),
                 # TopicToStore(topic_name="/cmd_motor", message_type=Int16MultiArray),
             ]
         )
@@ -53,7 +53,7 @@ class StoreTopicsNode(Node):
 
         transforms_to_store: List[Tuple[str, str, float]] = []
 
-        transforms_to_store.extend([("map", "odom", 10)])
+        # transforms_to_store.extend([("map", "odom", 10)])
 
         # hardcoded directory
         self.base_dir = "/home/christiaan/thesis/topic_store_files"

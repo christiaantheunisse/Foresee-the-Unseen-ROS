@@ -13,7 +13,7 @@ from typing import Optional, List, Union, Tuple, Dict, TypedDict
 from commonroad.scenario.state import InitialState, State
 from commonroad.scenario.obstacle import Obstacle, ObstacleType, DynamicObstacle
 from commonroad.geometry.shape import Rectangle
-# from commonroad.prediction.prediction import TrajectoryPrediction as TrajectoryCR
+from commonroad.prediction.prediction import SetBasedPrediction
 from commonroad.scenario.trajectory import Trajectory as TrajectoryCR
 
 from shapely.geometry import Polygon as ShapelyPolygon
@@ -60,6 +60,7 @@ GREEN: Color = {"r": 0.0, "g": 1.0, "b": 0.0, "a": 1.0}
 BLUE: Color = {"r": 0.0, "g": 0.0, "b": 1.0, "a": 1.0}
 YELLOW: Color = {"r": 1.0, "g": 1.0, "b": 0.0, "a": 1.0}
 BLACK: Color = {"r": 0.0, "g": 0.0, "b": 0.0, "a": 1.0}
+TRANSPARENT_BLACK: Color = {"r": 0.0, "g": 0.0, "b": 0.0, "a": 0.3}
 TRANSPARENT_BLUE: Color = {"r": 0.0, "g": 0.0, "b": 1.0, "a": 0.6}
 TRANSPARENT_GREY: Color = {"r": 0.5, "g": 0.5, "b": 0.5, "a": 0.8}
 
@@ -88,7 +89,9 @@ class PlannerNode(Node):
 
         self.declare_parameter(
             "road_xml",
-            os.path.join(get_package_share_directory("foresee_the_unseen"), "resource/road_structure_15_reduced_points.xml"),
+            os.path.join(
+                get_package_share_directory("foresee_the_unseen"), "resource/road_structure_15_reduced_points.xml"
+            ),
             ParameterDescriptor(
                 description="The file name of the .xml file in the resources folder describing the road structure"
             ),
@@ -181,17 +184,19 @@ class PlannerNode(Node):
         """Calls the Foresee The Unseen Planner and updates the visualization"""
         start_time = time.time()
         try:
-            shadow_obstacles, sensor_view, trajectory, no_stop_zone = self.foresee_the_unseen_planner.update_scenario()
+            shadow_obstacles, sensor_view, trajectory, no_stop_zone, prediction = (
+                self.foresee_the_unseen_planner.update_scenario()
+            )
         except NoUpdatePossible:
             self.get_logger().warn("No planner update step possible", throttle_duration_sec=self.throttle_duration)
-            shadow_obstacles, sensor_view, trajectory, no_stop_zone = None, None, None, None
+            shadow_obstacles, sensor_view, trajectory, no_stop_zone, prediction = None, None, None, None, None
 
         if trajectory is not None:
             self.publish_trajectory(trajectory)
 
         start_viz_time = time.time()
         if self.do_visualize:
-            self.visualization_callback(shadow_obstacles, sensor_view, trajectory, no_stop_zone)
+            self.visualization_callback(shadow_obstacles, sensor_view, trajectory, no_stop_zone, prediction)
 
         end_time = time.time()
         tot_time = end_time - start_time
@@ -216,7 +221,8 @@ class PlannerNode(Node):
 
     def publish_trajectory(self, trajectory: TrajectoryCR) -> None:
         """Publishes the Commonroad trajectory on a topic for the trajectory follower node."""
-        header_path = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.planner_frame)
+        start_stamp = self.get_clock().now()
+        header_path = Header(stamp=start_stamp.to_msg(), frame_id=self.planner_frame)
         pose_stamped_list = []
         init_time_step = trajectory.state_list[0].time_step - 1
         for state in trajectory.state_list:
@@ -227,15 +233,17 @@ class PlannerNode(Node):
             time_diff = (state.time_step - init_time_step) * 1 / self.frequency
             header_pose = Header(
                 stamp=(
-                    self.get_clock().now() + Duration(seconds=int(time_diff), nanoseconds=int((time_diff % 1) * 1e9))
+                    start_stamp + Duration(seconds=int(time_diff), nanoseconds=int((time_diff % 1) * 1e9))
                 ).to_msg()
             )
             pose_stamped_list.append(
                 PoseStamped(header=header_pose, pose=Pose(position=position, orientation=quaternion))
             )
         twist_list = [Twist(linear=Vector3(x=float(s.velocity))) for s in trajectory.state_list]
-        if trajectory.state_list[0].acceleration is not None:  
+        if trajectory.state_list[0].acceleration is not None:
             accel_list = [Accel(linear=Vector3(x=float(s.acceleration))) for s in trajectory.state_list]
+        else:
+            accel_list = []
         # FIXME: accel_list might be undefined
         trajectory_msg = TrajectoryMsg(
             path=Path(header=header_path, poses=pose_stamped_list), velocities=twist_list, accelerations=accel_list
@@ -249,6 +257,7 @@ class PlannerNode(Node):
         sensor_view: Optional[ShapelyPolygon] = None,
         trajectory: Optional[TrajectoryCR] = None,
         no_stop_zone: Optional[Obstacle] = None,
+        prediction: Optional[SetBasedPrediction] = None,
     ):
         # TODO: Only remove markers that need to and only add markers that need to be added every time step
         markers = []
@@ -266,6 +275,8 @@ class PlannerNode(Node):
             markers += self.get_shadow_marker(shadow_obstacles)
         if no_stop_zone is not None:
             markers += self.get_no_stop_zone_marker(no_stop_zone)
+        if prediction is not None:
+            markers += self.get_prediction_marker(prediction)
 
         self.marker_array_publisher.publish(MarkerArray(markers=markers))
 
@@ -473,7 +484,7 @@ class PlannerNode(Node):
         linewidth: float = 0.1,
         z: float = 0.0,
     ) -> List[Marker]:
-        """Converts an array of polygons which is defined by a numpy array (N, 2) to a ROS marker message"""
+        """Makes ROS marker messages based on an array of polygons where each polygon is defined by a numpy array (N, 2)"""
         header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.planner_frame)
         markers = []
         if use_triangulation:  # make filled polygons with triangles
@@ -568,6 +579,29 @@ class PlannerNode(Node):
         """Visualize the no stop zone at an intersection"""
         polygon = zone.obstacle_shape.vertices
         return self.polygons_to_ros_marker(polygons=[polygon], color=YELLOW, namespace="no stop zone", linewidth=0.05)
+
+    def get_prediction_marker(self, prediction: SetBasedPrediction) -> List[Marker]:
+        """Visualize the prediction of the future occupancies"""
+        polygons = [o.shape.vertices for o in prediction.occupancy_set]
+        markers_lines = self.polygons_to_ros_marker(
+                polygons=polygons,
+                color=TRANSPARENT_BLACK,
+                namespace="set based prediction",
+                use_triangulation=False,
+                linewidth=0.01,
+                z=0.01,
+            )
+        if self.use_triangulation:
+            markers_filled = self.polygons_to_ros_marker(
+                polygons=polygons,
+                color=TRANSPARENT_BLACK,
+                namespace="set based prediction",
+                use_triangulation=True,
+                z=0.01,
+            )
+            markers_lines.extend(markers_filled)
+
+        return markers_lines
 
     # OTHER
 
