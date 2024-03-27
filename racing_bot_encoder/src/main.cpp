@@ -1,7 +1,9 @@
 #include "encoder_node.hpp"
 
-// Encoder pins
-const int LEFT_PIN_A = 16, LEFT_PIN_B = 19, RIGHT_PIN_A = 20, RIGHT_PIN_B = 21;
+// Encoder pins Racing Bot
+// const int LEFT_PIN_A = 16, LEFT_PIN_B = 19, RIGHT_PIN_A = 20, RIGHT_PIN_B = 21;
+// Encoder pins obstacle robot WRAKIE
+const int LEFT_PIN_A = 13, LEFT_PIN_B = 12, RIGHT_PIN_A = 21, RIGHT_PIN_B = 19;
 
 int main(int argc, char *argv[])
 {

@@ -139,6 +139,7 @@ class TrajectoryFollowerNode(Node):
     """
 
     CONTROL_MODES = ["acceleration", "velocity"]
+    FOLLOW_MODES = ["position", "time"]
 
     def __init__(self):
         super().__init__("trajectory_follower_node")
@@ -154,6 +155,7 @@ class TrajectoryFollowerNode(Node):
         self.declare_parameter("odom_topic", "odom")
         self.declare_parameter("motor_command_topic", "cmd_motor")
 
+        self.declare_parameter("follow_mode", "time")  # Options: acceleration, velocity
         self.declare_parameter("control_mode", "acceleration")  # Options: acceleration, velocity
 
         self.declare_parameter("do_visualize_trajectory", False)
@@ -174,6 +176,9 @@ class TrajectoryFollowerNode(Node):
         self.declare_parameter("max_velocity", 0.7)
         self.declare_parameter("velocity_pwm_rate", 0.6)
 
+        self.declare_parameter("do_follow_preplanned", False)
+        self.declare_parameter("traject_file", "none")
+
         self.map_frame = self.get_parameter("map_frame").get_parameter_value().string_value
         self.planner_frame = self.get_parameter("planner_frame").get_parameter_value().string_value
         self.odom_frame = self.get_parameter("odom_frame").get_parameter_value().string_value
@@ -183,6 +188,11 @@ class TrajectoryFollowerNode(Node):
         self.odom_topic = self.get_parameter("odom_topic").get_parameter_value().string_value
         self.motor_cmd_topic = self.get_parameter("motor_command_topic").get_parameter_value().string_value
 
+        self.follow_mode = self.get_parameter("follow_mode").get_parameter_value().string_value
+        assert self.follow_mode in self.FOLLOW_MODES, (
+            f"follow mode '{self.follow_mode}' is invalid."
+            + f" Should be one of the following options: {self.FOLLOW_MODES}"
+        )
         self.control_mode = self.get_parameter("control_mode").get_parameter_value().string_value
         assert self.control_mode in self.CONTROL_MODES, (
             f"control mode '{self.control_mode}' is invalid."
@@ -210,6 +220,9 @@ class TrajectoryFollowerNode(Node):
         self.max_abs_vel = self.get_parameter("max_velocity").get_parameter_value().double_value
         self.vel_pwm_rate = self.get_parameter("velocity_pwm_rate").get_parameter_value().double_value
 
+        self.do_follow_prep = self.get_parameter("do_follow_preplanned").get_parameter_value().bool_value
+        self.traject_file = self.get_parameter("traject_file").get_parameter_value().string_value
+
         self.max_steering_angle, self.max_norm_vel, self.max_norm_acc = self.parameters_ddmr(
             wheel_base_width=self.wheel_base_W,
             wheel_base_length=self.wheel_base_L,
@@ -231,7 +244,19 @@ class TrajectoryFollowerNode(Node):
         self.cum_error = 0
 
         self.create_subscription(Odometry, self.odom_topic, self.odom_callback, 5)
-        self.create_subscription(TrajectoryMsg, self.trajectory_topic, self.trajectory_callback, 5)
+        if not self.do_follow_prep:
+            self.create_subscription(TrajectoryMsg, self.trajectory_topic, self.trajectory_callback, 5)
+        else:
+            with open(self.traject_file, "rb") as f:
+                traject_dict = pickle.load(f)
+            self.trajectory = Trajectory(
+                xys=np.array(traject_dict["positions"]),
+                yaws=np.array(traject_dict["orientations"]),
+                vs=np.array(traject_dict["velocities"]),
+                accs=np.array(traject_dict["accelerations"]),
+                stamps=np.array(traject_dict["stamps"])
+                + (np.array(self.get_clock().now().seconds_nanoseconds()) * [1, 1e-9]).sum(),
+            )
         # self.create_timer(0.5, self.trajectory_callback)
         self.motor_publisher = self.create_publisher(Int16MultiArray, self.motor_cmd_topic, 10)
         self.traj_marker_publisher = self.create_publisher(MarkerArray, self.traj_marker_topic, 1)
@@ -430,12 +455,12 @@ class TrajectoryFollowerNode(Node):
         traj_frame = msg.path.header.frame_id
         positions = np.array([[p.pose.position.x, p.pose.position.y] for p in msg.path.poses])
         quaternions = [p.pose.orientation for p in msg.path.poses]
-        yaws = [
+        yaws = np.array([
             euler_from_quaternion(*map(lambda attr: getattr(q, attr), ["x", "y", "z", "w"]))[2] for q in quaternions
-        ]
-        velocities = [v.linear.x for v in msg.velocities]
-        accelerations = [a.linear.x for a in msg.accelerations]
-        stamps = [pose.header.stamp.sec + pose.header.stamp.nanosec * 1e-9 for pose in msg.path.poses]
+        ])
+        velocities = np.array([v.linear.x for v in msg.velocities])
+        accelerations = np.array([a.linear.x for a in msg.accelerations])
+        stamps = np.array([pose.header.stamp.sec + pose.header.stamp.nanosec * 1e-9 for pose in msg.path.poses])
         trajectory = Trajectory(
             xys=positions,
             yaws=yaws,
@@ -493,15 +518,6 @@ class TrajectoryFollowerNode(Node):
 
     def first_future_idx(self) -> int:
         """Finds the index of the first future stamp on the trajectory"""
-        # if self.first_call:
-        #     self.counter += 1
-        #     if self.counter > 60:
-        #         self.first_call = False
-        #         self.trajectory.stamps = (
-        #             self.trajectory.stamps + (np.array(self.get_clock().now().seconds_nanoseconds()) * [1, 1e-9]).sum()
-        #         )
-        #     else:
-        #         return None
         current = np.sum(np.array(self.get_clock().now().seconds_nanoseconds()) * [1, 1e-9])
         mask = self.trajectory.stamps > current
         target_idx = np.argmax(mask) if mask.sum() > 0 else -1  # index of first True and else the last element
@@ -549,8 +565,11 @@ class TrajectoryFollowerNode(Node):
             return
 
         # calculate target index
-        # target_idx = self.get_closest_idx()
-        target_idx = self.first_future_idx()
+        if self.follow_mode == "position":
+            target_idx = self.get_closest_idx()
+        elif self.follow_mode == "time":
+            target_idx = self.first_future_idx()
+
         if target_idx is None:
             self.visualize_trajectory()
             return
