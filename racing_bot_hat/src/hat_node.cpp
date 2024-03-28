@@ -36,10 +36,15 @@ namespace racing_bot
     const int in1Pin[] = {10, 11, 4, 5};
     const int in2Pin[] = {9, 12, 3, 6};
 
-    HatNode::HatNode() : Node(NODE_NAME), left_reverse(false), right_reverse(false)
+    HatNode::HatNode() : Node("hat_node")
     {
-      this->declare_parameter("left_reverse", left_reverse);
-      this->declare_parameter("right_reverse", right_reverse);
+      this->declare_parameter("left_reverse", false);
+      this->declare_parameter("right_reverse", false);
+      this->declare_parameter("motor_topic", "cmd_motor");
+
+      _direction[0] = this->get_parameter("left_reverse").as_bool() ? -1 : 1;
+      _direction[1] = this->get_parameter("right_reverse").as_bool() ? -1 : 1;
+      _motor_topic = this->get_parameter("motor_topic").as_string();
 
       motor_commands_subscription_ = this->create_subscription<std_msgs::msg::Int16MultiArray>(
           SUBSCRIPTION_TOPIC, MOTOR_QUEUE_SIZE,
@@ -51,17 +56,6 @@ namespace racing_bot
       configureModeRegisters();
       disableSleepMode();
 
-      timer = this->create_wall_timer(1000ms, std::bind(&HatNode::parameter_timer_callback, this));
-    }
-
-    void HatNode::parameter_timer_callback() {
-      auto left_reverse_updated = this->get_parameter("left_reverse").as_bool();
-      auto right_reverse_updated = this->get_parameter("right_reverse").as_bool();
-      if (left_reverse != left_reverse_updated || right_reverse != right_reverse_updated) {
-        left_reverse = left_reverse_updated;
-        right_reverse = right_reverse_updated;
-        RCLCPP_INFO(this->get_logger(), "Parameters are update");
-      }
     }
 
     void HatNode::configureModeRegisters()
@@ -83,7 +77,7 @@ namespace racing_bot
     {
       for (int i = 0; i < 4; i++)
       {
-        motorSetSpeed(i, motor_message->data[i]);
+        motorSetSpeed(i, _direction[i] * motor_message->data[i]);
       }
     }
 

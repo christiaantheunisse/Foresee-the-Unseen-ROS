@@ -3,6 +3,7 @@
 
 #include "std_msgs/msg/int16_multi_array.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include <string>
 
 namespace racing_bot
 {
@@ -23,7 +24,6 @@ namespace racing_bot
       HatNode();
       void turnOffMotors();
       void setPWMFrequency(int frequency);
-      void parameter_timer_callback();
 
     private:
       void motorCommandsCallBack(const std_msgs::msg::Int16MultiArray::SharedPtr motor_message);
@@ -44,9 +44,8 @@ namespace racing_bot
       int pi_handle_;
       int i2c_handle_;
 
-      bool left_reverse;
-      bool right_reverse;
-      rclcpp::TimerBase::SharedPtr timer;
+      int _direction[4];
+      std::string _motor_topic;
     };
   }
 }
