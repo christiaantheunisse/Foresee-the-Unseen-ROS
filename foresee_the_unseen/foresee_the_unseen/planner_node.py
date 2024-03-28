@@ -281,8 +281,11 @@ class PlannerNode(Node):
         self.marker_array_publisher.publish(MarkerArray(markers=markers))
 
     def laser_callback(self, msg):
-        self.filter_pointcloud(msg)
-        self.fov_from_laser(msg)
+        try:
+            filtered_msg = self.filter_pointcloud(msg)
+            self.fov_from_laser(filtered_msg)
+        except TransformException as e:
+            pass
 
     def datmo_callback(self, msg: TrackArray):
         """Converts DATMO detections to Commonroad obstacles"""
@@ -605,16 +608,13 @@ class PlannerNode(Node):
 
     # OTHER
 
-    def filter_pointcloud(self, scan_msg: LaserScan) -> None:
+    def filter_pointcloud(self, scan_msg: LaserScan) -> LaserScan:
         """Filter points from the pointcloud from the lidar to reduce the computation of the `datmo` package."""
         # Convert the ranges to a pointcloud
         laser_frame = scan_msg.header.frame_id
         points_laser = self.laserscan_to_pointcloud(scan_msg)
         points_laser = np.nan_to_num(points_laser, nan=1e99, posinf=1e99, neginf=-1e99)
-        try:
-            points_map = self.transform_pointcloud(points_laser, self.map_frame, laser_frame)
-        except TransformException:
-            return None
+        points_map = self.transform_pointcloud(points_laser, self.map_frame, laser_frame)
 
         # filter the points based on a polygon
         A, B = self.laser_filter_matrices
@@ -632,6 +632,8 @@ class PlannerNode(Node):
         new_msg.ranges = ranges
 
         self.filtered_laser_publisher.publish(new_msg)
+
+        return new_msg
 
     def fov_from_laser(self, scan_msg: LaserScan) -> None:
         """Determines the field of view (FOV) based on the LaserScan message"""
@@ -670,20 +672,16 @@ class PlannerNode(Node):
             odom.pose.pose.orientation.w,
         ]
         _, _, yaw = euler_from_quaternion(*quaternion)
-        velocity = [
-            odom.twist.twist.linear.x,
-            odom.twist.twist.linear.y,
-        ]
-        velocity_along_heading = float(np.array([np.cos(yaw), np.sin(yaw)]) @ velocity)
+        velocity = odom.twist.twist.linear.x
         return InitialState(
             position=np.array(position),
             orientation=yaw,  # along x is 0, ccw is positive
-            velocity=velocity_along_heading,
+            velocity=velocity,
             time_step=time_step,
         )
 
     @staticmethod
-    def transform_state(state: InitialState, transform: TransformStamped) -> State:
+    def transform_state(state: InitialState, transform: TransformStamped) -> InitialState:
         """Converts a Commonroad state (2D position, orientation and scalar velocity) based on a ROS transform"""
         t_matrix = matrix_from_transform(transform)
         position = np.hstack((state.position, [0, 1]))  # 4D position

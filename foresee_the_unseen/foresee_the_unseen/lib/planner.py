@@ -24,7 +24,9 @@ from shapely.geometry import Point
 from shapely.geometry import LineString
 
 Scalar = Union[float, int]
-PlanningResult = TypedDict("PlanningResult", {"trajectory": Trajectory, "prediction": SetBasedPrediction})
+PlanningResult = TypedDict(
+    "PlanningResult", {"trajectory": Optional[Trajectory], "prediction": Optional[SetBasedPrediction]}
+)
 
 
 class PositionNotOnALane(Exception):
@@ -168,7 +170,7 @@ class Planner:
         if self.goal_reached:
             raise NoSafeTrajectoryFound
 
-        best_result_so_far: Optional[PlanningResult] = None
+        best_result_so_far: PlanningResult = {"trajectory": None, "prediction": None}
 
         loc_pos_error = 0.0
         loc_orient_error = 0.0
@@ -191,10 +193,8 @@ class Planner:
             )
             is_safe = self.is_safe_trajectory(set_based_prediction)
             if is_safe:
-                best_result_so_far = {
-                    "trajectory": self.velocity_profile_to_state_list(velocity_profile),
-                    "prediction": set_based_prediction,
-                }
+                best_result_so_far["trajectory"] = self.velocity_profile_to_state_list(velocity_profile)
+                best_result_so_far["prediction"] = set_based_prediction
 
             return is_safe
 
@@ -205,11 +205,11 @@ class Planner:
 
             N = len(velocity_profiles)
             step_N, current_N = N / 2, N / 2
-            while step_N >= 0.5 and -1e-6 < current_N < N + 1e-6:
+            while step_N >= 2 and -1e-6 < current_N < N + 1e-6:
                 step_N /= 2
                 current_N -= step_N if check_velocity_profile(round(current_N) - 1) else -step_N
 
-        if best_result_so_far is not None:
+        if best_result_so_far["prediction"] is not None and best_result_so_far["trajectory"]:
             return best_result_so_far["trajectory"], best_result_so_far["prediction"]
         else:
             raise NoSafeTrajectoryFound
@@ -342,6 +342,8 @@ class Planner:
         # fastest possible velocity profile which is set below depending on the current velocity and the distance to
         #  the goal
         acc_profile = np.full(time_horizon, -max_dec)
+
+        velocity = min(velocity, reference_speed)
 
         if velocity <= reference_speed:
             # maximum reachable velocity within the limited distance

@@ -34,6 +34,7 @@ setup(
         "console_scripts": [
             "planner_node = foresee_the_unseen.planner_node:main",
             "topics_to_disk_node = foresee_the_unseen.topics_to_disk_node:main",
+            "obstacle_trajectories_node = foresee_the_unseen.obstacle_trajectories_node:main",
         ],
     },
 )
