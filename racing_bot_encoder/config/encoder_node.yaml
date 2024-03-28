@@ -2,3 +2,10 @@
   ros__parameters:
     encoder_topic: wheel_encoders
     update_frequency: 50.0
+
+    # Encoder pins: a == blue, b == green; however, this can be flipped 
+    #  to change the sign of the measured revolutions
+    left_pin_a: 16
+    left_pin_b: 19
+    right_pin_a: 20
+    right_pin_b: 21

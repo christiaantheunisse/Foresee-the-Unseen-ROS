@@ -1,14 +1,9 @@
 #include "encoder_node.hpp"
 
-// Encoder pins Racing Bot
-// const int LEFT_PIN_A = 16, LEFT_PIN_B = 19, RIGHT_PIN_A = 20, RIGHT_PIN_B = 21;
-// Encoder pins obstacle robot WRAKIE
-const int LEFT_PIN_A = 21, LEFT_PIN_B = 19, RIGHT_PIN_A = 13, RIGHT_PIN_B = 12;
-
 int main(int argc, char *argv[])
 {
   rclcpp::init(argc, argv);
-  auto encoder_node = std::make_shared<racing_bot::encoder::EncoderNode>(LEFT_PIN_A, LEFT_PIN_B, RIGHT_PIN_A, RIGHT_PIN_B);
+  auto encoder_node = std::make_shared<racing_bot::encoder::EncoderNode>();
   rclcpp::spin(encoder_node);
   rclcpp::shutdown();
   return 0;

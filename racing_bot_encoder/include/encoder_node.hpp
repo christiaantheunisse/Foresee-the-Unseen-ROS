@@ -1,12 +1,13 @@
 #include <pigpiod_if2.h>
+
+#include <memory>
 #include <string>
 
-#include "rclcpp/rclcpp.hpp"
 #include "encoder_sensor.hpp"
-#include "std_msgs/msg/int32.hpp"
 #include "racing_bot_interfaces/msg/encoder_values.hpp"
+#include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/int32.hpp"
 // #include "racing_bot_interfaces/msg/trajectory.hpp"
-
 
 #ifndef ENCODERNODE_H
 #define ENCODERNODE_H
@@ -27,7 +28,7 @@ namespace racing_bot {
          */
         class EncoderNode : public rclcpp::Node {
            public:
-            EncoderNode(const int left_pin_a, const int left_pin_b, const int right_pin_a, const int right_pin_b);
+            EncoderNode();
             ~EncoderNode();
 
            private:
@@ -35,8 +36,8 @@ namespace racing_bot {
             rclcpp::Publisher<racing_bot_interfaces::msg::EncoderValues>::SharedPtr encoder_publisher_;
             rclcpp::TimerBase::SharedPtr publish_timer_;
             const int pi_handle_;
-            const EncoderSensor left_encoder_;
-            const EncoderSensor right_encoder_;
+            std::shared_ptr<EncoderSensor> left_encoder_;
+            std::shared_ptr<EncoderSensor> right_encoder_;
 
             std::string encoder_topic_;
             float frequency_;

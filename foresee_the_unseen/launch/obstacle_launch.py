@@ -86,16 +86,24 @@ def generate_launch_description():
         package="racing_bot_hat",
         executable="hat_node",
         namespace=namespace,
-        parameters=[{
-            "left_reverse": True,
-            "right_reverse": True,
-        }]
+        parameters=[
+            {
+                "left_reverse": True,
+                "right_reverse": True,
+            }
+        ],
     )
     encoder_node = Node(
         package="racing_bot_encoder",
         executable="encoder_node",
         parameters=[
             PathJoinSubstitution([FindPackageShare("racing_bot_encoder"), "config", "encoder_node.yaml"]),
+            {
+                "left_pin_a": 21,
+                "left_pin_b": 19,
+                "right_pin_a": 13,
+                "right_pin_b": 12,
+            },
         ],
         namespace=namespace,
     )
