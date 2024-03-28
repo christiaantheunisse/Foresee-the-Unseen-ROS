@@ -407,7 +407,6 @@ class TrajectoryFollowerNode(Node):
 
     def trajectory_callback(self, msg: TrajectoryMsg):
         """Callback for the trajectory topic."""
-        # def trajectory_callback(self):
         self.last_target_idx = 0
         # FIXME: Temporary fix
         # fmt: off
@@ -458,8 +457,9 @@ class TrajectoryFollowerNode(Node):
         yaws = np.array([
             euler_from_quaternion(*map(lambda attr: getattr(q, attr), ["x", "y", "z", "w"]))[2] for q in quaternions
         ])
-        velocities = np.array([v.linear.x for v in msg.velocities])
-        accelerations = np.array([a.linear.x for a in msg.accelerations])
+        velocities = np.array([v.linear.x for v in msg.velocities]) if len(msg.velocities) != 0 else np.zeros(len(positions))
+        accelerations = np.array([a.linear.x for a in msg.accelerations]) if len(msg.accelerations) != 0 else np.zeros(len(positions))
+        assert len(positions) == len(velocities) == len(accelerations)
         stamps = np.array([pose.header.stamp.sec + pose.header.stamp.nanosec * 1e-9 for pose in msg.path.poses])
         trajectory = Trajectory(
             xys=positions,
@@ -528,8 +528,11 @@ class TrajectoryFollowerNode(Node):
         if target_idx > 0:
             v_next, v_prev = self.trajectory.vs[target_idx], self.trajectory.vs[target_idx - 1]
             t_next, t_prev = self.trajectory.stamps[target_idx], self.trajectory.stamps[target_idx - 1]
-            t_cur = self.state.t
-            target_vel = v_prev + (t_cur - t_prev) / (t_next - t_prev) * (v_next - v_prev)
+            if not t_next == t_prev:
+                t_cur = self.state.t
+                target_vel = v_prev + (t_cur - t_prev) / (t_next - t_prev) * (v_next - v_prev)
+            else:
+                target_vel = self.trajectory.vs[target_idx]
         else:
             target_vel = self.trajectory.vs[target_idx]
 
