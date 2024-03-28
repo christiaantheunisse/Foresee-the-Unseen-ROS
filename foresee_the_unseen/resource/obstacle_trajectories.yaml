@@ -1,0 +1,29 @@
+road_structure_xml: "/home/christiaan/thesis/robot_ws/src/foresee_the_unseen/resource/road_structure_15_reduced_points.xml"
+waypoint_distance: 0.2 # the distance between waypoints
+movements:
+  # movement_name: List of goal positions
+  straight: [[-10.0, -0.133], [10.0, -0.4]]
+  turn: [[-0.133, -11.0]]
+
+
+obstacle_cars:
+  # namespace_obstacle_car:
+  #   start_pose: 3D List with the initial x-coordinate [m], y-coordinate [m] and yaw [rad]
+  #   movement: name from the above list of movements
+  #   velocity: goal velocity for the obstacle car [m/s]
+  #   acceleration: maximum allowed acceleration [m/s^2]
+  #   start_delay: time to wait before starting to move [s]
+
+  obstacle_car1:
+    start_pose: [3., -0.133, 3.1415927]
+    movement: "turn"
+    velocity: 0.5
+    acceleration: 0.2
+    start_delay: 2.
+
+  obstacle_car2:
+    start_pose: [-3., -0.4, 0.]
+    movement: "straight"
+    velocity: 0.5
+    acceleration: 0.2
+    start_delay: 2.

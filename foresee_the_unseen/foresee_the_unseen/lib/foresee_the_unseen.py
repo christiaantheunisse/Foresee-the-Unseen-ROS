@@ -61,7 +61,7 @@ class ForeseeTheUnseen:
         config_yaml: str,
         road_xml: str,
         frequency: float,
-        logger: Type[Logger] = PrintLogger,
+        logger: Logger = PrintLogger(),
         log_dir: Optional[str] = None,
     ):
         self.config_yaml = config_yaml

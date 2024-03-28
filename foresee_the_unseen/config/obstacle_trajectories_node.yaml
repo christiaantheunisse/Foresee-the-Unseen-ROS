@@ -1,0 +1,5 @@
+/obstacle_trajectories_node:
+  ros__parameters:
+    map_frame: map
+    planner_frame: planner
+    trajectory_topic: trajectory

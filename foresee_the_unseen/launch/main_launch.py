@@ -1,10 +1,10 @@
 import os
 from launch import LaunchDescription
 from launch_ros.substitutions import FindPackageShare
-from launch_ros.actions import Node, SetParameter
+from launch_ros.actions import Node, SetParameter, SetRemap
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.actions.execute_process import ExecuteProcess
-from launch.actions import LogInfo
+from launch.actions import LogInfo, GroupAction
 from launch.substitutions import (
     TextSubstitution,
     LaunchConfiguration,
@@ -31,7 +31,6 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 ################ Record Ros Bag ##################
 ### $ ros2 bag record -o some_name /scan /wheel_encoders /imu_data ###
-### $ ros2 bag record -o debug_trajectory1 /scan /wheel_encoders /imu_data /trajectory ###
 ##################################################
 
 ################################################ Run localization on laptop ###############################################################################################################################################
@@ -85,7 +84,7 @@ def generate_launch_description():
         description="Use the extended kalman filter for the odometry data."
         "This will also activate and use the imu if available.",
     )
-    slam_mode_launch_argument = DeclareLaunchArgument(
+    slam_mode_launch_arg = DeclareLaunchArgument(
         "slam_mode",
         default_value=TextSubstitution(text="disabled"),
         choices=["mapping", "localization", "elsewhere", "disabled"],
@@ -265,9 +264,6 @@ def generate_launch_description():
         condition=IfCondition(save_topics),
     )
 
-    from launch.actions import GroupAction
-    from launch_ros.actions import SetRemap
-
     slam_launch_with_remapping = GroupAction(
         actions=[
             SetRemap(src="/pose", dst="/slam_pose"),  # remapping for the nodes in the launch files
@@ -345,44 +341,6 @@ def generate_launch_description():
             ),
         ]
     )
-
-    # global_localization_launch = IncludeLaunchDescription(
-    #     PythonLaunchDescriptionSource(
-    #         # This launch file from the slam_toolbox is downloaded from github, because the version shipped with apt
-    #         # does not provide the same arguments.
-    #         PathJoinSubstitution(
-    #             [FindPackageShare("foresee_the_unseen"), "launch", "slam_toolbox", "localization_launch.py"]
-    #         )
-    #     ),
-    #     launch_arguments={
-    #         "slam_params_file": PathJoinSubstitution(
-    #             [FindPackageShare("foresee_the_unseen"), "config", "mapper_params_localization.yaml"]
-    #         ),
-    #         "map_file_name": PathJoinSubstitution([map_files_dir, map_file]),
-    #         # "autostart": False,
-    #     }.items(),
-    #     condition=IfCondition(
-    #         AndSubstitution(NotSubstitution(record_rosbag), EqualsSubstitution(slam_mode, "localization"))
-    #     ),  # (not record_rosbag) and (slam_mode == "localization")
-    # )
-
-    # global_localization_and_mapping_launch = IncludeLaunchDescription(
-    #     PythonLaunchDescriptionSource(
-    #         # This launch file from the slam_toolbox is downloaded from github, because the version shipped with apt
-    #         # does not provide the same arguments.
-    #         PathJoinSubstitution(
-    #             [FindPackageShare("foresee_the_unseen"), "launch", "slam_toolbox", "online_async_launch.py"]
-    #         )
-    #     ),
-    #     launch_arguments={
-    #         "slam_params_file": PathJoinSubstitution(
-    #             [FindPackageShare("foresee_the_unseen"), "config", "mapper_params_online_async.yaml"]
-    #         ),
-    #     }.items(),
-    #     condition=IfCondition(
-    #         AndSubstitution(NotSubstitution(record_rosbag), EqualsSubstitution(slam_mode, "mapping"))
-    #     ),  # (not record_rosbag) and (slam_mode = "mapping")
-    # )
 
     planner_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -473,7 +431,7 @@ def generate_launch_description():
             play_rosbag_launch_arg,
             record_rosbag_launch_arg,
             use_ekf_launch_arg,
-            slam_mode_launch_argument,
+            slam_mode_launch_arg,
             map_file_launch_arg,
             use_datmo_launch_arg,
             use_foresee_launch_arg,
