@@ -86,6 +86,10 @@ def generate_launch_description():
         package="racing_bot_hat",
         executable="hat_node",
         namespace=namespace,
+        parameters=[{
+            "left_reverse": True,
+            "right_reverse": True,
+        }]
     )
     encoder_node = Node(
         package="racing_bot_encoder",
