@@ -1,0 +1,41 @@
+ekf_node:
+    ros__parameters:
+        frequency: 30.0
+        sensor_timeout: 0.1 # not sure about this one
+        publish_tf: true
+        two_d_mode: true  # planar mode
+        print_diagnostics: true
+        permit_corrected_publication: false # not sure about this one (default = false)
+        reset_on_time_jump: true
+        map_frame: map               
+        odom_frame: odom                 
+        base_link_frame: base_link  
+        world_frame: map # So it provides the odom_frame to map_frame transform
+   
+        # Non-holonomic robot example: https://docs.ros.org/en/melodic/api/robot_localization/html/configuring_robot_localization.html
+        # https://answers.ros.org/question/405263/prediction-step-and-imu-orientation-have-little-impact-on-robot_localization-position/
+        # https://answers.ros.org/question/50870/what-frame-is-sensor_msgsimuorientation-relative-to/
+        # Slides: https://roscon.ros.org/2015/presentations/robot_localization.pdf
+        odom0: /odom
+        # Pose (position and orientation) is in the header.frame_id (odom) and Twist (linear and angular velocity) is in the child_frame_id (base_link)
+        odom0_config: [false, false, false,    # x, y, z
+                       false, false, false ,     # roll, pitch, yaw
+                       true, true, false,    # x', y', z'
+                       false, false, false,    # roll', pitch', yaw'
+                       false, false, false]    # x'', y'', z''
+        odom0_queue_size: 2
+        odom0_differential: false
+
+        pose0: /slam_pose
+        pose0_config: [true, true, false,  # x, y, z
+                       false, false, true,    # roll, pitch, yaw
+                       false, false, false,   # x', y', z'
+                       false, false, false,    # roll', pitch', yaw'
+                       false, false, false]      # x'', y'', z''
+        pose0_queue_size: 3
+
+        # Uncertainty in the prediction step; uncertainty in the update step follows from the sensor messages
+        process_noise_covariance: [0.001, 0.001, 0., 0., 0., 0.001, 0.01, 0., 0., 0., 0., 0.01, 0.1, 0.1, 0.]
+        # [x, y, z, roll, pitch, yaw, x', y', z', roll', pitch', yaw', x'', y'', z'']
+        initial_estimate_covariance: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
+        
