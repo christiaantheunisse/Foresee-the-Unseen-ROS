@@ -36,10 +36,16 @@ def generate_launch_description():
         default_value=TextSubstitution(text="false"),
         description="True if the lidar is mounted with the motor facing forward",
     )
+    follow_traject_launch_arg = DeclareLaunchArgument(
+        "follow_traject",
+        default_value=TextSubstitution(text="true"),
+        description="if true follows traject",
+    )
 
     namespace = LaunchConfiguration("namespace")
     use_ekf = LaunchConfiguration("use_ekf")
     lidar_reverse = LaunchConfiguration("lidar_reverse")
+    follow_traject = LaunchConfiguration("follow_traject")
 
     # To start the `pigpiod package`, necessary for I2C
     start_pigpiod = ExecuteProcess(
@@ -112,6 +118,7 @@ def generate_launch_description():
                 },
             ],
             namespace=namespace,
+            condition=IfCondition(follow_traject),
         )
         ekf_node = Node(
             package="robot_localization",
@@ -176,6 +183,7 @@ def generate_launch_description():
             namespace_launch_arg,
             use_ekf_launch_arg,
             lidar_reverse_launch_arg,
+            follow_traject_launch_arg,
             # commands
             start_pigpiod,
             # nodes
