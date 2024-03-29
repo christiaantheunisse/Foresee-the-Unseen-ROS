@@ -35,6 +35,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 ################################################ Run localization on laptop ###############################################################################################################################################
 ### ros2 launch foresee_the_unseen localization_launch.py slam_params_file:=/home/christiaan/thesis/robot_ws/src/foresee_the_unseen/config/mapper_params_localization.yaml map_file_name:=$ROS_MAP_FILES_DIR/on_the_floor ###
+### >>>>>>>>>>> SHOULD USE THE EKF VERSION, RIGHT?
 ###########################################################################################################################################################################################################################
 
 ######## Get tf2_ros tree ##############
@@ -86,7 +87,7 @@ def generate_launch_description():
     )
     slam_mode_launch_arg = DeclareLaunchArgument(
         "slam_mode",
-        default_value=TextSubstitution(text="disabled"),
+        default_value=TextSubstitution(text="elsewhere"),
         choices=["mapping", "localization", "elsewhere", "disabled"],
         description="Which mode of the slam_toolbox to use: SLAM (=mapping), only localization (=localization),"
         + " on another device (=elsewhere) or don't use so map frame is odom frame (=disabled).",
