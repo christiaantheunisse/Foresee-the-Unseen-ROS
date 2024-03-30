@@ -16,6 +16,10 @@ setup(
             os.path.join("share", package_name, "launch", "slam_toolbox"),
             glob(os.path.join("launch", "slam_toolbox", "*launch.[pxy][yma]*")),
         ),
+        (
+            os.path.join("share", package_name, "launch", "partial_launches"),
+            glob(os.path.join("launch", "partial_launches", "*launch.[pxy][yma]*")),
+        ),
         (os.path.join("share", package_name, "config"), glob(os.path.join("config/*.yaml"))),
         (
             os.path.join("share", package_name, "resource"),

@@ -1,15 +1,16 @@
-/imu_node:
-  ros__parameters:
-    base_frame: base_link
-    imu_frame: imu_link
-    imu_topic: imu_data
+/**:
+  /imu_node:
+    ros__parameters:
+      base_frame: base_link
+      imu_frame: imu_link
+      imu_topic: imu_data
 
-    update_frequency: 50.0
-    use_magnetometer: true
+      update_frequency: 50.0
+      use_magnetometer: true
 
-    lin_acc_variances:  [0.002, 0.002, 0.002]
-    ang_vel_variances:  [0.04, 0.04, 0.04]
-    orient_variances: [0.002, 0.004, 0.1] 
+      lin_acc_variances:  [0.002, 0.002, 0.002]
+      ang_vel_variances:  [0.04, 0.04, 0.04]
+      orient_variances: [0.002, 0.004, 0.1] 
 
-    freq_scale_factor: 0.85  # scales the update rate of the madgwick algorithm. Is not a tunable parameter, but I think it is necessary because the imu underestimates the angular velocities.
-    madgwick_gain: 0.035  # sqrt(3/4) * (standard deviation of angular velocity in rad/s)
+      freq_scale_factor: 0.85  # scales the update rate of the madgwick algorithm. Is not a tunable parameter, but I think it is necessary because the imu underestimates the angular velocities.
+      madgwick_gain: 0.035  # sqrt(3/4) * (standard deviation of angular velocity in rad/s)

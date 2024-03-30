@@ -40,6 +40,7 @@ def generate_launch_description():
     declare_map_file_name = DeclareLaunchArgument(
         "map_file_name", default_value="path_to_map_file", description="Set the path to the map file"
     )
+    
 
     start_localization_slam_toolbox_node = LifecycleNode(
         parameters=[

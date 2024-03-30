@@ -16,6 +16,7 @@ obstacle_cars:
 
   obstacle_car1:
     start_pose: [3., -0.133, 3.1415927]
+    # start_pose: [0., 0., 0.]
     movement: "turn"
     velocity: 0.5
     acceleration: 0.2
