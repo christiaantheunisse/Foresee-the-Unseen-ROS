@@ -3,7 +3,7 @@
         ros__parameters:
             frequency: 30.0
             sensor_timeout: 0.1 # not sure about this one
-            publish_tf: true<
+            publish_tf: true
             two_d_mode: true  # planar mode
             print_diagnostics: true
             permit_corrected_publication: false # not sure about this one (default = false)
