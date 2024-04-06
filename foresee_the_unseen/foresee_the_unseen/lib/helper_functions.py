@@ -60,6 +60,10 @@ def euler_from_quaternion(x, y, z, w):
     return roll_x, pitch_y, yaw_z  # in radians
 
 
+def quaternion_from_yaw(yaw):
+    return [0.0, 0.0, np.sin(yaw / 2), np.cos(yaw / 2)]
+
+
 def matrix_from_transform(t):
     rot_quat = [
         t.transform.rotation.x,
@@ -104,6 +108,7 @@ def halfspace_from_points(p1: np.ndarray, p2: np.ndarray):
 
     return x_coef, y_coef, const
 
+
 def matrices_from_cw_cvx_polygon(polygon):
     polygon = np.array(polygon)
     A, B = [], []
@@ -121,7 +126,7 @@ def make_unique_name(directory, counter: int = 0):
         return make_unique_name(directory, counter + 1)
     else:
         return new_directory
-    
+
 
 def create_log_directory(base_dir: str):
     if os.path.exists(base_dir):
@@ -133,7 +138,7 @@ def create_log_directory(base_dir: str):
         return log_dir
     else:
         raise TypeError(f"The path specified for the log files does not exist: {base_dir}")
-    
+
 
 # if __name__ =="__main__":
 #     polygons = polygons_from_road_xml("road_structure.xml")

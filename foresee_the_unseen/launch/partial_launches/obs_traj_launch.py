@@ -1,5 +1,6 @@
 import os
 import yaml
+import numpy as np
 import math
 from typing import Tuple, List
 from launch import LaunchDescription, LaunchContext
@@ -101,19 +102,43 @@ def generate_launch_description():
         ).perform(context)
         obstacle_namespaces, start_poses = get_config_from_yaml(yaml_filepath_str)
 
+        # Get the map to planner transform
+        commonroad_config_yamlpath = PathJoinSubstitution(
+            [FindPackageShare("foresee_the_unseen"), "resource", "commonroad_scenario.yaml"]
+        ).perform(context)
+        with open(commonroad_config_yamlpath) as f:
+            obstacle_config = yaml.safe_load(f)
+        map_to_planner_pose = obstacle_config["pose_of_planner_in_map_frame"]
+        assert len(map_to_planner_pose) == 3, f"Pose should be [x, y, theta]; {map_to_planner_pose=}"
+        x_transf, y_transf, th_transf = map_to_planner_pose
+        t_matrix = np.zeros((3, 3))
+        r_matrix = np.array([[np.cos(th_transf), -np.sin(th_transf)], [np.sin(th_transf), np.cos(th_transf)]])
+        t_matrix[:2, :2] = r_matrix
+        t_matrix[2, 2] = 1
+        t_matrix[:2, 2] = [x_transf, y_transf]
+
         # launch the slam node for each robot and publish the start position
+        slam_params_file = (
+            "mapper_params_localization_ekf.yaml" if IfCondition(use_ekf) else "mapper_params_localization.yaml"
+        )
         slam_nodes, initialpose_publishers = [], []
         for namespace, start_pose in zip(obstacle_namespaces, start_poses):
+            start_xy = np.array([start_pose[0], start_pose[1], 1])
+            start_theta = start_pose[2]
+            start_xy_tf = t_matrix @ start_xy
+            start_theta_tf = start_theta + th_transf
+            start_pose_tf = [float(start_xy_tf[0]), float(start_xy_tf[1]), float(start_theta_tf)]
+            print(f"========={start_pose_tf}===========")
             slam_node = Node(
                 parameters=[
-                    PathJoinSubstitution(
-                        [FindPackageShare("foresee_the_unseen"), "config", "mapper_params_localization_ekf.yaml"]
-                    ),
+                    PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", slam_params_file]),
                     {
                         "map_file_name": PathJoinSubstitution([map_files_dir, map_file]),
                         "use_lifecycle_manager": False,
+                        # FIXME: uses the position in the map frame anyways, so import the planner to map transform from
+                        #  a .yaml file or so.
                         # "map_start_pose": [float(s) for s in start_pose],  # this is the initial pose in the map frame
-                        "map_start_pose": [0, 0, 0],  # this is the initial pose in the map frame
+                        "map_start_pose": start_pose_tf,  # this is the initial pose in the map frame
                         "odom_frame": f"{namespace}/odom",
                         "base_frame": f"{namespace}/base_link",
                     },
@@ -127,7 +152,6 @@ def generate_launch_description():
                 remappings=[("pose", "slam_pose"), ("/map", "map"), ("/map_metadata", "map_metadata")],
             )
 
-            # TODO: Option for no ekf -> seems to be unstable
             slam_nodes.append(slam_node)
 
             # position_variance = 0.2
@@ -137,7 +161,7 @@ def generate_launch_description():
             # covariance_array[35] = angle_variance
 
             # initialpose_msg = {
-            #     "header": {"frame_id": f"planner"},  # FIXME: uses the position in the map frame anyways
+            #     "header": {"frame_id": f"planner"},
             #     "pose": {
             #         "pose": {
             #             "position": {"x": start_pose[0], "y": start_pose[1]},

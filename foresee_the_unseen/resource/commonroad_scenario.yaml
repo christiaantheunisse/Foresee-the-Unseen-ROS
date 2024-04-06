@@ -1,6 +1,9 @@
 #GENERAL
 simulation_duration : 100
 
+# MAP TO PLANNER FRAME TRANSFORM
+pose_of_planner_in_map_frame: [3.80, 0.13, -1.57079632679]
+
 #EGO_VEHICLE
 initial_state_x : 0.13
 initial_state_y : -3
