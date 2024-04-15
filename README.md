@@ -18,8 +18,8 @@ A short description of all the packages in this repo is given below. The code wa
 
 This code package implements the Foresee the Unseen algorithm and is still under development. Moreover, it contains the launch files to run the robot, which use the following ROS packages for localization. I wrote a tutorial on how to use these packages for a course in the Master Robotics at the Technical University of Delft, which can be found [here](https://github.com/christiaantheunisse/localization-with-ROS):
 
-- `slam_toolbox`
-- `robot_localization`
+- `slam_toolbox`: Lidar-based SLAM is used for the localization of the robot. However, the SLAM node has to be run on a laptop since the Raspberry Pi 4 cannot handle the computational load.
+- `robot_localization`: An EKF is implemented which relies on the Lidar-based SLAM, the odometry and an IMU and is able to provide a stable position and velocity output.
 
 ### `racing_bot_controller`
 
