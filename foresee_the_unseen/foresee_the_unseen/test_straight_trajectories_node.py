@@ -53,7 +53,7 @@ WAYPOINTS = {
 
 # static transfrom command line:
 # ros2 run tf2_ros static_transform_publisher --x 2.0 --y -0.2 --frame-id map --child-frame-id test_traject
-# ros2 run tf2_ros static_transform_publisher  --frame-id map --child-frame-id test_traject
+# ros2 run tf2_ros static_transform_publisher --x -1.5 --frame-id map --child-frame-id test_traject
 
 # robot command
 # ros2 launch foresee_the_unseen bringup_robot_launch.py use_ekf:=true follow_traject:=true slam_mode:=elsewhere
@@ -549,6 +549,12 @@ class TestStraightTrajectoriesNode(Node):
 
     def has_goal_velocity(self) -> bool:
         return bool(np.abs(self.state.velocity - self.goal_state.velocity) < MARGIN_VELOCITY)
+    
+    def has_passed_goal(self) -> bool:
+        # rotate the gaol orientatin by 90 degrees and check in which halfspace
+        line_orientation = self.goal_state.orientation + np.pi / 2
+        goal_line = np.array([np.cos(line_orientation), np.sin(line_orientation)])
+        return bool(np.cross(self.state.position - self.goal_state.position, goal_line) > 0)
 
     def run_state_machine(self) -> None:
         """The function that controls the state machine."""
@@ -606,7 +612,8 @@ class TestStraightTrajectoriesNode(Node):
             # print(f"{orient_error=} {motor_cmd=}")
             self.publisher_motor_cmd.publish(Int16MultiArray(data=[int(-motor_cmd), int(motor_cmd), 0, 0]))
         elif self.planner_state == "returning to boundary":
-            if self.has_goal_position() and self.has_goal_velocity():
+            # if self.has_goal_position() and self.has_goal_velocity():
+            if self.has_passed_goal():
                 self.get_logger().info("Boundary point reached")
                 self.planner_state = "full turn"
                 self.publish_trajectory(None)

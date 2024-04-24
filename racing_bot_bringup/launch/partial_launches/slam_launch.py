@@ -1,3 +1,4 @@
+import os
 from launch import LaunchDescription, LaunchContext
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import (
@@ -49,13 +50,19 @@ def generate_launch_description():
     ):
         do_publish_tf_bool = IfCondition(do_publish_tf).evaluate(context)
         transform_publish_period = 0.05 if do_publish_tf_bool else 0.0
-
+        
+        try:
+            map_files_dir = os.environ["ROS_MAP_FILES_DIR"]
+        except KeyError:
+            map_files_dir = ""
+        
         # if localization == True
         slam_node_localization = Node(
             parameters=[
                 PathJoinSubstitution([FindPackageShare("racing_bot_bringup"), "config", "slam_params.yaml"]),
                 {
-                    "map_file_name": PathJoinSubstitution([FindPackageShare("racing_bot_bringup"), "map", map_file]),
+                    # "map_file_name": PathJoinSubstitution([FindPackageShare("racing_bot_bringup"), "map", map_file]),
+                    "map_file_name": PathJoinSubstitution([map_files_dir, map_file]),
                     "transform_publish_period": transform_publish_period,
                 },
             ],

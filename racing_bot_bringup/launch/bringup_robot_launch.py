@@ -74,6 +74,8 @@ def generate_launch_description():
     follow_traject = LaunchConfiguration("follow_traject")
     play_rosbag = LaunchConfiguration("play_rosbag")
 
+    do_use_sim_time = SetParameter(name="use_sim_time", value=play_rosbag)
+
     log_messages = []
     log_messages.append(LogInfo(msg="\n=========================== Launch file logging ==========================="))
 
@@ -201,6 +203,8 @@ def generate_launch_description():
             slam_mode_launch_arg,
             map_file_launch_arg,
             follow_traject_launch_arg,
+            play_rosbag_launch_arg,
+            do_use_sim_time,
             # log messages
             *log_messages,
             # commands
