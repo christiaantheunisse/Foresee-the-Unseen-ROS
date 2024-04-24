@@ -230,7 +230,7 @@ def generate_launch_description():
         executable="odometry_node",
         parameters=[
             PathJoinSubstitution([FindPackageShare("racing_bot_odometry"), "config", "odometry_node.yaml"]),
-            {"do_broadcast_transform": True},  # Use either this or ekf transform (set in ekf.yaml)
+            {"do_broadcast_transform": False},  # Use either this or ekf transform (set in ekf.yaml)
         ],
     )
     # ekf_node = Node(
@@ -258,7 +258,7 @@ def generate_launch_description():
         parameters=[PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "ekf.yaml"])],
         # parameters=[PathJoinSubstitution(["/home/christiaan/thesis/robot_ws/src/foresee_the_unseen/config/ekf.yaml"])],
         condition=IfCondition(use_ekf),  # use_ekf
-        remappings=[("odometry/filtered", "odometry/position_ekf")],
+        # remappings=[("odometry/filtered", "odometry/position_ekf")],
     )
     datmo_node_with_remapping = Node(
         package="datmo",

@@ -79,7 +79,7 @@ position_ekf_node:
         pose0_queue_size: 3
 
         # Uncertainty in the prediction step; uncertainty in the update step follows from the sensor messages covariances
-        process_noise_covariance: [0.1, 0.1, 0.,
+        process_noise_covariance: [0.001, 0.001, 0.,
                                    0., 0., 0.001,
                                    0.01, 0., 0.,
                                    0., 0., 0.01,
