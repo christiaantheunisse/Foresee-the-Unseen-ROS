@@ -1,12 +1,12 @@
 /**:
     odom_node:
         ros__parameters:
-            odom_frame: "odom"
-            base_frame: "base_link"
-            odometry_topic: "odom"
+            odom_frame: odom
+            base_frame: base_link
+            odometry_topic: odometry/wheel_encoders
             odometry_queue_size: 5 # int
             encoder_queue_size: 1 # int
-            encoder_topic: "wheel_encoders"
+            encoder_topic: wheel_encoders
             # do_broadcast_transform: True
 
             # Wheel radius and base are tuned after measuring
