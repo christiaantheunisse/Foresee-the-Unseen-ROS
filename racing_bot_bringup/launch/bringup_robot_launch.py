@@ -59,7 +59,7 @@ def generate_launch_description():
     )
     follow_traject_launch_arg = DeclareLaunchArgument(
         "follow_traject",
-        default_value=TextSubstitution(text="false"),
+        default_value=TextSubstitution(text="true"),
         description="if true follows traject",
     )
     play_rosbag_launch_arg = DeclareLaunchArgument(
