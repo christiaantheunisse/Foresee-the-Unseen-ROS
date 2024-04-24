@@ -233,14 +233,32 @@ def generate_launch_description():
             {"do_broadcast_transform": True},  # Use either this or ekf transform (set in ekf.yaml)
         ],
     )
-    ekf_node = Node(
+    # ekf_node = Node(
+    #     package="robot_localization",
+    #     executable="ekf_node",
+    #     name="my_ekf_filter_node",
+    #     output="screen",
+    #     parameters=[PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "ekf.yaml"])],
+    #     # parameters=[PathJoinSubstitution(["/home/christiaan/thesis/robot_ws/src/foresee_the_unseen/config/ekf.yaml"])],
+    #     condition=IfCondition(use_ekf),  # use_ekf
+    # )
+    velocity_ekf_node = Node(
         package="robot_localization",
         executable="ekf_node",
-        name="my_ekf_filter_node",
-        output="screen",
+        name="velocity_ekf_node",
         parameters=[PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "ekf.yaml"])],
         # parameters=[PathJoinSubstitution(["/home/christiaan/thesis/robot_ws/src/foresee_the_unseen/config/ekf.yaml"])],
         condition=IfCondition(use_ekf),  # use_ekf
+        remappings=[("odometry/filtered", "odometry/velocity_ekf")],
+    )
+    position_ekf_node = Node(
+        package="robot_localization",
+        executable="ekf_node",
+        name="position_ekf_node",
+        parameters=[PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "ekf.yaml"])],
+        # parameters=[PathJoinSubstitution(["/home/christiaan/thesis/robot_ws/src/foresee_the_unseen/config/ekf.yaml"])],
+        condition=IfCondition(use_ekf),  # use_ekf
+        remappings=[("odometry/filtered", "odometry/position_ekf")],
     )
     datmo_node_with_remapping = Node(
         package="datmo",
@@ -451,7 +469,9 @@ def generate_launch_description():
             controller_node,
             trajectory_node,
             imu_node,
-            ekf_node,
+            # ekf_node,
+            velocity_ekf_node,
+            position_ekf_node,
             datmo_node_with_remapping,
             datmo_node_without_remapping,
             save_topics_node,
