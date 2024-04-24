@@ -38,6 +38,9 @@ The bringup file for the laptop. Should (all optional):
             - trajectories for the robots in the appropiate namespaces
 """
 
+###### launch with a rosbag
+# ros2 launch racing_bot_bringup bringup_laptop_launch.py slam_mode_robot:=mapping play_rosbag:=true use_foresee:=false
+
 
 def generate_launch_description():
     use_foresee_launch_arg = DeclareLaunchArgument(
@@ -47,25 +50,26 @@ def generate_launch_description():
     )
     slam_mode_robot_launch_arg = DeclareLaunchArgument(
         "slam_mode_robot",
-        default_value=TextSubstitution(text="localization"),
+        default_value=TextSubstitution(text="mapping"),
         choices=["mapping", "localization", "disabled"],
         description="Which mode of the slam_toolbox to use for the robot: SLAM (=mapping), only localization "
         + "(=localization), don't use so map frame is odom frame (=disabled).",
     )
     use_ekf_robot_launch_arg = DeclareLaunchArgument(
         "use_ekf_robot",
-        default_value=TextSubstitution(text="false"),
-        description="Use the extended kalman filter for the odometry data."
-        "This will also activate and use the imu if available.",
+        default_value=TextSubstitution(text="true"),
+        description="If the extended kalman filter is used on the robot.",
     )
     map_file_launch_arg = DeclareLaunchArgument(
         "map_file",
         default_value=TextSubstitution(text="on_the_floor"),
         description="If applicable, the name of the map file used for localization.",
     )
+
+    # Arguments regarding the obstacles -> not fully working yet
     use_obstacles_launch_arg = DeclareLaunchArgument(
         "use_obstacles",
-        default_value=TextSubstitution(text="true"),
+        default_value=TextSubstitution(text="false"),
         description="if obstacles are used, which means that the localization and trajectories should be handled",
     )
     obstacles_file_launch_arg = DeclareLaunchArgument(
@@ -86,6 +90,13 @@ def generate_launch_description():
         description="If the obstacle cars use an extended kalman filter.",
     )
 
+    # Rosbag argument
+    play_rosbag_launch_arg = DeclareLaunchArgument(
+        "play_rosbag",
+        default_value=TextSubstitution(text="false"),
+        description="Don't run the sensor nodes when its run on a rosbag",
+    )
+
     use_foresee = LaunchConfiguration("use_foresee")
     slam_mode_robot = LaunchConfiguration("slam_mode_robot")
     use_ekf_robot = LaunchConfiguration("use_ekf_robot")
@@ -94,23 +105,15 @@ def generate_launch_description():
     obstacles_config_file = LaunchConfiguration("obstacles_config_file")
     slam_mode_obs = LaunchConfiguration("slam_mode_obs")
     use_ekf_obs = LaunchConfiguration("use_ekf_obs")
+    play_rosbag = LaunchConfiguration("play_rosbag")
 
-    log_messages = []
-    log_messages.append(LogInfo(msg="\n=========================== Launch file logging ==========================="))
+    do_use_sim_time = SetParameter(name="use_sim_time", value=play_rosbag)
 
-    try:
-        map_files_dir = os.environ["ROS_MAP_FILES_DIR"]
-        log_messages.append(LogInfo(msg="The map is loaded from the path in `ROS_MAP_FILES_DIR`"))
-    except KeyError:
-        log_messages.append(LogInfo(msg="`ROS_MAP_FILES_DIR` is not set!"))
-        map_files_dir = ""
-
-    log_messages.append(LogInfo(msg="\n================================== END ==================================\n"))
-
+    # TODO: The obstacle part is not working yet
     obstacles_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution(
-                [FindPackageShare("foresee_the_unseen"), "launch", "partial_launches", "obs_traj_launch.py"]
+                [FindPackageShare("racing_bot_bringup"), "launch", "partial_launches", "obs_traj_launch.py"]
             )
         ),
         launch_arguments={
@@ -122,84 +125,45 @@ def generate_launch_description():
         condition=IfCondition(use_obstacles),
     )
 
-    robot_slam_launch = GroupAction(
-        actions=[
-            SetRemap(src="/pose", dst="/slam_pose"),  # remapping for the nodes in the launch files
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(
-                    PathJoinSubstitution(
-                        [FindPackageShare("foresee_the_unseen"), "launch", "slam_toolbox", "localization_launch.py"]
-                    )
-                ),
-                launch_arguments={
-                    "slam_params_file": PathJoinSubstitution(
-                        [FindPackageShare("foresee_the_unseen"), "config", "mapper_params_localization_ekf.yaml"]
-                    ),
-                    "map_file_name": PathJoinSubstitution([map_files_dir, map_file]),
-                }.items(),
-                condition=IfCondition(
-                    AndSubstitution(use_ekf_robot, EqualsSubstitution(slam_mode_robot, "localization"))
-                ),  # use_ekf and slam_mode == "localization"
-            ),
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(
-                    PathJoinSubstitution(
-                        [FindPackageShare("foresee_the_unseen"), "launch", "slam_toolbox", "online_async_launch.py"]
-                    )
-                ),
-                launch_arguments={
-                    "slam_params_file": PathJoinSubstitution(
-                        [FindPackageShare("foresee_the_unseen"), "config", "mapper_params_online_async_ekf.yaml"]
-                    ),
-                }.items(),
-                condition=IfCondition(
-                    AndSubstitution(use_ekf_robot, EqualsSubstitution(slam_mode_robot, "mapping"))
-                ),  # use_ekf and slam_mode == "mapping"
-            ),
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(
-                    PathJoinSubstitution(
-                        [FindPackageShare("foresee_the_unseen"), "launch", "slam_toolbox", "localization_launch.py"]
-                    )
-                ),
-                launch_arguments={
-                    "slam_params_file": PathJoinSubstitution(
-                        [FindPackageShare("foresee_the_unseen"), "config", "mapper_params_localization.yaml"]
-                    ),
-                    "map_file_name": PathJoinSubstitution([map_files_dir, map_file]),
-                }.items(),
-                condition=IfCondition(
-                    AndSubstitution(NotSubstitution(use_ekf_robot), EqualsSubstitution(slam_mode_robot, "localization"))
-                ),  # not use_ekf and slam_mode == "localization"
-            ),
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(
-                    PathJoinSubstitution(
-                        [FindPackageShare("foresee_the_unseen"), "launch", "slam_toolbox", "online_async_launch.py"]
-                    )
-                ),
-                launch_arguments={
-                    "slam_params_file": PathJoinSubstitution(
-                        [FindPackageShare("foresee_the_unseen"), "config", "mapper_params_online_async.yaml"]
-                    ),
-                }.items(),
-                condition=IfCondition(
-                    AndSubstitution(NotSubstitution(use_ekf_robot), EqualsSubstitution(slam_mode_robot, "mapping"))
-                ),  # use_ekf and slam_mode == "mapping"
-            ),
-        ]
+    slam_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution(
+                [FindPackageShare("racing_bot_bringup"), "launch", "partial_launches", "slam_launch.py"]
+            )
+        ),
+        launch_arguments={
+            "localization": EqualsSubstitution(slam_mode_robot, "localization"),
+            "mapping": EqualsSubstitution(slam_mode_robot, "mapping"),
+            "map_file": map_file,
+            "publish_tf": NotSubstitution(use_ekf_robot),
+        }.items(),
     )
 
     planner_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution(
-                [FindPackageShare("foresee_the_unseen"), "launch", "partial_launches", "planner_launch.py"]
+                [FindPackageShare("racing_bot_bringup"), "launch", "partial_launches", "planner_launch.py"]
             )
         ),
-        launch_arguments={
-            "play_rosbag": "false",
-        }.items(),
         condition=IfCondition(use_foresee),
+    )
+
+    rviz = Node(
+        package="rviz2",
+        executable="rviz2",
+        arguments=["-d", "/home/christiaan/.rviz2/raspberry_pi.rviz"],
+    )
+
+    robot_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([FindPackageShare("racing_bot_bringup"), "launch", "bringup_robot_launch.py"])
+        ),
+        launch_arguments={
+            "use_ekf": "true",
+            "slam_mode": "elsewhere",
+            "play_rosbag": "true",
+        }.items(),
+        condition=IfCondition(play_rosbag),
     )
 
     return LaunchDescription(
@@ -213,11 +177,15 @@ def generate_launch_description():
             use_obstacles_launch_arg,
             slam_mode_obs_launch_arg,
             use_ekf_obs_launch_arg,
-            # log messages
-            *log_messages,
+            play_rosbag_launch_arg,
+            # parameters
+            do_use_sim_time,
             # launch files
             obstacles_launch,
-            robot_slam_launch,
+            slam_launch,
             planner_launch,
+            robot_launch,
+            # nodes
+            rviz,
         ]
     )

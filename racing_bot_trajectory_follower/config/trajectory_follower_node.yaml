@@ -5,7 +5,7 @@
       planner_frame: planner
       odom_frame: odom
 
-      odom_topic: odometry/position_ekf
+      odom_topic: odometry/filtered
       trajectory_topic: trajectory
       motor_command_topic: cmd_motor
       trajectory_marker_topic: visualization/trajectory

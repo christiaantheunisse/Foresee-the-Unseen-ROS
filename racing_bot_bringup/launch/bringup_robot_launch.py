@@ -76,24 +76,6 @@ def generate_launch_description():
 
     do_use_sim_time = SetParameter(name="use_sim_time", value=play_rosbag)
 
-    log_messages = []
-    log_messages.append(LogInfo(msg="\n=========================== Launch file logging ==========================="))
-
-    try:
-        map_files_dir = os.environ["ROS_MAP_FILES_DIR"]
-        log_messages.append(LogInfo(msg="The map is loaded from the path in `ROS_MAP_FILES_DIR`"))
-    except KeyError:
-        log_messages.append(LogInfo(msg="`ROS_MAP_FILES_DIR` is not set!"))
-        map_files_dir = ""
-
-    log_messages.append(
-        LogInfo(
-            msg="The extended Kalman filter will be used to estimate the position in the \odom frame...",
-            condition=IfCondition(use_ekf),
-        )
-    )
-    log_messages.append(LogInfo(msg="\n================================== END ==================================\n"))
-
     # To start the `pigpiod package`, necessary for I2C
     start_pigpiod = ExecuteProcess(
         cmd=["sudo", "pigpiod"],
@@ -128,13 +110,24 @@ def generate_launch_description():
     )
 
     # State estimation related
-    odometry_node = Node(
+    odometry_node_w_ekf = Node(
         package="racing_bot_odometry",
         executable="odometry_node",
         parameters=[
             PathJoinSubstitution([FindPackageShare("racing_bot_odometry"), "config", "odometry_node.yaml"]),
             {"do_broadcast_transform": NotSubstitution(use_ekf)},  # Use either this or ekf transform (set in ekf.yaml)
         ],
+        condition=IfCondition(use_ekf),
+    )
+    odometry_node_wo_ekf = Node(
+        package="racing_bot_odometry",
+        executable="odometry_node",
+        parameters=[
+            PathJoinSubstitution([FindPackageShare("racing_bot_odometry"), "config", "odometry_node.yaml"]),
+            {"do_broadcast_transform": NotSubstitution(use_ekf)},  # Use either this or ekf transform (set in ekf.yaml)
+        ],
+        condition=UnlessCondition(use_ekf),
+        remappings=[("odometry/wheel_encoders", "odometry/filtered")],
     )
     velocity_ekf_node = Node(
         package="robot_localization",
@@ -152,8 +145,10 @@ def generate_launch_description():
         parameters=[PathJoinSubstitution([FindPackageShare("racing_bot_bringup"), "config", "ekf.yaml"])],
         # parameters=[PathJoinSubstitution(["/home/christiaan/thesis/robot_ws/src/racing_bot_bringup/config/ekf.yaml"])],
         condition=IfCondition(use_ekf),  # use_ekf
-        remappings=[("odometry/filtered", "odometry/position_ekf")],
+        # remappings=[("odometry/filtered", "odometry/position_ekf")],
     )
+    use_localization = EqualsSubstitution(slam_mode, "localization")
+    use_mapping = EqualsSubstitution(slam_mode, "mapping")
     slam_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution(
@@ -161,11 +156,12 @@ def generate_launch_description():
             )
         ),
         launch_arguments={
-            "localization": EqualsSubstitution(slam_mode, "localization"),
-            "mapping": EqualsSubstitution(slam_mode, "mapping"),
+            "localization": use_localization,
+            "mapping": use_mapping,
             "map_file": map_file,
             "publish_tf": NotSubstitution(use_ekf),
         }.items(),
+        condition=IfCondition(AndSubstitution(use_localization, use_mapping))
     )
 
     # Other
@@ -205,14 +201,13 @@ def generate_launch_description():
             follow_traject_launch_arg,
             play_rosbag_launch_arg,
             do_use_sim_time,
-            # log messages
-            *log_messages,
             # commands
             start_pigpiod,
             # nodes
             hat_node,
             encoder_node,
-            odometry_node,
+            odometry_node_w_ekf,
+            odometry_node_wo_ekf,
             trajectory_node,
             imu_node,
             # ekf_node,

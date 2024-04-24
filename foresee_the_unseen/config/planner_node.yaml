@@ -6,7 +6,7 @@ planner_node:
     planner_frame: planner
 
     lidar_topic: scan 
-    odom_topic: odom 
+    odom_topic: odometry/filtered
     datmo_topic: datmo/box_kf 
     filtered_lidar_topic: scan/road_env
     visualization_topic: visualization/planner
