@@ -16,7 +16,8 @@ namespace racing_bot {
             this->declare_parameter("ang_vel_variances", std::vector<double>({0.04, 0.04, 0.04}));
             this->declare_parameter("orient_variances", std::vector<double>({0.002, 0.004, 0.1}));
             this->declare_parameter("madgwick_gain", 0.035);
-            this->declare_parameter("freq_scale_factor", 0.85);
+            // this->declare_parameter("freq_scale_factor", 0.85);
+            this->declare_parameter("ang_vel_calibrate_factor", 1.);
 
             imu_frame_ = this->get_parameter("imu_frame").as_string();
             base_frame_ = this->get_parameter("base_frame").as_string();
@@ -27,7 +28,8 @@ namespace racing_bot {
             ang_vel_variances_ = this->get_parameter("ang_vel_variances").as_double_array();
             orient_variances_ = this->get_parameter("orient_variances").as_double_array();
             madgwick_gain_ = this->get_parameter("madgwick_gain").as_double();
-            freq_scale_factor_ = this->get_parameter("freq_scale_factor").as_double();
+            // freq_scale_factor_ = this->get_parameter("freq_scale_factor").as_double();
+            ang_vel_calibrate_factor_ = this->get_parameter("ang_vel_calibrate_factor").as_double();
 
             // convert the frequency to a time interval in integer milliseconds and update the frequency
             int time_interval = (int)1 / frequency_ * 1000;  // [ms]
@@ -49,11 +51,13 @@ namespace racing_bot {
             imu_.calibrate();
             // The `freq_scale_factor_` is necessary because the IMU underestimates the angular velocity. Or at least,
             // that's what I think, because it significantly increase the performance. Otherwise the estimated 
-            // orientation is always to small.
+            // orientation is always to small. FIXED: The angular velocity is now calibrated, which should solve the 
+            // the problem. Error is about 15% of the real value.
             if (use_magnetometer_) {
                 imu_.calibrateMag();
             }
-            filter_.begin(freq_scale_factor_ * frequency_, madgwick_gain_);
+            // filter_.begin(freq_scale_factor_ * frequency_, madgwick_gain_);
+            filter_.begin(frequency_, madgwick_gain_);
         }
 
         void ImuNode::readImuValues() {
@@ -80,10 +84,12 @@ namespace racing_bot {
 
             // Unit is dps (degrees/sec), but should be rad/s for ROS msg and Madgwick;
             // left-handed coordinate system
+            // The calibration factor is determined for the yaw velocity and just applied to the other angular speeds.
+            // I have no idea about the error for the other angular velocities (roll and pitch angles).
             float deg_to_rad = 0.0174533;  // pi / 180
-            float gyroscope_x = imu_.calcGyro(imu_.gx) * deg_to_rad;
-            float gyroscope_y = imu_.calcGyro(imu_.gy) * deg_to_rad;
-            float gyroscope_z = imu_.calcGyro(imu_.gz) * deg_to_rad;
+            float gyroscope_x = imu_.calcGyro(imu_.gx) * deg_to_rad * ang_vel_calibrate_factor_;
+            float gyroscope_y = imu_.calcGyro(imu_.gy) * deg_to_rad * ang_vel_calibrate_factor_;
+            float gyroscope_z = imu_.calcGyro(imu_.gz) * deg_to_rad * ang_vel_calibrate_factor_;
 
             // Unit is Gauss
             // right-handed coordinate system

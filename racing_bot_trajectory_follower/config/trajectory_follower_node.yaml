@@ -6,6 +6,7 @@
       odom_frame: odom
 
       odom_topic: odometry/filtered
+      # odom_topic: odometry/wheel_encoders
       trajectory_topic: trajectory
       motor_command_topic: cmd_motor
       trajectory_marker_topic: visualization/trajectory

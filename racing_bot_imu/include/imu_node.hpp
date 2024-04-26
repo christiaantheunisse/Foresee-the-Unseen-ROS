@@ -58,7 +58,8 @@ namespace racing_bot
       std::vector<double> ang_vel_variances_;
       std::vector<double> orient_variances_;
       float madgwick_gain_;
-      float freq_scale_factor_;
+      // float freq_scale_factor_; TODO: remove this completely
+      float ang_vel_calibrate_factor_;
     };
   }
 }

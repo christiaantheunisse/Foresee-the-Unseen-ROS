@@ -4,24 +4,24 @@
             odom_frame: odom
             base_frame: base_link
             odometry_topic: odometry/wheel_encoders
-            odometry_queue_size: 5 # int
-            encoder_queue_size: 1 # int
+            odometry_queue_size: 5 # (int)
+            encoder_queue_size: 1 # (int)
             encoder_topic: wheel_encoders
             # do_broadcast_transform: True
 
             # Wheel radius and base are tuned after measuring
-            wheel_radius: 0.0329 # [m] double (0.033)
-            ticks_per_rev: 3840. # double
-            wheel_base: 0.1405 # [m] double (0.145) NOT SURE
+            wheel_radius: 0.03205 # [m] (double) carefully tuned with a tachometer
+            ticks_per_rev: 3840. # (double)
+            wheel_base: 0.1405 # [m] (double) (0.145) NOT SURE
 
             # Amount of seconds to use previous updates of the wheel encoders to calculate the velocity and position(encoders update freq = 50 Hz)
-            max_history_time: 0.15  # [s]
+            max_history_time: 0.08  # [s]
 
             # do_broadcast_transform: true # set this in the launch file
             # 0.01 m on position and 10 deg = 0.17 rad on rotation
             pose_variances: [0.01, 0.01, 0., 0., 0., 0.01] # position [x, y, z] orientation [roll, pitch, yaw]
             # only linear.x and angular.z is used
-            twist_variances: [0.03, 0.0, 0.0, 0.0, 0.0, 0.04] # linear [x', y', z'] angular [roll', pitch', yaw']
+            twist_variances: [3.0e-6, 0.0, 0.0, 0.0, 0.0, 0.04] # linear [x', y', z'] angular [roll', pitch', yaw']
 
             # linear_var: 0.0000412267  # variance / error for linear displacement (m/m so unitless)
             # angular_var: 0.0002592797  # variance / error for angular displacement (rad/rad so unitless)

@@ -133,8 +133,8 @@ def generate_launch_description():
         package="robot_localization",
         executable="ekf_node",
         name="velocity_ekf_node",
-        parameters=[PathJoinSubstitution([FindPackageShare("racing_bot_bringup"), "config", "ekf.yaml"])],
-        # parameters=[PathJoinSubstitution(["/home/christiaan/thesis/robot_ws/src/racing_bot_bringup/config/ekf.yaml"])],
+        # parameters=[PathJoinSubstitution([FindPackageShare("racing_bot_bringup"), "config", "ekf.yaml"])],
+        parameters=[PathJoinSubstitution(["/home/ubuntu/thesis_ws/src/racing_bot_bringup/config/ekf.yaml"])],
         condition=IfCondition(use_ekf),  # use_ekf
         remappings=[("odometry/filtered", "odometry/velocity_ekf")],
     )
@@ -142,8 +142,8 @@ def generate_launch_description():
         package="robot_localization",
         executable="ekf_node",
         name="position_ekf_node",
-        parameters=[PathJoinSubstitution([FindPackageShare("racing_bot_bringup"), "config", "ekf.yaml"])],
-        # parameters=[PathJoinSubstitution(["/home/christiaan/thesis/robot_ws/src/racing_bot_bringup/config/ekf.yaml"])],
+        # parameters=[PathJoinSubstitution([FindPackageShare("racing_bot_bringup"), "config", "ekf.yaml"])],
+        parameters=[PathJoinSubstitution(["/home/ubuntu/thesis_ws/src/racing_bot_bringup/config/ekf.yaml"])],
         condition=IfCondition(use_ekf),  # use_ekf
         # remappings=[("odometry/filtered", "odometry/position_ekf")],
     )
