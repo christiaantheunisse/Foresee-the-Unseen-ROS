@@ -175,6 +175,7 @@ def generate_launch_description():
         ],
         condition=IfCondition(AndSubstitution(follow_traject, NotSubstitution(play_rosbag))),
     )
+    # CLI: ros2 run tf2_ros static_transform_publisher --x 0. --frame-id map --child-frame-id test_traject
     static_trans_map_to_odom = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
