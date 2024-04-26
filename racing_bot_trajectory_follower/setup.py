@@ -22,7 +22,9 @@ setup(
     license="TODO: License declaration",
     tests_require=["pytest"],
     entry_points={
-        "console_scripts": ["trajectory_follower_node = racing_bot_trajectory_follower.trajectory_follower_node:main"],
-        # "console_scripts": ["trajectory_follower_node2 = racing_bot_trajectory_follower.trajectory_follower_node2:main"],
+        "console_scripts": [
+            "trajectory_follower_node = racing_bot_trajectory_follower.trajectory_follower_node:main",
+            "trajectory_follower_node2 = racing_bot_trajectory_follower.trajectory_follower_node2:main",
+        ],
     },
 )

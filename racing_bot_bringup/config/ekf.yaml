@@ -1,6 +1,6 @@
 velocity_ekf_node:
     ros__parameters:
-        frequency: 50.0
+        frequency: 30.0
         sensor_timeout: 0.05 # not sure about this one
         publish_tf: true
         two_d_mode: true  # planar mode
@@ -26,12 +26,12 @@ velocity_ekf_node:
         # The derivative of the yaw (so angular velocity) from the IMU is used
         imu0: /imu_data
         imu0_config: [false, false, false,      # x, y, z
-                      false, false, false,       # roll, pitch, yaw
+                      false, false, true,       # roll, pitch, yaw
                       false, false, false,      # x', y', z'
-                      false, false, true,      # roll', pitch', yaw'
+                      false, false, false,      # roll', pitch', yaw'
                       false, false, false]      # x'', y'', z''
-        # imu0_differential: true # angular velocity from yaw derivative
-        imu0_differential: false # use real angular velocity since its now calibrated
+        imu0_differential: true # angular velocity from yaw derivative
+        # imu0_differential: false # use real angular velocity since its now calibrated
         imu0_queue_size: 7
 
         # Uncertainty in the prediction step; uncertainty in the update step follows from the sensor messages covariances
@@ -39,7 +39,7 @@ velocity_ekf_node:
         # Tune the sensor covariances to change the output uncertainty of this filter.
         process_noise_covariance: [0.1, 0.1, 0.,
                                    0., 0., 0.2,
-                                   1., 0., 0.,
+                                   0.01, 0., 0.,
                                    0., 0., 0.01,
                                    0.1, 0.1, 0.]
         # [x, y, z, roll, pitch, yaw, x', y', z', roll', pitch', yaw', x'', y'', z'']
@@ -47,7 +47,7 @@ velocity_ekf_node:
         
 position_ekf_node:
     ros__parameters:
-        frequency: 50.0
+        frequency: 30.0
         sensor_timeout: 0.05 # not sure about this one
         publish_tf: true
         two_d_mode: true  # planar mode
@@ -91,7 +91,7 @@ position_ekf_node:
 
 my_ekf_filter_node:
     ros__parameters:
-        frequency: 30.0
+        frequency: 25.0
         sensor_timeout: 0.1 # not sure about this one
         publish_tf: true
         two_d_mode: true  # planar mode
@@ -107,7 +107,7 @@ my_ekf_filter_node:
         # https://answers.ros.org/question/405263/prediction-step-and-imu-orientation-have-little-impact-on-robot_localization-position/
         # https://answers.ros.org/question/50870/what-frame-is-sensor_msgsimuorientation-relative-to/
         # Slides: https://roscon.ros.org/2015/presentations/robot_localization.pdf
-        odom0: /odom
+        odom0: /odometry/wheel_encoders
         # Pose (position and orientation) is in the header.frame_id (odom) and Twist (linear and angular velocity) is in the child_frame_id (base_link)
         odom0_config: [false, false, false,    # x, y, z
                        false, false, false ,     # roll, pitch, yaw
@@ -123,8 +123,6 @@ my_ekf_filter_node:
                       false, false, false,   # x', y', z'
                       false, false, false,    # roll', pitch', yaw'
                       false, false, false]      # x'', y'', z''
-
-        imu0_nodelay: false
         imu0_differential: true # velocity from pose 
         # imu0_relative: true  # first orientation is zero-point
         imu0_queue_size: 7
