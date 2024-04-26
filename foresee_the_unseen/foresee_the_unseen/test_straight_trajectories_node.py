@@ -26,7 +26,7 @@ from foresee_the_unseen.lib.planner import Planner
 LOG_DIR = "/home/christiaan/thesis/test_trajectories_log_files"
 
 # Test planner settings
-TEST_DISTANCE = 5  # [m]
+TEST_DISTANCE = 10  # [m]
 DX_WAYPOINTS = 0.1  # [m]
 TURN_CORNER_RADIUS = 0.5  # [m]
 DT = 0.25  # [s]
@@ -113,8 +113,8 @@ class TestStraightTrajectoriesNode(Node):
         self.base_log_dir = create_log_directory(LOG_DIR)
 
 
-        # self.create_subscription(Odometry, "/odometry/filtered", self.odom_callback, 5)
-        self.create_subscription(Odometry, "/odom", self.odom_callback, 5)
+        self.create_subscription(Odometry, "/odometry/filtered", self.odom_callback, 5)
+        # self.create_subscription(Odometry, "/odom", self.odom_callback, 5)
         self.publisher_trajectory = self.create_publisher(TrajectoryMsg, "trajectory", 5)
         self.publisher_motor_cmd = self.create_publisher(Int16MultiArray, "cmd_motor", 5)
 
@@ -509,9 +509,9 @@ class TestStraightTrajectoriesNode(Node):
 
         pt_current, pt_goal = self.state.position, self.waypoints[idx_waypoint]
         positions = np.array([pt_current, (pt_current + pt_goal)/2, pt_goal])
-        lin_distance: float = 0.3
-        min_corner_radius: float = TURN_CORNER_RADIUS
-        dx_waypoints: float = 0.05
+        # lin_distance: float = 0.3
+        # min_corner_radius: float = TURN_CORNER_RADIUS
+        # dx_waypoints: float = 0.05
         reference_speed: float = REFERENCE_SPEED
         max_acceleration: float = 0.1
         dt: float = 0.25
@@ -550,11 +550,12 @@ class TestStraightTrajectoriesNode(Node):
     def has_goal_velocity(self) -> bool:
         return bool(np.abs(self.state.velocity - self.goal_state.velocity) < MARGIN_VELOCITY)
     
-    def has_passed_goal(self) -> bool:
+    def has_passed_goal(self, margin: float = 0.) -> bool:
         # rotate the gaol orientatin by 90 degrees and check in which halfspace
         line_orientation = self.goal_state.orientation + np.pi / 2
         goal_line = np.array([np.cos(line_orientation), np.sin(line_orientation)])
-        return bool(np.cross(self.state.position - self.goal_state.position, goal_line) > 0)
+        line_point = self.goal_state.position - np.array([np.cos(self.goal_state.orientation), np.sin(self.goal_state.orientation)]) * margin
+        return bool(np.cross(self.state.position - line_point, goal_line) > 0)
 
     def run_state_machine(self) -> None:
         """The function that controls the state machine."""
@@ -570,7 +571,7 @@ class TestStraightTrajectoriesNode(Node):
             self.is_at_start = not self.is_at_start
             self.planner_state = "returning to boundary"
         elif self.planner_state == "full turn":
-            cmd_limit = 25
+            cmd_limit = 70
             kp = 0.1
             orient_error = self.normalize_angles(self.goal_state.orientation - self.state.orientation)
 
@@ -613,7 +614,7 @@ class TestStraightTrajectoriesNode(Node):
             self.publisher_motor_cmd.publish(Int16MultiArray(data=[int(-motor_cmd), int(motor_cmd), 0, 0]))
         elif self.planner_state == "returning to boundary":
             # if self.has_goal_position() and self.has_goal_velocity():
-            if self.has_passed_goal():
+            if self.has_passed_goal(margin = 0.15):
                 self.get_logger().info("Boundary point reached")
                 self.planner_state = "full turn"
                 self.publish_trajectory(None)

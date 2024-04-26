@@ -13,6 +13,7 @@ from sensor_msgs.msg import LaserScan
 from racing_bot_interfaces.msg import EncoderValues, Trajectory
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
+from sensor_msgs.msg import Imu
 
 from tf2_ros import TransformException
 from tf2_ros.buffer import Buffer
@@ -43,10 +44,13 @@ class StoreTopicsNode(Node):
                 # TopicToStore(topic_name="/scan/road_env", message_type=LaserScan),
                 # TopicToStore(topic_name="/wheel_encoders", message_type=EncoderValues),
                 # TopicToStore(topic_name="/odom", message_type=Odometry),
+                # TopicToStore(topic_name="/odometry/wheel_encoders", message_type=Odometry),
+                # TopicToStore(topic_name="/odometry/velocity_ekf", message_type=Odometry),
                 # TopicToStore(topic_name="/odometry/filtered", message_type=Odometry),
-                # TopicToStore(topic_name="/slam_pose", message_type=PoseWithCovarianceStamped),
-                TopicToStore(topic_name="/trajectory", message_type=Trajectory),
+                TopicToStore(topic_name="/slam_pose", message_type=PoseWithCovarianceStamped),
+                # TopicToStore(topic_name="/trajectory", message_type=Trajectory),
                 # TopicToStore(topic_name="/cmd_motor", message_type=Int16MultiArray),
+                TopicToStore(topic_name="/imu_data", message_type=Imu)
             ]
         )
         assert self.unique_check(topics_to_store), "All topic names should be unique"
@@ -90,7 +94,7 @@ class StoreTopicsNode(Node):
                     pickle.dump(msg, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         return callback
-    
+
     def create_transform_timer(self, source_frame: str, target_frame: str, frequency: float) -> None:
         """ Creates a callback function for a timer to save a transform. """
         name = "transform_" + source_frame + "_" + target_frame
@@ -99,7 +103,7 @@ class StoreTopicsNode(Node):
         def callback() -> None:
             counter = getattr(self, str(name + "_counter"))
             setattr(self, str(name + "_counter"), counter + 1)
-            
+
             try:
                 transform = self.tf_buffer.lookup_transform(target_frame, source_frame, rclpy.time.Time())
             except TransformException as ex:
@@ -108,10 +112,10 @@ class StoreTopicsNode(Node):
                     throttle_duration_sec=3,
                 )
                 return None
-            
+
             filename = os.path.join(self.log_dir, f"{name} {counter}.pickle")
             with open(filename, "wb") as handle:
-                    pickle.dump(transform, handle, protocol=pickle.HIGHEST_PROTOCOL)
+                pickle.dump(transform, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         self.create_timer(1/frequency, callback)
 

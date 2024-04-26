@@ -94,8 +94,19 @@ def generate_launch_description():
     play_rosbag_launch_arg = DeclareLaunchArgument(
         "play_rosbag",
         default_value=TextSubstitution(text="false"),
-        description="Don't run the sensor nodes when its run on a rosbag",
+        description="Run some robot nodes when playing rosbag data and use the simulation (rosbag) time",
     )
+    play_rosbag_launch_arg = DeclareLaunchArgument(
+        "rosbag_file",
+        default_value=TextSubstitution(text="none"),
+        description="If other than none, the rosbag file to use from ROS_BAG_FILES_DIR",
+    )
+
+    try:
+        bag_files_dir = os.environ["ROS_BAG_FILES_DIR"]
+    except KeyError:
+        bag_files_dir = ""
+        
 
     use_foresee = LaunchConfiguration("use_foresee")
     slam_mode_robot = LaunchConfiguration("slam_mode_robot")
@@ -106,6 +117,7 @@ def generate_launch_description():
     slam_mode_obs = LaunchConfiguration("slam_mode_obs")
     use_ekf_obs = LaunchConfiguration("use_ekf_obs")
     play_rosbag = LaunchConfiguration("play_rosbag")
+    rosbag_file = LaunchConfiguration("rosbag_file")
 
     do_use_sim_time = SetParameter(name="use_sim_time", value=play_rosbag)
 
@@ -166,6 +178,18 @@ def generate_launch_description():
         condition=IfCondition(play_rosbag),
     )
 
+    rosbag_player = ExecuteProcess(
+        cmd=[
+            "ros2",
+            "bag",
+            "play",
+            PathJoinSubstitution([bag_files_dir, rosbag_file]),
+            "--clock",
+        ],
+        # play_rosbag and rosbag_file != "none"
+        condition=IfCondition(AndSubstitution(play_rosbag, NotSubstitution(EqualsSubstitution(rosbag_file, "none")))),
+    )
+
     return LaunchDescription(
         [
             # arguments
@@ -187,5 +211,7 @@ def generate_launch_description():
             robot_launch,
             # nodes
             rviz,
+            # commands
+            rosbag_player,
         ]
     )
