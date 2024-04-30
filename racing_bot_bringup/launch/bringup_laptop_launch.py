@@ -101,12 +101,16 @@ def generate_launch_description():
         default_value=TextSubstitution(text="none"),
         description="If other than none, the rosbag file to use from ROS_BAG_FILES_DIR",
     )
+    store_topics_launch_arg = DeclareLaunchArgument(
+        "store_topics",
+        default_value=TextSubstitution(text="false"),
+        description="If true, save certain topics to disk",
+    )
 
     try:
         bag_files_dir = os.environ["ROS_BAG_FILES_DIR"]
     except KeyError:
         bag_files_dir = ""
-        
 
     use_foresee = LaunchConfiguration("use_foresee")
     slam_mode_robot = LaunchConfiguration("slam_mode_robot")
@@ -118,6 +122,7 @@ def generate_launch_description():
     use_ekf_obs = LaunchConfiguration("use_ekf_obs")
     play_rosbag = LaunchConfiguration("play_rosbag")
     rosbag_file = LaunchConfiguration("rosbag_file")
+    store_topics = LaunchConfiguration("store_topics")
 
     do_use_sim_time = SetParameter(name="use_sim_time", value=play_rosbag)
 
@@ -190,6 +195,12 @@ def generate_launch_description():
         condition=IfCondition(AndSubstitution(play_rosbag, NotSubstitution(EqualsSubstitution(rosbag_file, "none")))),
     )
 
+    store_topics_node = Node(
+        package="foresee_the_unseen",
+        executable="topics_to_disk_node",
+        condition=IfCondition(store_topics),
+    )
+
     return LaunchDescription(
         [
             # arguments
@@ -202,6 +213,7 @@ def generate_launch_description():
             slam_mode_obs_launch_arg,
             use_ekf_obs_launch_arg,
             play_rosbag_launch_arg,
+            store_topics_launch_arg,
             # parameters
             do_use_sim_time,
             # launch files
@@ -211,6 +223,7 @@ def generate_launch_description():
             robot_launch,
             # nodes
             rviz,
+            store_topics_node,
             # commands
             rosbag_player,
         ]

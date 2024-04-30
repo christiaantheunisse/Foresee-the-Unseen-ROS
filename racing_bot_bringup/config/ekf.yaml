@@ -31,7 +31,7 @@ velocity_ekf_node:
                       false, false, false,      # roll', pitch', yaw'
                       false, false, false]      # x'', y'', z''
         imu0_differential: true # angular velocity from yaw derivative
-        # imu0_differential: false # use real angular velocity since its now calibrated
+        # imu0_differential: false # use real angular velocity since its now calibrated -> gives significantly worse results
         imu0_queue_size: 7
 
         # Uncertainty in the prediction step; uncertainty in the update step follows from the sensor messages covariances
@@ -40,7 +40,7 @@ velocity_ekf_node:
         process_noise_covariance: [0.1, 0.1, 0.,
                                    0., 0., 0.2,
                                    0.01, 0., 0.,
-                                   0., 0., 0.01,
+                                   0., 0., 0.1,
                                    0.1, 0.1, 0.]
         # [x, y, z, roll, pitch, yaw, x', y', z', roll', pitch', yaw', x'', y'', z'']
         initial_estimate_covariance: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
@@ -80,11 +80,11 @@ position_ekf_node:
         pose0_queue_size: 3
 
         # Uncertainty in the prediction step; uncertainty in the update step follows from the sensor messages covariances
-        process_noise_covariance: [0.001, 0.001, 0.,    # x, y, z
-                                   0., 0., 0.001,       # roll, pitch, yaw
-                                   1., 0., 0.,        # x', y', z'
-                                   0., 0., 0.01,        # roll', pitch', yaw'
-                                   0.1, 0.1, 0.]        # x'', y'', z''
+        process_noise_covariance: [0.01, 0.01, 0.,    # x, y, z
+                                   0., 0., 0.01,       # roll, pitch, yaw
+                                   0.01, 0., 0.,        # x', y', z'
+                                   0., 0., 0.05,        # roll', pitch', yaw'
+                                   0.01, 0.01, 0.]        # x'', y'', z''
         # [x, y, z, roll, pitch, yaw, x', y', z', roll', pitch', yaw', x'', y'', z'']
         initial_estimate_covariance: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
         

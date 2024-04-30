@@ -12,7 +12,10 @@
       # z-axis ang velocity variance was determined using the Mean Square Successive Difference (MSSD), since no ground truth readings were obtained. 
       # Does not account for biases that remain after calibration.
       ang_vel_variances:  [0.04, 0.04, 0.00197]
-      orient_variances: [0.002, 0.004, 0.1] 
+      # The differential of the yaw is used in the EKF node. The variance (sigma_yaw_rate ** 2) on the velocity should be 0.00197.
+      # 2 * sigma_yaw ** 2 * rate ** 2 = sigma_yaw_rate ** 2
+      #                 sigma_yaw ** 2 = (1 / (2 * rate ** 2)) * sigma_yaw_rate ** 2 = 4.0e-7
+      orient_variances: [0.002, 0.004, 0.1]
 
       ang_vel_calibrate_factor: 1.18958 # Tuned for the yaw velocity based on SLAM with multiple runs at different velocities
       # [DEPRECATED] freq_scale_factor: 0.85  # scales the update rate of the madgwick algorithm. Is not a tunable parameter, but I think it is necessary because the imu underestimates the angular velocities.
