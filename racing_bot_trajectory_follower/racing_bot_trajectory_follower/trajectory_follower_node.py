@@ -451,6 +451,9 @@ class TrajectoryFollowerNode(Node):
         # self.counter = 0
 
         """ Original Code """
+        if not msg.path.poses:
+            self.trajectory = None
+            return
         traj_frame = msg.path.header.frame_id
         positions = np.array([[p.pose.position.x, p.pose.position.y] for p in msg.path.poses])
         quaternions = [p.pose.orientation for p in msg.path.poses]
