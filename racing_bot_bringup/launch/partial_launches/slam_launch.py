@@ -82,7 +82,7 @@ def generate_launch_description():
                 },
             ],
             package="slam_toolbox",
-            executable="async_slam_toolbox_node",
+            executable="sync_slam_toolbox_node",
             name="slam_node",
             remappings=[("pose", "slam_pose")],
             condition=IfCondition(AndSubstitution(use_mapping, NotSubstitution(use_localization))),

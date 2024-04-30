@@ -26,12 +26,13 @@ from foresee_the_unseen.lib.planner import Planner
 LOG_DIR = "/home/christiaan/thesis/test_trajectories_log_files"
 
 # Test planner settings
-TEST_DISTANCE = 10  # [m]
+TEST_DISTANCE = 4  # [m]
 DX_WAYPOINTS = 0.1  # [m]
 TURN_CORNER_RADIUS = 0.5  # [m]
 DT = 0.25  # [s]
 MAX_DIST_CORNER_SMOOTHING = 0.2  # [m]
-FREQUENCY_TRAJECTORY = 20
+FREQUENCY_STATE_MACHINE = 30
+FREQUENCY_TRAJECTORY = 5
 MARGIN_VELOCITY = 0.001  # [m/s]
 MARGIN_POSITION = 0.5  # [m/s]
 MARGIN_ORIENTATION = 0.2  # [rad]
@@ -113,8 +114,8 @@ class TestStraightTrajectoriesNode(Node):
         self.base_log_dir = create_log_directory(LOG_DIR)
 
 
-        self.create_subscription(Odometry, "/odometry/filtered", self.odom_callback, 5)
-        # self.create_subscription(Odometry, "/odom", self.odom_callback, 5)
+        self.create_subscription(Odometry, "/odometry/filtered", self.odom_callback, 15)
+        # self.create_subscription(Odometry, "/odom", self.odom_callback, 15)
         self.publisher_trajectory = self.create_publisher(TrajectoryMsg, "trajectory", 5)
         self.publisher_motor_cmd = self.create_publisher(Int16MultiArray, "cmd_motor", 5)
 
@@ -136,8 +137,8 @@ class TestStraightTrajectoriesNode(Node):
         #     waypoints = self.waypoints[::1 if self.is_at_start else -1]
         #     pickle.dump(waypoints, handle, protocol=pickle.HIGHEST_PROTOCOL)
         
-        self.planner_timer = self.create_timer(1 / FREQUENCY_TRAJECTORY, self.run_state_machine)
-        self.create_timer(1 / 5, self.republish_trajectory)
+        self.planner_timer = self.create_timer(1 / FREQUENCY_STATE_MACHINE, self.run_state_machine)
+        self.create_timer(1 / FREQUENCY_TRAJECTORY, self.republish_trajectory)
 
     @property
     def state(self) -> State:
@@ -571,7 +572,7 @@ class TestStraightTrajectoriesNode(Node):
             self.is_at_start = not self.is_at_start
             self.planner_state = "returning to boundary"
         elif self.planner_state == "full turn":
-            cmd_limit = 70
+            cmd_limit = 35
             kp = 0.1
             orient_error = self.normalize_angles(self.goal_state.orientation - self.state.orientation)
 
@@ -594,14 +595,16 @@ class TestStraightTrajectoriesNode(Node):
                         self.waypoint_log_dir, f"trajectory {self.trajectory_to_test_idx}"
                     )
                     os.mkdir(self.trajectory_log_dir)
-                    with open(os.path.join(self.trajectory_log_dir, f"trajectory.pickle"), "wb") as handle:
-                        pickle.dump(test_trajectory, handle, protocol=pickle.HIGHEST_PROTOCOL)
                     with open(os.path.join(self.trajectory_log_dir, f"waypoints.pickle"), "wb") as handle:
                         waypoints = self.waypoints[::1 if self.is_at_start else -1]
                         pickle.dump(waypoints, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-                    self.planner_state = "following trajectory"
                     self.publish_trajectory(test_trajectory)
+                    save_time = self.trajectory_msg.path.header.stamp
+                    time_stamp = str(save_time.sec) + "_" + str(save_time.nanosec)
+                    with open(os.path.join(self.trajectory_log_dir, f"trajectory {time_stamp}.pickle"), "wb") as handle:
+                        pickle.dump(test_trajectory, handle, protocol=pickle.HIGHEST_PROTOCOL)
+                    self.planner_state = "following trajectory"
                 else:
                     # TODO: plan new trajectories or finish
                     self.get_logger().info("Completed all the trajectories")

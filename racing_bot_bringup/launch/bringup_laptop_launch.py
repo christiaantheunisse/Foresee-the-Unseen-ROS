@@ -96,7 +96,7 @@ def generate_launch_description():
         default_value=TextSubstitution(text="false"),
         description="Run some robot nodes when playing rosbag data and use the simulation (rosbag) time",
     )
-    play_rosbag_launch_arg = DeclareLaunchArgument(
+    rosbag_file_launch_arg = DeclareLaunchArgument(
         "rosbag_file",
         default_value=TextSubstitution(text="none"),
         description="If other than none, the rosbag file to use from ROS_BAG_FILES_DIR",
@@ -213,6 +213,7 @@ def generate_launch_description():
             slam_mode_obs_launch_arg,
             use_ekf_obs_launch_arg,
             play_rosbag_launch_arg,
+            rosbag_file_launch_arg,
             store_topics_launch_arg,
             # parameters
             do_use_sim_time,
