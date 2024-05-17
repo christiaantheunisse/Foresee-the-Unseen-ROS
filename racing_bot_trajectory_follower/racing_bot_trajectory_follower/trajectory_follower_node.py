@@ -203,6 +203,7 @@ class TrajectoryFollowerNode(Node):
         self.declare_parameter("velocity_p", 1.0)  # velocity PID constants
         self.declare_parameter("steering_k", 0.5)  # steering control gain
         self.declare_parameter("min_corner_radius", 0.5)  # max steering angle [deg]
+        self.declare_parameter("goal_distance_lead", 0.15)  # distance the goal point is ahead of the current position [m]
 
         self.declare_parameter("do_limit_acceleration", True)
         self.declare_parameter("max_acceleration", 0.5)
@@ -247,6 +248,7 @@ class TrajectoryFollowerNode(Node):
         self.velocity_Kp = self.get_parameter("velocity_p").get_parameter_value().double_value
         self.steering_k = self.get_parameter("steering_k").get_parameter_value().double_value
         self.min_corner_radius = self.get_parameter("min_corner_radius").get_parameter_value().double_value
+        self.goal_distance_lead = self.get_parameter("goal_distance_lead").get_parameter_value().double_value
 
         self.do_lim_acc = self.get_parameter("do_limit_acceleration").get_parameter_value().bool_value
         self.max_abs_acc = self.get_parameter("max_acceleration").get_parameter_value().double_value
@@ -350,7 +352,8 @@ class TrajectoryFollowerNode(Node):
 
     def visualize_trajectory(
         self,
-        target_idx: Optional[int] = None,
+        target_idx_p: Optional[int] = None,
+        target_idx_v: Optional[int] = None,
         goal_velocity: Optional[float] = None,
         debug_string: Optional[str] = None,
     ) -> None:
@@ -380,16 +383,21 @@ class TrajectoryFollowerNode(Node):
             )
             marker_list.append(trajectory_marker)
 
-        if target_idx is not None:
+        if target_idx_p is not None or target_idx_v is not None:
+            points, colors = [], []
+            if target_idx_p is not None:
+                points.append(Point(x=float(self.trajectory.xys[target_idx_p, 0]), y=float(self.trajectory.xys[target_idx_p, 1])))
+                colors.append(ColorRGBA(r=0.5, g=0.5, b=0.5, a=1.0))
+            if target_idx_v is not None:
+                points.append(Point(x=float(self.trajectory.xys[target_idx_v, 0]), y=float(self.trajectory.xys[target_idx_v, 1])))
+                colors.append(ColorRGBA(a=1.0))
             closest_point_marker = Marker(
                 header=header,
                 type=Marker.POINTS,
                 action=Marker.MODIFY,
                 id=0,
-                points=[
-                    Point(x=float(self.trajectory.xys[target_idx, 0]), y=float(self.trajectory.xys[target_idx, 1]))
-                ],
-                colors=[ColorRGBA(a=1.0)],
+                points=points,
+                colors=colors,
                 scale=Vector3(x=0.06, y=0.06),
                 ns="closest point",
             )
@@ -531,24 +539,36 @@ class TrajectoryFollowerNode(Node):
             *transf_position, transf_yaw, velocity, msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9  # type: ignore
         )
 
-    def get_closest_idx(self) -> int:
+    def get_closest_idx(self) -> Tuple[int, int]:
         """Finds the index of the closest point on the trajectory"""
         dist_vec = np.array([self.state.x, self.state.y]) - self.trajectory.xys  # type: ignore
         dist = np.linalg.norm(dist_vec, axis=1)
-        target_idx = np.argmin(dist)
+        target_idx = int(np.argmin(dist))
         if self.last_target_idx > target_idx:
             target_idx = self.last_target_idx
         else:
             self.last_target_idx = target_idx
 
-        return target_idx
-
-    def first_future_idx(self) -> int:
-        """Finds the index of the first future stamp on the trajectory"""
+        return target_idx, target_idx
+    
+    def first_future_idx(self) -> Tuple[int, int]:
+        """Finds the index of the first future goal state on the trajectory and the index of the state an x amount of 
+        seconds ahead of the current position. """
         current = self.get_clock().now().nanoseconds * 1e-9
         mask = self.trajectory.stamps > current  # type: ignore
-        target_idx = np.argmax(mask) if mask.sum() > 0 else -1  # index of first True and else the last element
-        return target_idx
+        target_idx_v = np.argmax(mask) if mask.sum() > 0 else -1  # index of first True and else the last element
+
+        dist_vec = np.array([self.state.x, self.state.y]) - self.trajectory.xys[target_idx_v]
+        par_vec = -np.array([np.cos(self.state.yaw), np.sin(self.state.yaw)])
+        par_error = dist_vec @ par_vec
+        goal_vel = self.trajectory.vs[target_idx_v] if self.trajectory.vs[target_idx_v] != 0. else 1e-6
+        t_behind = min(par_error / goal_vel, 1.5)
+        current_vel = self.state.v if self.state.v != 0. else 1e-6
+        t_lag = min(self.goal_distance_lead / current_vel, 0.6)  # [s]
+        mask = self.trajectory.stamps > (current - t_behind + t_lag)  # type: ignore
+        target_idx_p = np.argmax(mask) if mask.sum() > 0 else -1  # index of first True and else the last element
+
+        return int(target_idx_v), int(target_idx_p)
 
     def interpolate_target_velocity(self, target_idx: int) -> float:
         """Interpolate the target velocity between the waypoints."""
@@ -593,23 +613,25 @@ class TrajectoryFollowerNode(Node):
 
         # calculate target index
         if self.follow_mode == "position":
-            target_idx = self.get_closest_idx()
+            target_idx_v, target_idx_p = self.get_closest_idx()
         elif self.follow_mode == "time":
-            target_idx = self.first_future_idx()
+            target_idx_v, target_idx_p = self.first_future_idx()
 
-        if target_idx is None:
+        if target_idx_v is None or target_idx_p is None:
             self.visualize_trajectory()
             return
 
         # Perpendicular distance error
-        dist_vec = np.array([self.state.x, self.state.y]) - self.trajectory.xys
+        # TODO: goal position should be 0.1 meters or 0.3 seconds ahead to allow smooth cornering
+        dist_vec = np.array([self.state.x, self.state.y]) - self.trajectory.xys[target_idx_p]
         perp_vec = -np.array([np.cos(self.state.yaw + np.pi / 2), np.sin(self.state.yaw + np.pi / 2)])
-        perp_error = dist_vec[target_idx] @ perp_vec
+        perp_error = dist_vec @ perp_vec
 
         # Calculate the normalised acceleration (acceleration of the normalised velocity) with a P-controller
-        target_vel = self.interpolate_target_velocity(target_idx)
+        # Target velocity is directly tracked
+        target_vel = self.interpolate_target_velocity(target_idx_v)
         if self.control_mode == "acceleration":  # use the trajectory velocity and acceleration
-            acc_traject = self.trajectory.accs[target_idx] / self.vel_pwm_rate  # m/s2 to pwm/s
+            acc_traject = self.trajectory.accs[target_idx_v] / self.vel_pwm_rate  # m/s2 to pwm/s
             acc_error = self.p_control(target_vel, self.state.v)  # Requires typically a lower p value
             acceleration = acc_traject + acc_error
         elif self.control_mode == "velocity":  # only use the trajectory velocity
@@ -641,7 +663,7 @@ class TrajectoryFollowerNode(Node):
             )
 
         # Calculate the steering angle with a Stanley controller: ccw positive
-        delta = self.stanley_controller(self.trajectory.yaws[target_idx], perp_error)
+        delta = self.stanley_controller(self.trajectory.yaws[target_idx_p], perp_error)
         if abs(delta) > self.max_steering_angle:
             delta = np.clip(delta, -self.max_steering_angle, self.max_steering_angle)
             if self.state.v > 0.01:  # low velocities result in high delta
@@ -670,10 +692,10 @@ class TrajectoryFollowerNode(Node):
         #     + f" acc_current = {acceleration}"
         # )
         # debug_string = f"goal_orient = {self.trajectory.yaws[target_idx]}, actual_orient = {self.state.yaw}"
-        self.visualize_trajectory(target_idx=target_idx)
+        self.visualize_trajectory(target_idx_p=target_idx_p, target_idx_v=target_idx_v)
 
         if self.do_store_data:
-            self.store_data_on_disk(target_idx)
+            self.store_data_on_disk(target_idx_p, target_idx_v)
 
     def p_control(self, target, current) -> float:
         """P controller for the speed."""
@@ -700,15 +722,15 @@ class TrajectoryFollowerNode(Node):
 
         return v_left, v_right
 
-    def store_data_on_disk(self, target_idx):
+    def store_data_on_disk(self, target_idx_p, target_idx_v):
         """Stores the data on disk to investigate the trajectory follower performance."""
         data_dict = {
             "current": self.state,
             "target": State(
-                *self.trajectory.xys[target_idx],
-                self.trajectory.yaws[target_idx],
-                self.trajectory.vs[target_idx],
-                self.trajectory.stamps[target_idx],
+                *self.trajectory.xys[target_idx_p],
+                self.trajectory.yaws[target_idx_p],
+                self.trajectory.vs[target_idx_v],
+                self.trajectory.stamps[target_idx_v],
             ),
         }
         time_stamp = (
