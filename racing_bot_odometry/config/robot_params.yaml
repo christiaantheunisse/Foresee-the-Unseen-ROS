@@ -1,0 +1,12 @@
+/**:
+  odom_node:
+    ros__parameters:
+      # Wheel radius and base are tuned after measuring
+      wheel_radius: 0.03205 # [m] (double) carefully tuned with tachometer
+      ticks_per_rev: 3840. # (double)
+      wheel_base: 0.1405 # [m] (double) not sure about this value
+
+      pose_variances: [0.01, 0.01, 0., 0., 0., 0.01] # position [x, y, z] orientation [roll, pitch, yaw]
+      # only linear.x and angular.z is used
+      twist_variances: [3.0e-6, 0.0, 0.0, 0.0, 0.0, 0.04] # linear [x', y', z'] angular [roll', pitch', yaw']
+
