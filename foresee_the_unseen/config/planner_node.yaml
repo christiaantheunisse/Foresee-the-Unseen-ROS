@@ -17,9 +17,9 @@ planner_node:
     ego_vehicle_offset: [0., 0., 0.06]
     planner_frequency: 4. # [Hz]
 
-    use_triangulation: True
+    # use_triangulation: True
     num_pred_to_visualize: 5
-    do_visualize: True
+    # do_visualize: True
     
     # road_xml: /home/christiaan/thesis/robot_ws/install/foresee_the_unseen/share/foresee_the_unseen/resource/road_structure.xml
 

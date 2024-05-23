@@ -117,7 +117,7 @@ class PlannerNode(Node):
         self.declare_parameter("ego_vehicle_offset", [0.0, 0.0, 0.06])  # L x W x H [m]
         self.declare_parameter("planner_frequency", 2.0)
 
-        self.declare_parameter("use_triangulation", False)  # for the visualization of the polygons
+        self.declare_parameter("use_triangulation", True)  # for the visualization of the polygons
         self.declare_parameter("num_pred_to_visualize", 5)
         self.declare_parameter("do_visualize", True)
 

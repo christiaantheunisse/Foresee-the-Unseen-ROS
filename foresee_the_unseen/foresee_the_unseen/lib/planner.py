@@ -204,6 +204,7 @@ class Planner:
             check_velocity_profile(-1)
 
             N = len(velocity_profiles)
+            # TODO: implement some time limit here
             step_N, current_N = N / 2, N / 2
             while step_N >= 2 and -1e-6 < current_N < N + 1e-6:
                 step_N /= 2
@@ -343,7 +344,7 @@ class Planner:
         #  the goal
         acc_profile = np.full(time_horizon, -max_dec)
 
-        velocity = min(velocity, reference_speed)
+        velocity = min(velocity, reference_speed) # FIXME: is mistake
 
         if velocity <= reference_speed:
             # maximum reachable velocity within the limited distance

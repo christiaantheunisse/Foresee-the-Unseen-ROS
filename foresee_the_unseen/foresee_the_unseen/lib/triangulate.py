@@ -186,3 +186,37 @@ def triangulate(polygon):
         if not yld:
             i += 1
 
+
+def remove_redudant_vertices_polygon(polygon):
+    """
+    Remove redundant points from a polygon. Assume a polygon with points: A, B, C, D, E, F, ...
+    Step ONE:
+        1. Find consecutive points that are the same
+    Step TWO
+        1. Calculate vector AB and AC for every set of 3 consecutive points (A, B, C)
+        2. Calculate the angle between AB and AC
+            - Normalize AB and AC
+            - AB @ AC == 1 --> angle = 0 degrees --> point B is redundant
+    """
+    MIN_DIST = 0.0001
+    ANGLE_MARGIN = 0.00001  # 0.25 degrees
+    diff = polygon - np.roll(polygon, -1, axis=0)
+    dist = np.linalg.norm(diff, axis=1)
+    mask = dist < MIN_DIST
+
+    polygon_no_d = polygon[~mask]
+    AB = polygon_no_d - np.roll(polygon_no_d, -1, axis=0)
+    AC = polygon_no_d - np.roll(polygon_no_d, -2, axis=0)
+    AB_norm = AB / np.linalg.norm(AB, axis=1).reshape(-1, 1)
+    AC_norm = AC / np.linalg.norm(AC, axis=1).reshape(-1, 1)
+
+    dot_products = []
+    for a, b in zip(AB_norm, AC_norm):
+        dot_products.append(a @ b)
+    dot_products = np.array(dot_products)
+    mask_align = np.roll(np.abs(dot_products), 1) > (1 - ANGLE_MARGIN)
+
+    mask[mask == False] = mask_align
+
+    polygon_mask = polygon[~mask]
+    return np.vstack((polygon_mask, polygon_mask[:1]))

@@ -21,13 +21,20 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 
 def generate_launch_description():
-    # play_rosbag_launch_arg = DeclareLaunchArgument(
-    #     "play_rosbag",
-    #     default_value=TextSubstitution(text="false"),
-    #     description="If false, bring up the real robot.",
-    # )
-    # play_rosbag = LaunchConfiguration("play_rosbag")
+    do_visualize_launch_arg = DeclareLaunchArgument(
+        "do_visualize",
+        default_value=TextSubstitution(text="true"),
+        description="If true, the planner node ",
+    )
+    do_triangulate_launch_arg = DeclareLaunchArgument(
+        "do_triangulate",
+        default_value=TextSubstitution(text="false"),
+        description="If true, the planner node ",
+    )
 
+    do_visualize = LaunchConfiguration("do_visualize")
+    do_triangulate = LaunchConfiguration("do_triangulate")
+        
     log_messages = []
     try:
         log_files_dir = os.environ["ROS_LOG_FILES_DIR"]
@@ -36,7 +43,6 @@ def generate_launch_description():
         log_messages.append(LogInfo(msg="`ROS_LOG_FILES_DIR` is not set!"))
         log_files_dir = ""
 
-    # do_use_sim_time = SetParameter(name="use_sim_time", value=play_rosbag)
 
     planner_node = Node(
         package="foresee_the_unseen",
@@ -44,6 +50,8 @@ def generate_launch_description():
         parameters=[
             PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "planner_node.yaml"]),
             {
+                "use_triangulation": AndSubstitution(do_visualize, do_triangulate),
+                "do_visualize": do_visualize,
                 "road_xml": PathJoinSubstitution(
                     [FindPackageShare("foresee_the_unseen"), "resource", "road_structure_15_reduced_points.xml"]
                 ),
@@ -51,7 +59,6 @@ def generate_launch_description():
             },
         ],
     )
-
 
     def get_map_to_planner_frame_tf(context: LaunchContext):
         commonroad_config_yamlpath = PathJoinSubstitution(
@@ -76,9 +83,9 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
-            # play_rosbag_launch_arg,
+            do_visualize_launch_arg,
+            do_triangulate_launch_arg,
             *log_messages,
-            # do_use_sim_time,
             planner_node,
             OpaqueFunction(
                 function=get_map_to_planner_frame_tf,

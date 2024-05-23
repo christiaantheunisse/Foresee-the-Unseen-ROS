@@ -1,6 +1,10 @@
 sllidar_ros2/
 racing_bot_trajectory_follower/racing_bot_trajectory_follower/trajectory_follower_node2.py
 foresee_the_unseen/foresee_the_unseen/test_corner_trajectories_node.py
+foresee_the_unseen/foresee_the_unseen/test_corner_trajectories_node_simple.py
 foresee_the_unseen/foresee_the_unseen/test_straight_trajectories_node.py
 foresee_the_unseen/foresee_the_unseen/topics_to_disk_node.py
 
+# config files that differ between the different robots
+racing_bot_encoder/config/encoder_node.yaml
+racing_bot_odometry/config/odometry_node.yaml

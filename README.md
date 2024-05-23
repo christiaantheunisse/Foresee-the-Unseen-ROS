@@ -33,6 +33,8 @@ This package contains one node that reads the values from the encoders and publi
 
 This package contains one node that controls the motors through the Adafruit motor driver hat that sits on top of the Raspberry Pi. I have not made any significant changes to this node.
 
+Install the required `pigpiod` library on the Raspberry Pi ([installation instructions](https://abyz.me.uk/rpi/pigpio/download.html)).
+
 ### `racing_bot_imu`
 
 This packages contains one node that reads the values from an IMU and publishes them. The MadgwickAHRS algorithm is used to calculate the orientation. I added some missing dependencies files for the algorithm that were missing in the version I got and changes to frames to make them work with the IMU I got (my IMU, like a lot of IMUs outputs the readings in a lefthanded coordinate frame.)
