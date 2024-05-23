@@ -92,6 +92,10 @@ def generate_launch_description():
     encoder_node = Node(
         package="racing_bot_encoder",
         executable="encoder_node",
+        parameters=[
+            PathJoinSubstitution([FindPackageShare("racing_bot_encoder"), "config", "encoder_node.yaml"]),
+            PathJoinSubstitution([FindPackageShare("racing_bot_encoder"), "config", "robot_params.yaml"]),
+        ],
         condition=UnlessCondition(play_rosbag),
     )
     imu_node = Node(
@@ -124,6 +128,7 @@ def generate_launch_description():
         executable="odometry_node",
         parameters=[
             PathJoinSubstitution([FindPackageShare("racing_bot_odometry"), "config", "odometry_node.yaml"]),
+            PathJoinSubstitution([FindPackageShare("racing_bot_odometry"), "config", "robot_params.yaml"]),
             {"do_broadcast_transform": NotSubstitution(use_ekf)},  # Use either this or ekf transform (set in ekf.yaml)
         ],
         condition=UnlessCondition(use_ekf),
@@ -173,6 +178,9 @@ def generate_launch_description():
         parameters=[
             PathJoinSubstitution(
                 [FindPackageShare("racing_bot_trajectory_follower"), "config", "trajectory_follower_node.yaml"]
+            ),
+            PathJoinSubstitution(
+                [FindPackageShare("racing_bot_trajectory_follower"), "config", "robot_params.yaml"]
             ),
         ],
         condition=IfCondition(AndSubstitution(follow_traject, NotSubstitution(play_rosbag))),
