@@ -24,21 +24,13 @@ from racing_bot_interfaces.msg import Trajectory as TrajectoryMsg
 # from racing_bot_trajectory_follower.lib.trajectories import Trajectory
 
 
-# @dataclass
-# class State:
-#     x: Optional[float] = None  # position along x-axis [m]
-#     y: Optional[float] = None  # position along y-axis [m]
-#     yaw: Optional[float] = None  # heading (0 along x-axis, ccw positive) [rad]
-#     v: Optional[float] = None  # velocity [m/s]
-#     t: Optional[float] = None  # time stamp [s]
-
-
 @dataclass
 class State:
     x: float  # position along x-axis [m]
     y: float  # position along y-axis [m]
     yaw: float  # heading (0 along x-axis, ccw positive) [rad]
-    v: float  # velocity [m/s]
+    v_lin: float  # linear velocity [m/s]
+    v_ang: float  # angular velocity [rad/s]
     t: float  # time stamp [s]
 
 
@@ -200,10 +192,14 @@ class TrajectoryFollowerNode(Node):
         self.declare_parameter("wheel_base_length", 0.1)  # position of the front axle measured from the rear axle [m]
 
         # self.declare_parameter("velocity_PID", [5.0, 0.0, 0.0])  # velocity PID constants
-        self.declare_parameter("velocity_p", 1.0)  # velocity PID constants
+        self.declare_parameter("linear_velocity_Kp", 1.0)  # velocity PID constants
+        self.declare_parameter("angular_velocity_Kp", 0.5)  # velocity PID constants
+        self.declare_parameter("angular_velocity_Kd", 0.5)  # velocity PID constants
         self.declare_parameter("steering_k", 0.5)  # steering control gain
         self.declare_parameter("min_corner_radius", 0.5)  # max steering angle [deg]
-        self.declare_parameter("goal_distance_lead", 0.15)  # distance the goal point is ahead of the current position [m]
+        self.declare_parameter(
+            "goal_distance_lead", 0.15
+        )  # distance the goal point is ahead of the current position [m]
 
         self.declare_parameter("do_limit_acceleration", True)
         self.declare_parameter("max_acceleration", 0.5)
@@ -245,7 +241,9 @@ class TrajectoryFollowerNode(Node):
         self.wheel_base_W = self.get_parameter("wheel_base_width").get_parameter_value().double_value
         self.wheel_base_L = self.get_parameter("wheel_base_length").get_parameter_value().double_value
 
-        self.velocity_Kp = self.get_parameter("velocity_p").get_parameter_value().double_value
+        self.lin_velocity_Kp = self.get_parameter("linear_velocity_Kp").get_parameter_value().double_value
+        self.ang_velocity_Kp = self.get_parameter("angular_velocity_Kp").get_parameter_value().double_value
+        self.ang_velocity_Kd = self.get_parameter("angular_velocity_Kd").get_parameter_value().double_value
         self.steering_k = self.get_parameter("steering_k").get_parameter_value().double_value
         self.min_corner_radius = self.get_parameter("min_corner_radius").get_parameter_value().double_value
         self.goal_distance_lead = self.get_parameter("goal_distance_lead").get_parameter_value().double_value
@@ -272,11 +270,12 @@ class TrajectoryFollowerNode(Node):
 
         # Variables relevant to the trajectory following
         self.state: Optional[State] = None
-        self.prev_error = None
-        self.last_target_idx = 0
-        self.output_vel = 0
+        self.last_target_idx: int = 0
+        self.output_vel: float = 0.0
         self.trajectory: Optional[Trajectory] = None
-        self.cum_error = 0
+        self.target_angular_velocity: Optional[float] = None
+        self.output_v_delta: float = 0.0
+        self.prev_ang_error: Optional[float] = None
 
         self.create_subscription(Odometry, self.odom_topic, self.odom_callback, 5)
         if not self.do_follow_prep:
@@ -386,10 +385,14 @@ class TrajectoryFollowerNode(Node):
         if target_idx_p is not None or target_idx_v is not None:
             points, colors = [], []
             if target_idx_p is not None:
-                points.append(Point(x=float(self.trajectory.xys[target_idx_p, 0]), y=float(self.trajectory.xys[target_idx_p, 1])))
+                points.append(
+                    Point(x=float(self.trajectory.xys[target_idx_p, 0]), y=float(self.trajectory.xys[target_idx_p, 1]))
+                )
                 colors.append(ColorRGBA(r=0.5, g=0.5, b=0.5, a=1.0))
             if target_idx_v is not None:
-                points.append(Point(x=float(self.trajectory.xys[target_idx_v, 0]), y=float(self.trajectory.xys[target_idx_v, 1])))
+                points.append(
+                    Point(x=float(self.trajectory.xys[target_idx_v, 0]), y=float(self.trajectory.xys[target_idx_v, 1]))
+                )
                 colors.append(ColorRGBA(a=1.0))
             closest_point_marker = Marker(
                 header=header,
@@ -513,12 +516,13 @@ class TrajectoryFollowerNode(Node):
             msg.pose.pose.orientation.w,
         ]
         _, _, yaw = euler_from_quaternion(*quaternion)
-        velocity = msg.twist.twist.linear.x
+        linear_velocity = msg.twist.twist.linear.x
+        angular_velocity = msg.twist.twist.angular.z
         odom_frame = msg.header.frame_id
 
         if self.map_frame == odom_frame:
             self.state = State(
-                *position, yaw, velocity, msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9  # type: ignore
+                *position, yaw, linear_velocity, angular_velocity, msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9  # type: ignore
             )
             return
 
@@ -536,7 +540,7 @@ class TrajectoryFollowerNode(Node):
         transf_yaw = yaw + yaw_rot
         self.prev_state = self.state
         self.state = State(
-            *transf_position, transf_yaw, velocity, msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9  # type: ignore
+            *transf_position, transf_yaw, linear_velocity, angular_velocity, msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9  # type: ignore
         )
 
     def get_closest_idx(self) -> Tuple[int, int]:
@@ -550,10 +554,10 @@ class TrajectoryFollowerNode(Node):
             self.last_target_idx = target_idx
 
         return target_idx, target_idx
-    
+
     def first_future_idx(self) -> Tuple[int, int]:
-        """Finds the index of the first future goal state on the trajectory and the index of the state an x amount of 
-        seconds ahead of the current position. """
+        """Finds the index of the first future goal state on the trajectory and the index of the state an x amount of
+        seconds ahead of the current position."""
         current = self.get_clock().now().nanoseconds * 1e-9
         mask = self.trajectory.stamps > current  # type: ignore
         target_idx_v = np.argmax(mask) if mask.sum() > 0 else -1  # index of first True and else the last element
@@ -561,9 +565,9 @@ class TrajectoryFollowerNode(Node):
         dist_vec = np.array([self.state.x, self.state.y]) - self.trajectory.xys[target_idx_v]
         par_vec = -np.array([np.cos(self.state.yaw), np.sin(self.state.yaw)])
         par_error = dist_vec @ par_vec
-        goal_vel = self.trajectory.vs[target_idx_v] if self.trajectory.vs[target_idx_v] != 0. else 1e-6
+        goal_vel = self.trajectory.vs[target_idx_v] if self.trajectory.vs[target_idx_v] != 0.0 else 1e-6
         t_behind = min(par_error / goal_vel, 1.5)
-        current_vel = self.state.v if self.state.v != 0. else 1e-6
+        current_vel = self.state.v_lin if self.state.v_lin != 0.0 else 1e-6
         t_lag = min(self.goal_distance_lead / current_vel, 0.6)  # [s]
         mask = self.trajectory.stamps > (current - t_behind + t_lag)  # type: ignore
         target_idx_p = np.argmax(mask) if mask.sum() > 0 else -1  # index of first True and else the last element
@@ -622,63 +626,74 @@ class TrajectoryFollowerNode(Node):
             return
 
         # Perpendicular distance error
-        # TODO: goal position should be 0.1 meters or 0.3 seconds ahead to allow smooth cornering
         dist_vec = np.array([self.state.x, self.state.y]) - self.trajectory.xys[target_idx_p]
         perp_vec = -np.array([np.cos(self.state.yaw + np.pi / 2), np.sin(self.state.yaw + np.pi / 2)])
         perp_error = dist_vec @ perp_vec
 
-        # Calculate the normalised acceleration (acceleration of the normalised velocity) with a P-controller
+        # Calculate the linear acceleration of the normalised velocity with a P-controller
         # Target velocity is directly tracked
         target_vel = self.interpolate_target_velocity(target_idx_v)
-        if self.control_mode == "acceleration":  # use the trajectory velocity and acceleration
+        if self.control_mode == "acceleration":  # use the trajectory velocity and linear acceleration
             acc_traject = self.trajectory.accs[target_idx_v] / self.vel_pwm_rate  # m/s2 to pwm/s
-            acc_error = self.p_control(target_vel, self.state.v)  # Requires typically a lower p value
-            acceleration = acc_traject + acc_error
+            acc_error = self.p_control_lin_velocity(target_vel, self.state.v_lin)  # Requires typically a lower p value
+            acc_linear = acc_traject + acc_error
         elif self.control_mode == "velocity":  # only use the trajectory velocity
-            acceleration = self.p_control(target_vel, self.state.v)
+            acc_linear = self.p_control_lin_velocity(target_vel, self.state.v_lin)
 
-        # Check if the normalized acceleration stays within the boundaries: [-max_acceleration, max_acceleration]
-        if abs(acceleration) > self.max_norm_acc:
-            acceleration = np.clip(acceleration, -self.max_norm_acc, self.max_norm_acc)
+        # Check if the normalized linear acceleration stays within the boundaries: [-max_acceleration, max_acceleration]
+        if abs(acc_linear) > self.max_norm_acc:
             self.get_logger().warn(
-                f"Maximum normalized acceleration exceeded: {acceleration:.3f} > {self.max_norm_acc:.3f}"
+                f"Maximum normalized linear acceleration exceeded: {acc_linear:.3f} > {self.max_norm_acc:.3f}"
             )
+            acc_linear = np.clip(acc_linear, -self.max_norm_acc, self.max_norm_acc)
 
         # Check if the normalized velocity stays within the boundaries: [0, max_velocity]
-        self.output_vel += acceleration / self.control_frequency
+        self.output_vel += acc_linear / self.control_frequency
         if abs(self.output_vel) > self.max_norm_vel:
-            self.output_vel = np.clip(self.output_vel, -self.max_norm_vel, self.max_norm_vel)
             self.get_logger().warn(
                 (
                     f"Maximum normalized velocity exceeded: {self.output_vel:.3f} > {self.max_norm_vel:.3f}"
-                    + f"Speed most likely not reachable: normalize acceleration = {acceleration}"
+                    + f"Speed most likely not reachable: normalized linear acceleration = {acc_linear}"
                 ),
                 throttle_duration_sec=self.throttle_duration,
             )
+            self.output_vel = np.clip(self.output_vel, -self.max_norm_vel, self.max_norm_vel)
         elif self.output_vel < 0.0:
-            self.output_vel = 0.0
             self.get_logger().warn(
                 f"Normalized velocity is negative; {self.output_vel:.3f} < {0.}",
                 throttle_duration_sec=self.throttle_duration,
             )
+            self.output_vel = 0.0
 
         # Calculate the steering angle with a Stanley controller: ccw positive
         delta = self.stanley_controller(self.trajectory.yaws[target_idx_p], perp_error)
         if abs(delta) > self.max_steering_angle:
+            if self.state.v_lin > 0.01:  # low velocities result in high delta
+                self.get_logger().warn(f"delta > max_steering_angle; abs({delta:.3f}) > {self.max_steering_angle:.3f}")
             delta = np.clip(delta, -self.max_steering_angle, self.max_steering_angle)
-            if self.state.v > 0.01:  # low velocities result in high delta
-                self.get_logger().warn(f"delta > max_steering_angle; {delta:.3f} > {self.max_steering_angle:.3f}")
+
+        # convert delta to angular velocity goal
+        self.target_angular_velocity = self.delta_to_angular_velocity(delta, self.state.v_lin)
+        acc_v_delta = self.pd_control_ang_velocity(self.target_angular_velocity, self.state.v_ang)
+        self.output_v_delta += acc_v_delta / self.control_frequency
 
         # convert the steering angle to a speed difference of the wheels: v_delta = (v / 2) * (W / L) * tan(delta)
         # v_delta is proportional to the velocity, so this all works with normalized velocities
-        v_delta = self.output_vel / 2 * self.wheel_base_W / self.wheel_base_L * np.tan(delta)
+        # v_delta = self.output_vel / 2 * self.wheel_base_W / self.wheel_base_L * np.tan(delta)
+
+        if abs(self.output_v_delta) > (1 - self.max_norm_vel):
+            self.get_logger().warn(
+                f"Normalized velocity delta for steering is to large;"
+                + f"{self.output_v_delta:.3f} < {(1 - self.max_norm_vel):.3f}",
+            )
+            self.output_v_delta = np.clip(self.output_v_delta, self.max_norm_vel - 1, 1 - self.max_norm_vel)
+
+        v_left, v_right = self.output_vel - self.output_v_delta, self.output_vel + self.output_v_delta
+        if abs(v_left) > 1 or abs(v_right) > 1:
+            self.get_logger().error(f"SHOULD NOT HAPPEN Motor values > 1 due to steering: {v_left=}, {v_right=}")
+            v_left, v_right = self.scale_motor_vels(v_left, v_right)
 
         # The normalized velocity [0, 1] can be directly applied on the motors
-        v_left, v_right = self.output_vel - v_delta, self.output_vel + v_delta
-        if abs(v_left) > 1 or abs(v_right) > 1:
-            v_left, v_right = self.scale_motor_vels(v_left, v_right)
-            self.get_logger().error(f"SHOULD NOT HAPPEN Motor values > 1 due to steering: {v_left=}, {v_right=}")
-
         v_left, v_right = int(255 * v_left), int(255 * v_right)
         # send 1 when the actual value is 0, since 0 results in freewheeling and 1 in braking
         v_left = v_left if v_left != 0 else 1
@@ -687,7 +702,7 @@ class TrajectoryFollowerNode(Node):
         self.motor_publisher.publish(motor_command)
 
         # debug_string = (
-        #     f"v_target = {self.trajectory.vs[target_idx]:.3f}, v_current = {self.state.v:.3f},"
+        #     f"v_target = {self.trajectory.vs[target_idx]:.3f}, v_current = {self.state.v_lin:.3f},"
         #     + f" v_norm = {self.output_vel:.3f},\n a_target = {self.trajectory.accs[target_idx]:.3f}"
         #     + f" acc_current = {acceleration}"
         # )
@@ -697,18 +712,32 @@ class TrajectoryFollowerNode(Node):
         if self.do_store_data:
             self.store_data_on_disk(target_idx_p, target_idx_v)
 
-    def p_control(self, target, current) -> float:
-        """P controller for the speed."""
-        return self.velocity_Kp * (target - current)
+    def p_control_lin_velocity(self, target: float, current: float) -> float:
+        """P controller for the linear velocity"""
+        return self.lin_velocity_Kp * (target - current)
+
+    def pd_control_ang_velocity(self, target: float, current: float) -> float:
+        """PD controller for the angular velocity"""
+        error = target - current
+        previous_error = self.prev_ang_error if self.prev_ang_error is not None else error
+        self.prev_ang_error = error
+        return self.ang_velocity_Kp * error + self.ang_velocity_Kd * (error - previous_error) * self.control_frequency
 
     def stanley_controller(self, goal_yaw, perp_error) -> float:
         """Calculates the steering angle in radians according Stanley steering algorithm"""
         # theta_e corrects the heading error
         theta_e = angle_mod(goal_yaw - self.state.yaw)
         # theta_d corrects the cross track error; np.arctan2(y, x) -> so x and y are inverted (arctan(y / x))
-        theta_d = np.arctan2(self.steering_k * perp_error, self.state.v)
+        theta_d = np.arctan2(self.steering_k * perp_error, self.state.v_lin)
 
         return theta_e + theta_d  # [rad]
+
+    def delta_to_angular_velocity(self, delta: float, linear_velocity: float) -> float:
+        """Converts a steering angle to a desired angular velocity"""
+        corner_radius = self.wheel_base_L / np.tan(delta)
+        angular_velocity = linear_velocity / corner_radius
+
+        return angular_velocity
 
     @staticmethod
     def scale_motor_vels(v_left, v_right):
@@ -730,6 +759,7 @@ class TrajectoryFollowerNode(Node):
                 *self.trajectory.xys[target_idx_p],
                 self.trajectory.yaws[target_idx_p],
                 self.trajectory.vs[target_idx_v],
+                self.target_angular_velocity,
                 self.trajectory.stamps[target_idx_v],
             ),
         }
