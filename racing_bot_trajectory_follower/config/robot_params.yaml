@@ -1,8 +1,0 @@
-/**:
-  trajectory_follower_node:
-    ros__parameters:
-      wheel_base_width: 0.145  # wheel base width [m] (double)
-      wheel_base_length: 0.1  # wheel base length [m] (double)
-      min_corner_radius: 0.25  # minimum corner radius [m]
-      # max_steering_angle: 25.0 # max steering angle [deg] (double). Influences the minimum corner radius: r_min = wheel_base_length / tan(max_steering_angle)
-
