@@ -41,11 +41,17 @@ def generate_launch_description():
         default_value=TextSubstitution(text="true"),
         description="if true, follows a trajectory if published",
     )
+    do_visualize_launch_arg = DeclareLaunchArgument(
+        "do_visualize",
+        default_value=TextSubstitution(text="true"),
+        description="If true, the planner node ",
+    )
 
     namespace = LaunchConfiguration("namespace")
     use_ekf = LaunchConfiguration("use_ekf")
     lidar_reverse = LaunchConfiguration("lidar_reverse")
     follow_traject = LaunchConfiguration("follow_traject")
+    do_visualize = LaunchConfiguration("do_visualize")
 
     # To start the `pigpiod package`, necessary for I2C
     start_pigpiod = ExecuteProcess(
@@ -118,11 +124,10 @@ def generate_launch_description():
                     [FindPackageShare("racing_bot_trajectory_follower"), "config", "trajectory_follower_node.yaml"]
                 ),
                 {
-                    # "follow_mode": "position",
                     "follow_mode": "time",
                     "odom_frame": f"{namespace_str}/odom",
                     "wheel_base_width": 0.103,
-                    # "steering_k": 0.5,
+                    "do_visualize_trajectory": do_visualize,
                 },
             ],
             namespace=namespace,
@@ -193,6 +198,7 @@ def generate_launch_description():
             use_ekf_launch_arg,
             lidar_reverse_launch_arg,
             follow_traject_launch_arg,
+            do_visualize_launch_arg,
             # commands
             start_pigpiod,
             # nodes

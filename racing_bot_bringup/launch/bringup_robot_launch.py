@@ -67,12 +67,18 @@ def generate_launch_description():
         default_value=TextSubstitution(text="false"),
         description="Don't run the sensor nodes when its run on a rosbag",
     )
+    do_visualize_launch_arg = DeclareLaunchArgument(
+        "do_visualize",
+        default_value=TextSubstitution(text="true"),
+        description="If true, the planner node ",
+    )
 
     use_ekf = LaunchConfiguration("use_ekf")
     slam_mode = LaunchConfiguration("slam_mode")
     map_file = LaunchConfiguration("map_file")
     follow_traject = LaunchConfiguration("follow_traject")
     play_rosbag = LaunchConfiguration("play_rosbag")
+    do_visualize = LaunchConfiguration("do_visualize")
 
     do_use_sim_time = SetParameter(name="use_sim_time", value=play_rosbag)
 
@@ -182,6 +188,7 @@ def generate_launch_description():
             PathJoinSubstitution(
                 [FindPackageShare("racing_bot_trajectory_follower"), "config", "robot_params.yaml"]
             ),
+            {"do_visualize_trajectory": do_visualize}
         ],
         condition=IfCondition(AndSubstitution(follow_traject, NotSubstitution(play_rosbag))),
     )
@@ -211,6 +218,7 @@ def generate_launch_description():
             map_file_launch_arg,
             follow_traject_launch_arg,
             play_rosbag_launch_arg,
+            do_visualize_launch_arg,
             do_use_sim_time,
             # commands
             start_pigpiod,

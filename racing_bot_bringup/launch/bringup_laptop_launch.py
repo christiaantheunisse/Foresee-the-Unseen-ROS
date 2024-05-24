@@ -60,11 +60,6 @@ def generate_launch_description():
         default_value=TextSubstitution(text="true"),
         description="If the extended kalman filter is used on the robot.",
     )
-    map_file_launch_arg = DeclareLaunchArgument(
-        "map_file",
-        default_value=TextSubstitution(text="on_the_floor"),
-        description="If applicable, the name of the map file used for localization.",
-    )
     use_obstacles_launch_arg = DeclareLaunchArgument(
         "use_obstacles",
         default_value=TextSubstitution(text="false"),
@@ -85,6 +80,9 @@ def generate_launch_description():
         default_value=TextSubstitution(text="false"),
         description="If true, save certain topics to disk",
     )
+    rviz_file_launch_arg = DeclareLaunchArgument(
+        "rviz_file", default_value="full_mode.rviz", description=".rviz file to use from the package directory rviz."
+    )
 
     try:
         bag_files_dir = os.environ["ROS_BAG_FILES_DIR"]
@@ -94,30 +92,20 @@ def generate_launch_description():
     use_foresee = LaunchConfiguration("use_foresee")
     slam_mode_robot = LaunchConfiguration("slam_mode_robot")
     use_ekf_robot = LaunchConfiguration("use_ekf_robot")
-    map_file = LaunchConfiguration("map_file")
     use_obstacles = LaunchConfiguration("use_obstacles")
-    # obstacles_config_file = LaunchConfiguration("obstacles_config_file")
-    # slam_mode_obs = LaunchConfiguration("slam_mode_obs")
-    # use_ekf_obs = LaunchConfiguration("use_ekf_obs")
     play_rosbag = LaunchConfiguration("play_rosbag")
     rosbag_file = LaunchConfiguration("rosbag_file")
     store_topics = LaunchConfiguration("store_topics")
+    rviz_file = LaunchConfiguration("rviz_file")
 
     do_use_sim_time = SetParameter(name="use_sim_time", value=play_rosbag)
 
-    # TODO: The obstacle part is not working yet
     obstacles_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution(
                 [FindPackageShare("racing_bot_bringup"), "launch", "partial_launches", "obs_traj_launch.py"]
             )
         ),
-        launch_arguments={
-            # "obstacles_config_file": obstacles_config_file,
-            "map_file": map_file,
-            # "slam_mode": slam_mode_obs,
-            # "use_ekf": use_ekf_obs,
-        }.items(),
         condition=IfCondition(use_obstacles),
     )
 
@@ -130,7 +118,6 @@ def generate_launch_description():
         launch_arguments={
             "localization": EqualsSubstitution(slam_mode_robot, "localization"),
             "mapping": EqualsSubstitution(slam_mode_robot, "mapping"),
-            "map_file": map_file,
             "publish_tf": NotSubstitution(use_ekf_robot),
         }.items(),
     )
@@ -147,7 +134,13 @@ def generate_launch_description():
     rviz = Node(
         package="rviz2",
         executable="rviz2",
-        arguments=["-d", "/home/christiaan/.rviz2/raspberry_pi.rviz"],
+        # arguments=["-d", "/home/christiaan/.rviz2/raspberry_pi.rviz"],
+        # arguments=["-d", "/home/christiaan/thesis/robot_ws/src/racing_bot_bringup/rviz/full_mode.rviz"],
+        # arguments=["-d", PathJoinSubstitution([FindPackageShare("racing_bot_bringup"), "rviz", rviz_file])],
+        arguments=[
+            "-d",
+            PathJoinSubstitution(["/home/christiaan/thesis/robot_ws/src/racing_bot_bringup/rviz/", rviz_file]),
+        ],
     )
 
     robot_launch = IncludeLaunchDescription(
@@ -158,6 +151,7 @@ def generate_launch_description():
             "use_ekf": "true",
             "slam_mode": "elsewhere",
             "play_rosbag": "true",
+            "follow_traject": "false",
         }.items(),
         condition=IfCondition(play_rosbag),
     )
@@ -186,11 +180,7 @@ def generate_launch_description():
             use_foresee_launch_arg,
             slam_mode_robot_launch_arg,
             use_ekf_robot_launch_arg,
-            map_file_launch_arg,
-            # obstacles_file_launch_arg,
             use_obstacles_launch_arg,
-            # slam_mode_obs_launch_arg,
-            # use_ekf_obs_launch_arg,
             play_rosbag_launch_arg,
             rosbag_file_launch_arg,
             store_topics_launch_arg,

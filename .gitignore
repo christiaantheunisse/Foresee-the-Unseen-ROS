@@ -6,6 +6,6 @@ foresee_the_unseen/foresee_the_unseen/test_straight_trajectories_node.py
 foresee_the_unseen/foresee_the_unseen/topics_to_disk_node.py
 
 # config files that differ between the different robots
-racing_bot_encoder/config/robot_params.yaml
-racing_bot_odometry/config/robot_params.yaml
-racing_bot_trajectory_follower/config/robot_params.yaml
+# racing_bot_encoder/config/robot_params.yaml
+# racing_bot_odometry/config/robot_params.yaml
+# racing_bot_trajectory_follower/config/robot_params.yaml

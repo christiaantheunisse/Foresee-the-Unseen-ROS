@@ -56,6 +56,7 @@ def generate_launch_description():
     slam_mode = LaunchConfiguration("slam_mode_obs")
     map_file = LaunchConfiguration("map_file")
     use_ekf = LaunchConfiguration("use_ekf_obs")
+    do_visualize = LaunchConfiguration("do_visualize")
 
     log_messages = []
 
@@ -84,7 +85,7 @@ def generate_launch_description():
                     # [FindPackageShare("foresee_the_unseen"), "resource", obstacles_config_file]
                     ["/home/christiaan/thesis/robot_ws/src/foresee_the_unseen/resource", obstacles_config_file]
                 ),
-                "do_visualize": True,
+                "do_visualize": do_visualize,
             },
         ],
     )

@@ -50,7 +50,7 @@ def generate_launch_description():
         parameters=[
             PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "planner_node.yaml"]),
             {
-                "use_triangulation": AndSubstitution(do_visualize, do_triangulate),
+                "use_triangulation": do_triangulate,
                 "do_visualize": do_visualize,
                 "road_xml": PathJoinSubstitution(
                     [FindPackageShare("foresee_the_unseen"), "resource", "road_structure_15_reduced_points.xml"]
