@@ -1,7 +1,7 @@
 velocity_ekf_node:
     ros__parameters:
         frequency: 30.0
-        sensor_timeout: 0.05 # not sure about this one
+        # sensor_timeout: 0.05 # min. frequency; defaults to 1/frequency
         publish_tf: true
         two_d_mode: true  # planar mode
         print_diagnostics: true
@@ -48,7 +48,7 @@ velocity_ekf_node:
 position_ekf_node:
     ros__parameters:
         frequency: 30.0
-        sensor_timeout: 0.05 # not sure about this one
+        # sensor_timeout: 0.05 # min. frequency; defaults to 1/frequency
         publish_tf: true
         two_d_mode: true  # planar mode
         print_diagnostics: true
@@ -92,7 +92,7 @@ position_ekf_node:
 my_ekf_filter_node:
     ros__parameters:
         frequency: 25.0
-        sensor_timeout: 0.1 # not sure about this one
+        # sensor_timeout: 0.1 # min. frequency; defaults to 1/frequency
         publish_tf: true
         two_d_mode: true  # planar mode
         print_diagnostics: true

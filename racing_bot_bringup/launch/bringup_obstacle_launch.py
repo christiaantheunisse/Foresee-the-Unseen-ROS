@@ -1,7 +1,7 @@
 import os
 from launch import LaunchDescription, LaunchContext
 from launch_ros.substitutions import FindPackageShare
-from launch_ros.actions import Node, PushRosNamespace
+from launch_ros.actions import Node, PushRosNamespace, SetRemap
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.actions.execute_process import ExecuteProcess
 from launch.actions.opaque_function import OpaqueFunction
@@ -39,7 +39,7 @@ def generate_launch_description():
     follow_traject_launch_arg = DeclareLaunchArgument(
         "follow_traject",
         default_value=TextSubstitution(text="true"),
-        description="if true follows traject",
+        description="if true, follows a trajectory if published",
     )
 
     namespace = LaunchConfiguration("namespace")
@@ -70,6 +70,8 @@ def generate_launch_description():
         parameters=[
             PathJoinSubstitution([FindPackageShare("racing_bot_encoder"), "config", "encoder_node.yaml"]),
             {
+                # Encoder pins: a == blue, b == green; however, this can be flipped
+                #  to change the sign of the measured revolutions
                 "left_pin_a": 21,
                 "left_pin_b": 19,
                 "right_pin_a": 13,
@@ -88,6 +90,11 @@ def generate_launch_description():
         """In this function the namespace is available as string and can be used for the frames"""
         namespace_str = namespace.perform(context)
 
+        odometry_remap = SetRemap(
+            src="odometry/wheel_encoders",
+            dst="odometry/filtered",
+            condition=IfCondition(NotSubstitution(use_ekf)),
+        )
         odometry_node = Node(
             package="racing_bot_odometry",
             executable="odometry_node",
@@ -111,10 +118,11 @@ def generate_launch_description():
                     [FindPackageShare("racing_bot_trajectory_follower"), "config", "trajectory_follower_node.yaml"]
                 ),
                 {
-                    "follow_mode": "position",
+                    # "follow_mode": "position",
+                    "follow_mode": "time",
                     "odom_frame": f"{namespace_str}/odom",
                     "wheel_base_width": 0.103,
-                    "steering_k": 0.5,
+                    # "steering_k": 0.5,
                 },
             ],
             namespace=namespace,
@@ -125,7 +133,7 @@ def generate_launch_description():
             executable="ekf_node",
             name="ekf_node",
             parameters=[
-                PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "ekf_obstacle.yaml"]),
+                PathJoinSubstitution([FindPackageShare("racing_bot_bringup"), "config", "ekf_obstacle.yaml"]),
                 {
                     "odom_frame": f"{namespace_str}/odom",
                     "base_link_frame": f"{namespace_str}/base_link",
@@ -169,6 +177,7 @@ def generate_launch_description():
         )
 
         return [
+            odometry_remap,
             odometry_node,
             trajectory_node,
             ekf_node,
