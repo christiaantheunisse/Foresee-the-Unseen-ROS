@@ -174,7 +174,7 @@ def generate_launch_description():
             "map_file": map_file,
             "publish_tf": NotSubstitution(use_ekf),
         }.items(),
-        condition=IfCondition(AndSubstitution(use_localization, use_mapping))
+        condition=IfCondition(OrSubstitution(use_localization, use_mapping))
     )
 
     # Other

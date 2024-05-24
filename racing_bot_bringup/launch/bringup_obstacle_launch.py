@@ -31,6 +31,18 @@ def generate_launch_description():
         description="Use the extended kalman filter for the odometry data."
         "This will also activate and use the imu if available.",
     )
+    slam_mode_launch_arg = DeclareLaunchArgument(
+        "slam_mode",
+        default_value=TextSubstitution(text="elsewhere"),
+        choices=["mapping", "localization", "elsewhere", "disabled"],
+        description="Which mode of the slam_toolbox to use: SLAM (=mapping), only localization (=localization),"
+        + " on another device (=elsewhere) or don't use so map frame is odom frame (=disabled).",
+    )
+    map_file_launch_arg = DeclareLaunchArgument(
+        "map_file",
+        default_value=TextSubstitution(text="on_the_floor"),
+        description="If applicable, the name of the map file used for localization.",
+    )
     lidar_reverse_launch_arg = DeclareLaunchArgument(
         "lidar_reverse",
         default_value=TextSubstitution(text="false"),
@@ -49,6 +61,8 @@ def generate_launch_description():
 
     namespace = LaunchConfiguration("namespace")
     use_ekf = LaunchConfiguration("use_ekf")
+    slam_mode = LaunchConfiguration("slam_mode")
+    map_file = LaunchConfiguration("map_file")
     lidar_reverse = LaunchConfiguration("lidar_reverse")
     follow_traject = LaunchConfiguration("follow_traject")
     do_visualize = LaunchConfiguration("do_visualize")
@@ -159,6 +173,52 @@ def generate_launch_description():
             ]
         )
 
+        try:
+            map_files_dir = os.environ["ROS_MAP_FILES_DIR"]
+        except KeyError:
+            map_files_dir = ""
+
+        do_publish_tf_bool = IfCondition(use_ekf).evaluate(context)
+        transform_publish_period = 0.05 if do_publish_tf_bool else 0.0 
+        slam_node_localization = Node(
+            parameters=[
+                PathJoinSubstitution([FindPackageShare("racing_bot_bringup"), "config", "slam_params.yaml"]),
+                {
+                    "map_file_name": PathJoinSubstitution([map_files_dir, map_file]),
+                    "odom_frame": f"{namespace_str}/odom",
+                    "base_frame": f"{namespace_str}/base_link",
+                    "transform_publish_period": transform_publish_period,
+                    "do_loop_closing": False, 
+                },
+            ],
+            package="slam_toolbox",
+            executable="localization_slam_toolbox_node",
+            name="slam_node",
+            remappings=[("pose", "slam_pose")],
+            condition=IfCondition(EqualsSubstitution(slam_mode, "localization")),
+        )
+        slam_node_mapping = Node(
+            parameters=[
+                PathJoinSubstitution([FindPackageShare("racing_bot_bringup"), "config", "slam_params.yaml"]),
+                {
+                    "use_lifecycle_manager": False,
+                    "odom_frame": f"{namespace_str}/odom",
+                    "base_frame": f"{namespace_str}/base_link",
+                    "transform_publish_period": transform_publish_period,
+                    "do_loop_closing": True, 
+                },
+            ],
+            package="slam_toolbox",
+            executable="sync_slam_toolbox_node",
+            name="slam_node",
+            namespace=namespace,
+            remappings=[
+                ("pose", "slam_pose"),
+                ("/scan", "scan"),
+            ],
+            condition=IfCondition(EqualsSubstitution(slam_mode, "mapping"))
+        )
+
         # Needed: transform from map to odom: SLAM or static, but should be handle on the laptop because it is based on
         #  the trajectory for the obstacle
 
@@ -187,6 +247,8 @@ def generate_launch_description():
             trajectory_node,
             ekf_node,
             lidar_launch,
+            slam_node_localization,
+            slam_node_mapping,
             static_trans_base_link_to_laser,
             static_trans_base_link_to_laser_reverse,
         ]
@@ -196,6 +258,8 @@ def generate_launch_description():
             # arguments
             namespace_launch_arg,
             use_ekf_launch_arg,
+            slam_mode_launch_arg,
+            map_file_launch_arg,
             lidar_reverse_launch_arg,
             follow_traject_launch_arg,
             do_visualize_launch_arg,
