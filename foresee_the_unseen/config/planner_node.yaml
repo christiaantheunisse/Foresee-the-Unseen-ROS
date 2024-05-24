@@ -10,6 +10,7 @@ planner_node:
     datmo_topic: datmo/box_kf 
     filtered_lidar_topic: scan/road_env
     visualization_topic: visualization/planner
+    startup_topic: /goal_pose
     
     environment_boundary: [0., 2.5, 5., 2.5, 5., -3., 0., -3.]  # CW convex polygon [x1, y1, x2, y2, ...] in the map frame
     

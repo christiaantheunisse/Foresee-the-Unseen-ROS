@@ -87,6 +87,7 @@ class PlannerNode(Node):
         self.declare_parameter("filtered_lidar_topic", "scan/road_env")
         self.declare_parameter("visualization_topic", "visualization/planner")
         self.declare_parameter("trajectory_topic", "trajectory")
+        self.declare_parameter("startup_topic", "/goal_pose")
 
         self.declare_parameter(
             "road_xml",
@@ -133,6 +134,7 @@ class PlannerNode(Node):
         self.filtered_lidar_topic = self.get_parameter("filtered_lidar_topic").get_parameter_value().string_value
         self.visualization_topic = self.get_parameter("visualization_topic").get_parameter_value().string_value
         self.trajectory_topic = self.get_parameter("trajectory_topic").get_parameter_value().string_value
+        self.startup_topic = self.get_parameter("startup_topic").get_parameter_value().string_value
 
         self.road_xml = self.get_parameter("road_xml").get_parameter_value().string_value
         self.config_yaml = self.get_parameter("foresee_the_unseen_yaml").get_parameter_value().string_value
@@ -156,7 +158,8 @@ class PlannerNode(Node):
 
         # Timer for the visualization -> different timers for fov and other things
         # self.create_timer(1 / self.frequency, self.visualize_callback)
-        self.create_timer(1 / self.frequency, self.plan)
+        self.foresee_the_unseen_timer = self.create_timer(1 / self.frequency, self.plan)
+        self.foresee_the_unseen_timer.cancel()
 
         # Transformer listener
         self.tf_buffer = Buffer()
@@ -165,7 +168,8 @@ class PlannerNode(Node):
         # Subscribers and publishers
         self.create_subscription(LaserScan, self.lidar_topic, self.laser_callback, 5)  # Laser scan
         self.create_subscription(Odometry, self.odom_topic, self.odom_callback, 5)  # Ego vehicle pose
-        self.create_subscription(TrackArray, self.datmo_topic, self.datmo_callback, 5)  # Ego vehicle pose
+        self.create_subscription(TrackArray, self.datmo_topic, self.datmo_callback, 5)
+        self.create_subscription(PoseStamped, self.startup_topic, self.startup_callback, 1)
         self.filtered_laser_publisher = self.create_publisher(LaserScan, self.filtered_lidar_topic, 5)
         self.marker_array_publisher = self.create_publisher(MarkerArray, self.visualization_topic, 10)
         self.trajectory_publisher = self.create_publisher(TrajectoryMsg, self.trajectory_topic, 5)
@@ -251,6 +255,10 @@ class PlannerNode(Node):
         )
 
         self.trajectory_publisher.publish(trajectory_msg)
+
+    def startup_callback(self, msg: PoseStamped) -> None:
+        """This function allows the robot to start moving."""
+        self.foresee_the_unseen_timer.reset()
 
     def visualization_callback(
         self,

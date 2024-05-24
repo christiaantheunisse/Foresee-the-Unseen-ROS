@@ -1,6 +1,7 @@
 import rclpy
-from typing import List, Callable, Tuple, Type
+from typing import List, Callable, Tuple, Type, Optional
 from rclpy.node import Node
+from rclpy.publisher import Publisher
 from rclpy.time import Duration
 import time
 import itertools
@@ -9,9 +10,10 @@ import matplotlib.colors as mcolors
 import numpy as np
 
 from commonroad.common.file_reader import CommonRoadFileReader
+from commonroad.scenario.trajectory import Trajectory as TrajectoryCR
 
 from racing_bot_interfaces.msg import Trajectory as TrajectoryMsg
-from geometry_msgs.msg import Point, Vector3
+from geometry_msgs.msg import Point, Vector3, PoseStamped
 from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import ColorRGBA, Header
 
@@ -39,6 +41,7 @@ class ObstacleTrajectoriesNode(Node):
         )
         self.declare_parameter("do_visualize", False)
         self.declare_parameter("visualization_topic", "visualization/obstacle_trajectories")
+        self.declare_parameter("startup_topic", "/goal_pose")
 
         self.map_frame = self.get_parameter("map_frame").get_parameter_value().string_value
         self.planner_frame = self.get_parameter("planner_frame").get_parameter_value().string_value
@@ -47,6 +50,9 @@ class ObstacleTrajectoriesNode(Node):
         self.obstacle_config = read_obstacle_configuration_yaml(self.yaml_file)
         self.do_visualize = self.get_parameter("do_visualize").get_parameter_value().bool_value
         self.visualization_topic = self.get_parameter("visualization_topic").get_parameter_value().string_value
+        self.startup_topic = self.get_parameter("startup_topic").get_parameter_value().string_value
+
+        self.create_subscription(PoseStamped, self.startup_topic, self.startup_callback, 1)
 
         scenario, _ = CommonRoadFileReader(self.obstacle_config["road_structure_xml"]).open()
         self.road_polygons = polygons_from_road_xml(self.obstacle_config["road_structure_xml"])
@@ -57,6 +63,9 @@ class ObstacleTrajectoriesNode(Node):
             markers = self.get_road_structure_marker()
             colors = itertools.cycle(mcolors.TABLEAU_COLORS.values())
 
+        self.trajectory_publishers: List[Publisher] = []
+        self.trajectories_cr_delay: List[Tuple[TrajectoryCR, float]] = []
+        self.trajectories_msg: Optional[List[TrajectoryMsg]] = None
         for namespace, car_dict in self.obstacle_config["obstacle_cars"].items():
             waypoints, _, _ = generate_waypoints(
                 lanelet_network=lanelet_network,
@@ -77,17 +86,16 @@ class ObstacleTrajectoriesNode(Node):
             trajectory_commonroad = velocity_profile_to_state_list(
                 velocity_profile, waypoints, self.obstacle_config["dt"]
             )
-            trajectory_msg_ros = get_ros_trajectory_from_commonroad_trajectory(
-                trajectory_commonroad,
-                self.get_clock().now() + Duration(seconds=car_dict["start_delay"]),
-                self.obstacle_config["dt"],
-            )
+            self.trajectories_cr_delay.append((trajectory_commonroad, car_dict["start_delay"]))
+            publisher = self.create_publisher(TrajectoryMsg, f"/{namespace}/{self.trajectory_topic}", 1)
+            self.trajectory_publishers.append(publisher)
 
-            # msg = to_ros_trajectory_msg(waypoints, orientations, velocities)
             if self.do_visualize:
                 markers += self.get_trajectory_marker(waypoints, namespace, next(colors))
 
-            self.setup_timer_w_delay(namespace=namespace, delay=car_dict["start_delay"], msg=trajectory_msg_ros)
+        self.trajectory_publish_timer = self.create_timer(1, self.publish_trajectory_callback)
+        self.trajectory_publish_timer.cancel()
+        # self.setup_timer_w_delay(namespace=namespace, delay=car_dict["start_delay"], msg=trajectory_msg)
 
         if self.do_visualize:
             self.create_timer(0.5, lambda: self.marker_array_publisher.publish(MarkerArray(markers=markers)))
@@ -96,6 +104,31 @@ class ObstacleTrajectoriesNode(Node):
         self.get_logger().info(
             str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.get_clock().now().seconds_nanoseconds()[0])))
         )
+
+    def startup_callback(self, msg: PoseStamped) -> None:
+        """This function allows the robot to start moving."""
+        if self.trajectories_msg is None:
+            self.trajectories_msg = []
+            for trajectory_cr, delay in self.trajectories_cr_delay:
+                trajectory_msg = get_ros_trajectory_from_commonroad_trajectory(
+                    trajectory_cr,
+                    self.get_clock().now() + Duration(seconds=delay),
+                    self.obstacle_config["dt"],
+                )
+                self.trajectories_msg.append(trajectory_msg)
+
+            self.trajectory_publish_timer.reset()
+
+    def publish_trajectory_callback(self) -> None:
+        """Publish the trajectories"""
+        assert self.trajectories_msg is not None
+        assert len(self.trajectory_publishers) == len(self.trajectories_msg), (
+            "Ensure that the trajectories are converted to ROS Trajectory messages."
+            + f" No. of publishers = {len(self.trajectory_publishers)}, "
+            + f"No. of trajectory messages = {len(self.trajectories_msg)}"
+        )
+        for publisher, trajectory in zip(self.trajectory_publishers, self.trajectories_msg, strict=True):
+            publisher.publish(trajectory)
 
     def setup_timer_w_delay(self, namespace: str, delay: float, msg: TrajectoryMsg) -> Callable[[], None]:
         # create the publisher

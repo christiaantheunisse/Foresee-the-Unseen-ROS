@@ -184,6 +184,7 @@ def generate_launch_description():
             play_rosbag_launch_arg,
             rosbag_file_launch_arg,
             store_topics_launch_arg,
+            rviz_file_launch_arg,
             # parameters
             do_use_sim_time,
             # launch files

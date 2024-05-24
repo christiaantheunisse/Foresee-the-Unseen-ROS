@@ -3,4 +3,5 @@
     map_frame: map
     planner_frame: planner
     trajectory_topic: trajectory
+    planner_frame: planner
     # do_visualise: True
