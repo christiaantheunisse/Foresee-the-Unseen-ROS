@@ -5,7 +5,7 @@ import os
 import yaml
 import time
 import numpy as np
-import matplotlib as mpl
+import matplotlib.pyplot as plt
 from setuptools import find_packages
 from ament_index_python import get_package_share_directory
 from typing import Optional, List, Union, Tuple, Dict, TypedDict
@@ -67,6 +67,7 @@ TRANSPARENT_GREY: Color = {"r": 0.5, "g": 0.5, "b": 0.5, "a": 0.8}
 SHADOW_OBS_COLOR: Color = {"r": 100.0 / 255.0, "g": 0.0, "b": 0.0, "a": 1.0}
 SHADOW_PRED_COLOR: Color = {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}
 
+# TODO: remove approaches that rely on this to speed up the code
 XYZ = ["x", "y", "z"]
 
 
@@ -439,7 +440,7 @@ class PlannerNode(Node):
         if trajectory is not None:
             point_list = []
             color_rgba_list = []
-            cmap = mpl.cm.get_cmap("cool")
+            cmap = plt.get_cmap("cool")
             # o in the list below is of type InitialState
             positions = [o.position for o in trajectory.state_list]
             for x, y in positions:

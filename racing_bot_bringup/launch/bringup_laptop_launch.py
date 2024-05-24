@@ -65,32 +65,11 @@ def generate_launch_description():
         default_value=TextSubstitution(text="on_the_floor"),
         description="If applicable, the name of the map file used for localization.",
     )
-
-    # Arguments regarding the obstacles -> not fully working yet
     use_obstacles_launch_arg = DeclareLaunchArgument(
         "use_obstacles",
         default_value=TextSubstitution(text="false"),
         description="if obstacles are used, which means that the localization and trajectories should be handled",
     )
-    obstacles_file_launch_arg = DeclareLaunchArgument(
-        "obstacles_config_file",
-        default_value=TextSubstitution(text="obstacle_trajectories.yaml"),
-        description="the file that contains the configuration for the obstacle trajectories",
-    )
-    slam_mode_obs_launch_arg = DeclareLaunchArgument(
-        "slam_mode_obs",
-        default_value=TextSubstitution(text="localization"),
-        choices=["localization", "disabled"],
-        description="Which mode of the slam_toolbox to use for the obstacle cars: localization (=localization) or"
-        + " don't use, so map frame is odom frame (=disabled).",
-    )
-    use_ekf_obs_launch_arg = DeclareLaunchArgument(
-        "use_ekf_obs",
-        default_value=TextSubstitution(text="false"),
-        description="If the obstacle cars use an extended kalman filter.",
-    )
-
-    # Rosbag argument
     play_rosbag_launch_arg = DeclareLaunchArgument(
         "play_rosbag",
         default_value=TextSubstitution(text="false"),
@@ -117,9 +96,9 @@ def generate_launch_description():
     use_ekf_robot = LaunchConfiguration("use_ekf_robot")
     map_file = LaunchConfiguration("map_file")
     use_obstacles = LaunchConfiguration("use_obstacles")
-    obstacles_config_file = LaunchConfiguration("obstacles_config_file")
-    slam_mode_obs = LaunchConfiguration("slam_mode_obs")
-    use_ekf_obs = LaunchConfiguration("use_ekf_obs")
+    # obstacles_config_file = LaunchConfiguration("obstacles_config_file")
+    # slam_mode_obs = LaunchConfiguration("slam_mode_obs")
+    # use_ekf_obs = LaunchConfiguration("use_ekf_obs")
     play_rosbag = LaunchConfiguration("play_rosbag")
     rosbag_file = LaunchConfiguration("rosbag_file")
     store_topics = LaunchConfiguration("store_topics")
@@ -134,10 +113,10 @@ def generate_launch_description():
             )
         ),
         launch_arguments={
-            "obstacles_config_file": obstacles_config_file,
+            # "obstacles_config_file": obstacles_config_file,
             "map_file": map_file,
-            "slam_mode": slam_mode_obs,
-            "use_ekf": use_ekf_obs,
+            # "slam_mode": slam_mode_obs,
+            # "use_ekf": use_ekf_obs,
         }.items(),
         condition=IfCondition(use_obstacles),
     )
@@ -208,10 +187,10 @@ def generate_launch_description():
             slam_mode_robot_launch_arg,
             use_ekf_robot_launch_arg,
             map_file_launch_arg,
-            obstacles_file_launch_arg,
+            # obstacles_file_launch_arg,
             use_obstacles_launch_arg,
-            slam_mode_obs_launch_arg,
-            use_ekf_obs_launch_arg,
+            # slam_mode_obs_launch_arg,
+            # use_ekf_obs_launch_arg,
             play_rosbag_launch_arg,
             rosbag_file_launch_arg,
             store_topics_launch_arg,

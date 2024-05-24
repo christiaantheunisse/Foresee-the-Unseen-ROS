@@ -48,7 +48,7 @@
       link_match_minimum_response_fine: 0.1  
       link_scan_maximum_distance: 1.5
       loop_search_maximum_distance: 3.0
-      do_loop_closing: true 
+      # do_loop_closing: true  # some issues on the Github suggest to turn off when localizing
       loop_match_minimum_chain_size: 10           
       loop_match_maximum_variance_coarse: 3.0  
       loop_match_minimum_response_coarse: 0.35    

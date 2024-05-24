@@ -30,11 +30,11 @@ def generate_launch_description():
         description="the file that contains the configuration for the obstacle trajectories",
     )
     slam_mode_launch_arg = DeclareLaunchArgument(
-        "slam_mode",
+        "slam_mode_obs",
         default_value=TextSubstitution(text="localization"),
         choices=["localization", "disabled"],
-        description="Which mode of the slam_toolbox to use: SLAM (=mapping), only localization (=localization),"
-        + " don't use so map frame is odom frame (=disabled).",
+        description="Whether to use the slam_toolbox in localization mode (=localization) or"
+        + " don't use it at all, so map frame == odom frame (=disabled).",
     )
     map_file_launch_arg = DeclareLaunchArgument(
         "map_file",
@@ -42,15 +42,20 @@ def generate_launch_description():
         description="If applicable, the name of the map file used for localization.",
     )
     use_ekf_launch_arg = DeclareLaunchArgument(
-        "use_ekf",
+        "use_ekf_obs",
         default_value=TextSubstitution(text="true"),
         description="Use the extended kalman filter to combined the odometry data and the SLAM localization.",
     )
+    do_visualize_launch_arg = DeclareLaunchArgument(
+        "do_visualize",
+        default_value=TextSubstitution(text="true"),
+        description="If true, the planner node ",
+    )
 
     obstacles_config_file = LaunchConfiguration("obstacles_config_file")
-    slam_mode = LaunchConfiguration("slam_mode")
+    slam_mode = LaunchConfiguration("slam_mode_obs")
     map_file = LaunchConfiguration("map_file")
-    use_ekf = LaunchConfiguration("use_ekf")
+    use_ekf = LaunchConfiguration("use_ekf_obs")
 
     log_messages = []
 
@@ -76,8 +81,10 @@ def generate_launch_description():
             PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "obstacle_trajectories_node.yaml"]),
             {
                 "obstacle_config_yaml": PathJoinSubstitution(
-                    [FindPackageShare("foresee_the_unseen"), "resource", obstacles_config_file]
-                )
+                    # [FindPackageShare("foresee_the_unseen"), "resource", obstacles_config_file]
+                    ["/home/christiaan/thesis/robot_ws/src/foresee_the_unseen/resource", obstacles_config_file]
+                ),
+                "do_visualize": True,
             },
         ],
     )
@@ -96,10 +103,16 @@ def generate_launch_description():
 
         return obstacle_namespaces, start_poses
 
-    def slam_localization_based_on_yaml(context: LaunchContext, yaml_file: LaunchConfiguration):
+    def slam_localization_based_on_yaml(
+        context: LaunchContext, yaml_file: LaunchConfiguration, use_ekf: LaunchConfiguration
+    ):
+        """Calculate the start pose in the `map` frame, based on the `map` -> `planner` transform and the start
+        pose in the planner frame. Initialize a slam node with the right topics and start pose."""
         yaml_filepath_str = PathJoinSubstitution(
             [FindPackageShare("foresee_the_unseen"), "resource", yaml_file]
         ).perform(context)
+        use_ekf_bool = IfCondition(use_ekf).evaluate(context)
+
         obstacle_namespaces, start_poses = get_config_from_yaml(yaml_filepath_str)
 
         # Get the map to planner transform
@@ -118,9 +131,6 @@ def generate_launch_description():
         t_matrix[:2, 2] = [x_transf, y_transf]
 
         # launch the slam node for each robot and publish the start position
-        slam_params_file = (
-            "mapper_params_localization_ekf.yaml" if IfCondition(use_ekf) else "mapper_params_localization.yaml"
-        )
         slam_nodes, initialpose_publishers = [], []
         for namespace, start_pose in zip(obstacle_namespaces, start_poses):
             start_xy = np.array([start_pose[0], start_pose[1], 1])
@@ -131,61 +141,39 @@ def generate_launch_description():
             print(f"========={start_pose_tf}===========")
             slam_node = Node(
                 parameters=[
-                    PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", slam_params_file]),
+                    PathJoinSubstitution([FindPackageShare("racing_bot_bringup"), "config", "slam_params.yaml"]),
                     {
                         "map_file_name": PathJoinSubstitution([map_files_dir, map_file]),
                         "use_lifecycle_manager": False,
-                        # FIXME: uses the position in the map frame anyways, so import the planner to map transform from
-                        #  a .yaml file or so.
-                        # "map_start_pose": [float(s) for s in start_pose],  # this is the initial pose in the map frame
                         "map_start_pose": start_pose_tf,  # this is the initial pose in the map frame
                         "odom_frame": f"{namespace}/odom",
                         "base_frame": f"{namespace}/base_link",
+                        "transform_publish_period": 0.0 if use_ekf_bool else 0.05,
+                        "do_loop_closing": False, 
                     },
                 ],
                 # arguments="--ros-args --log-level debug".split(" "),
                 package="slam_toolbox",
                 executable="localization_slam_toolbox_node",
-                name="slam_toolbox",
+                name="slam_node",
                 output="screen",
                 namespace=namespace,
-                remappings=[("pose", "slam_pose"), ("/map", "map"), ("/map_metadata", "map_metadata")],
+                remappings=[
+                    ("pose", "slam_pose"),
+                    # ("/map", "map"),
+                    # ("/map_metadata", "map_metadata"),
+                    ("/scan", "scan"),
+                ],
             )
 
             slam_nodes.append(slam_node)
 
-            # position_variance = 0.2
-            # angle_variance = 0.1
-            # covariance_array = [0] * 36
-            # covariance_array[0] = covariance_array[7] = position_variance
-            # covariance_array[35] = angle_variance
-
-            # initialpose_msg = {
-            #     "header": {"frame_id": f"planner"},
-            #     "pose": {
-            #         "pose": {
-            #             "position": {"x": start_pose[0], "y": start_pose[1]},
-            #             "orientation": {"z": str(math.sin(start_pose[2] / 2)), "w": str(math.cos(start_pose[2] / 2))},
-            #         }
-            #     },
-            # }
-            # initialpose_publisher = ExecuteProcess(
-            #     cmd=[
-            #         *f"ros2 topic pub -t 1 /{namespace}/initialpose geometry_msgs/msg/PoseWithCovarianceStamped".split(
-            #             " "
-            #         ),
-            #         str(initialpose_msg),
-            #     ],
-            #     name="Publish /initialpose",
-            # )
-            # initialpose_publishers.append(initialpose_publisher)
-
         return [
             *slam_nodes,
-            # *initialpose_publishers,
         ]
 
     def static_transforms_based_on_yaml(context: LaunchContext, yaml_file: LaunchConfiguration):
+        """Just set the `map` -> `odom` transform"""
         yaml_filepath_str = PathJoinSubstitution(
             [FindPackageShare("foresee_the_unseen"), "resource", yaml_file]
         ).perform(context)
@@ -198,10 +186,13 @@ def generate_launch_description():
                 package="tf2_ros",
                 executable="static_transform_publisher",
                 arguments=(
-                    f"--x {start_pose[0]} --y {start_pose[1]} --z 0 --roll 0 --pitch 0 --yaw {start_pose[2]} "
-                    + f"--frame-id planner --child-frame-id {namespace}/odom"
+                    f"--frame-id map --child-frame-id {namespace}/odom"
                 ).split(" "),
-            )
+                # arguments=(
+                #         f"--x {start_pose[0]} --y {start_pose[1]} --z 0 --roll 0 --pitch 0 --yaw {start_pose[2]} "
+                #         + f"--frame-id planner --child-frame-id {namespace}/odom"
+                #     ).split(" "),
+                )
             static_transforms.append(static_transform)
 
         return static_transforms
@@ -217,6 +208,7 @@ def generate_launch_description():
             obstacles_file_launch_arg,
             use_ekf_launch_arg,
             map_file_launch_arg,
+            do_visualize_launch_arg,
             # log messages
             *log_messages,
             # nodes
@@ -229,7 +221,7 @@ def generate_launch_description():
             ),
             OpaqueFunction(
                 function=slam_localization_based_on_yaml,
-                args=[obstacles_config_file],
+                args=[obstacles_config_file, use_ekf],
                 condition=IfCondition(EqualsSubstitution(slam_mode, "localization")),
             ),
         ]

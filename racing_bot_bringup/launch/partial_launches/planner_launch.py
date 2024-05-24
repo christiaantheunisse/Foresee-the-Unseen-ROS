@@ -70,6 +70,7 @@ def generate_launch_description():
         assert len(pose) == 3, f"Pose should be [x, y, theta]; {pose=}"
 
         init_x, init_y, init_th = pose
+        # $ ros2 run tf2_ros static_transform_publisher --x 3.8 --y 0.13 --yaw -1.57 --frame-id map --child-frame-id planner
         static_trans_map_to_planner_frame = Node(
             package="tf2_ros",
             executable="static_transform_publisher",

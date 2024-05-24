@@ -64,6 +64,7 @@ def generate_launch_description():
                     # "map_file_name": PathJoinSubstitution([FindPackageShare("racing_bot_bringup"), "map", map_file]),
                     "map_file_name": PathJoinSubstitution([map_files_dir, map_file]),
                     "transform_publish_period": transform_publish_period,
+                    "do_loop_closing": False, 
                 },
             ],
             package="slam_toolbox",
@@ -79,6 +80,7 @@ def generate_launch_description():
                 PathJoinSubstitution([FindPackageShare("racing_bot_bringup"), "config", "slam_params.yaml"]),
                 {
                     "transform_publish_period": transform_publish_period,
+                    "do_loop_closing": True, 
                 },
             ],
             package="slam_toolbox",

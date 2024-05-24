@@ -4,13 +4,19 @@ import numpy as np
 from typing import Tuple, Dict, List
 import nptyping as npt
 
+from commonroad.scenario.state import InitialState
+from commonroad.scenario.trajectory import Trajectory as TrajectoryCR
 from commonroad.scenario.scenario import Lanelet, LaneletNetwork
 from shapely.geometry import MultiPoint, Point as ShapelyPoint, Polygon as ShapelyPolygon, LineString
 
+from rclpy.time import Duration, Time
 from std_msgs.msg import Header
-from geometry_msgs.msg import PoseStamped, Point as PointMsg, Quaternion, Pose, Vector3, Twist
+from geometry_msgs.msg import PoseStamped, Point as PointMsg, Quaternion, Pose, Vector3, Twist, Accel
 from nav_msgs.msg import Path
 from racing_bot_interfaces.msg import Trajectory as TrajectoryMsg
+
+
+"""A lot of this code is partly copied from the Planner in foresee_the_unseen/lib/planner.py and probably other files"""
 
 
 def Lanelet2ShapelyPolygon(lanelet):
@@ -127,6 +133,131 @@ def generate_waypoints(
     return new_waypoints[1:], orientations[1:], velocities[1:]
 
 
+def generate_velocity_profile(
+    waypoints: np.ndarray,
+    velocity: float,
+    max_acc: float,
+    max_dec: float,
+    dt: float,
+) -> np.ndarray:
+    """Make a velocity profile for a array of waypoints"""
+    dist_to_goal = np.sum(np.hypot(*np.diff(waypoints, axis=0).T))
+    acc_profile = np.full(int(100 / dt), -max_dec)
+    v_reachable = np.sqrt(2 * (dist_to_goal + velocity**2 / (2 * max_acc)) * max_acc * max_dec / (max_acc + max_dec))
+
+    if v_reachable < velocity:
+        #                       <- reference velocity (not reached)
+        # v-profile:   /\
+        #                \
+        t_increasing = v_reachable / max_acc
+        num_incr_steps = t_increasing / dt
+
+        acc_profile[: int(num_incr_steps)] = max_acc
+        acc_profile[int(num_incr_steps)] = max_acc * (num_incr_steps % 1) + max_dec * (num_incr_steps % -1)
+    else:
+        #              .--.     <- reference velocity (reached)
+        # v-profile:  /    \
+        #                   \
+        t_increasing = velocity / max_acc
+        num_incr_steps = t_increasing / dt
+        t_horizontal = (dist_to_goal - velocity**2 / (2 * max_acc) - velocity**2 / (2 * max_dec)) / velocity
+        num_horz_steps = t_horizontal / dt
+        t_decreasing = velocity / max_dec
+        num_decr_steps = t_decreasing / dt
+
+        acc_profile[: int(num_incr_steps)] = max_acc  # increasing velocity
+        acc_profile[int(num_incr_steps)] = num_incr_steps % 1 * max_acc  # smaller acc to just reach reference speed
+        acc_profile[int(num_incr_steps) + 1 : int(num_incr_steps + num_horz_steps)] = 0  # constant velocity
+        acc_profile[-int(num_decr_steps) - 1 :] = -max_dec  # ensure that decelerating part is long enough
+
+    v_profile = np.cumsum(acc_profile * dt)
+
+    return np.append(v_profile[: np.argmax(v_profile < 0)], 0)
+
+
+def velocity_profile_to_state_list(
+    velocity_profile: np.ndarray,
+    waypoints: np.ndarray,
+    dt: float,
+    max_dist_corner_smoothing: float = 0.1,
+):
+    v_diffs = velocity_profile - np.insert(velocity_profile[:-1], 0, 0)
+    accelerations = v_diffs / dt
+
+    diff_points = np.diff(waypoints, axis=0)
+    dist_bw_points = np.hypot(*diff_points.T)
+    dist_along_points = np.hstack(([0], np.cumsum(dist_bw_points)))
+    orient_bw_points = np.arctan2(*diff_points.T[::-1])
+
+    # use the 'trapezoidal rule' for integrating the velocity
+    # TODO: trapezoidal integration rule
+    # velocity_extend = np.insert(velocity_profile, 0, self.initial_state.velocity)
+    # velocity_trapez = (velocity_extend[:-1] + velocity_extend[1:]) / 2
+    # dist = np.cumsum(velocity_trapez * self.dt)
+    dist = np.cumsum(velocity_profile * dt)
+    x_coords = np.interp(dist, dist_along_points, waypoints[:, 0])
+    y_coords = np.interp(dist, dist_along_points, waypoints[:, 1])
+
+    # The trajectory orientation on the parts between the waypoints is constant, but the trajectory  orientation
+    #  around the waypoints is smoothed. The smoothening happens within a distance of the minimum of
+    #  (`self.max_dist_corner_smoothing`) and half of the length of the part between two waypoints.
+    dist_along_bef_points = dist_along_points[1:-1] - np.minimum(
+        np.diff(dist_along_points[:-1]) / 2, max_dist_corner_smoothing
+    )
+    dist_along_aft_points = dist_along_points[1:-1] + np.minimum(
+        np.diff(dist_along_points[1:]) / 2, max_dist_corner_smoothing
+    )
+    dist_along_bef_aft_points = np.vstack((dist_along_bef_points, dist_along_aft_points)).T.flatten()
+    orientations_at_points = np.repeat(orient_bw_points, 2)[1:-1]
+    orientations = np.interp(dist, dist_along_bef_aft_points, orientations_at_points)
+
+    state_list = []
+    for time_step, (x_coord, y_coord, orientation, velocity, acceleration) in enumerate(
+        zip(x_coords, y_coords, orientations, velocity_profile, accelerations, strict=True)
+    ):
+        state = InitialState(
+            position=np.array([x_coord, y_coord]),
+            orientation=orientation,
+            velocity=velocity,
+            acceleration=acceleration,
+            time_step=time_step + 1,  # type: ignore
+        )
+        state_list.append(state)
+
+    return TrajectoryCR(1, state_list)  # type: ignore
+
+
+def quaternion_from_yaw(yaw):
+    return [0.0, 0.0, np.sin(yaw / 2), np.cos(yaw / 2)]
+
+
+def get_ros_trajectory_from_commonroad_trajectory(
+    trajectory: TrajectoryCR, start_stamp: Time, dt: float
+) -> TrajectoryMsg:
+    """Publishes the Commonroad trajectory on a topic for the trajectory follower node."""
+    header_path = Header(stamp=start_stamp.to_msg(), frame_id="planner")
+    pose_stamped_list = []
+    init_time_step = trajectory.state_list[0].time_step - 1
+    for state in trajectory.state_list:
+        quaternion = Quaternion(**{k: v for k, v in zip(["x", "y", "z", "w"], quaternion_from_yaw(state.orientation))})
+        position = PointMsg(x=float(state.position[0]), y=float(state.position[1]))
+        time_diff = (state.time_step - init_time_step) * dt
+        header_pose = Header(
+            stamp=(start_stamp + Duration(seconds=int(time_diff), nanoseconds=int((time_diff % 1) * 1e9))).to_msg()
+        )
+        pose_stamped_list.append(PoseStamped(header=header_pose, pose=Pose(position=position, orientation=quaternion)))
+    twist_list = [Twist(linear=Vector3(x=float(s.velocity))) for s in trajectory.state_list]
+    if trajectory.state_list[0].acceleration is not None:
+        accel_list = [Accel(linear=Vector3(x=float(s.acceleration))) for s in trajectory.state_list]
+    else:
+        accel_list = []
+    trajectory_msg = TrajectoryMsg(
+        path=Path(header=header_path, poses=pose_stamped_list), velocities=twist_list, accelerations=accel_list
+    )
+
+    return trajectory_msg
+
+
 def to_ros_trajectory_msg(
     waypoints: npt.NDArray[npt.Shape["N, 2"], npt.Float],
     orientations: npt.NDArray[npt.Shape["N"], npt.Float],
@@ -183,3 +314,15 @@ def read_obstacle_configuration_yaml(yaml_file: str) -> Dict:
         ), f"`start_delay` should be a scalar number {type(value['start_delay'])=}"
 
     return obstacle_config
+
+
+if __name__ == "__main__":
+    waypoints = np.arange(10).reshape(-1, 2)
+    dist_to_goal = np.sum(np.hypot(*np.diff(waypoints, axis=0).T))
+    velocity_profile = generate_velocity_profile(
+        dist_to_goal=dist_to_goal,
+        velocity=0.5,
+        max_acc=0.2,
+        max_dec=0.2,
+        dt=0.25,
+    )
