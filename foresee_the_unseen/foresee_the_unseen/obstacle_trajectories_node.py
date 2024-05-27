@@ -160,7 +160,7 @@ class ObstacleTrajectoriesNode(Node):
                 # self.get_logger().info(str(publisher))
                 transform = self.tf_buffer.lookup_transform("map", "planner", rclpy.time.Time())
                 state_map = self.transform_state(state_planner, transform)
-                self.get_logger().info(str(state_map))
+                # self.get_logger().info(str(state_map))
                 pose_msg = get_ros_pose_from_commonroad_state(state_map)
                 publisher.publish(pose_msg)
             except TransformException as ex:
@@ -183,26 +183,26 @@ class ObstacleTrajectoriesNode(Node):
 
         return state_tf
     
-    def setup_timer_w_delay(self, namespace: str, delay: float, msg: TrajectoryMsg) -> Callable[[], None]:
-        # create the publisher
-        publisher = self.create_publisher(TrajectoryMsg, f"/{namespace}/{self.trajectory_topic}", 1)
+    # def setup_timer_w_delay(self, namespace: str, delay: float, msg: TrajectoryMsg) -> Callable[[], None]:
+    #     # create the publisher
+    #     publisher = self.create_publisher(TrajectoryMsg, f"/{namespace}/{self.trajectory_topic}", 1)
 
-        def timer_callback() -> None:
-            # publish the message only once
-            self.get_logger().info(
-                (
-                    f"[timer_callback {namespace} ({delay=})] "
-                    + time.strftime(
-                        "%Y-%m-%d %H:%M:%S", time.localtime(self.get_clock().now().seconds_nanoseconds()[0])
-                    )
-                )
-            )
-            publisher.publish(msg)
-            # self.get_logger().info(f"message published: {msg}")
-            timer = getattr(self, f"timer_{namespace}")
-            # timer.cancel()
+    #     def timer_callback() -> None:
+    #         # publish the message only once
+    #         self.get_logger().info(
+    #             (
+    #                 f"[timer_callback {namespace} ({delay=})] "
+    #                 + time.strftime(
+    #                     "%Y-%m-%d %H:%M:%S", time.localtime(self.get_clock().now().seconds_nanoseconds()[0])
+    #                 )
+    #             )
+    #         )
+    #         publisher.publish(msg)
+    #         # self.get_logger().info(f"message published: {msg}")
+    #         timer = getattr(self, f"timer_{namespace}")
+    #         # timer.cancel()
 
-        setattr(self, f"timer_{namespace}", self.create_timer(delay, timer_callback))
+    #     setattr(self, f"timer_{namespace}", self.create_timer(delay, timer_callback))
 
         return timer_callback
 
