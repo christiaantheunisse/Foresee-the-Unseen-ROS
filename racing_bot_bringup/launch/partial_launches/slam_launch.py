@@ -147,6 +147,7 @@ def generate_launch_description():
             publish_tf_launch_arg,
             namespace_launch_arg,
             start_pose_launch_arg,
+	    time_interval_launch_arg,
             OpaqueFunction(
                 function=setup_slam_node,
                 args=[slam_mode, map_file, do_publish_tf, namespace, start_pose, time_interval],
