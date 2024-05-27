@@ -83,6 +83,7 @@ def generate_launch_description():
                 {
                     # "map_file_name": PathJoinSubstitution([FindPackageShare("racing_bot_bringup"), "map", map_file]),
                     "map_file_name": PathJoinSubstitution([map_files_dir, map_file]),
+                    "mode": "localization",
                     "do_loop_closing": False,
                 },
                 common_params,
@@ -100,6 +101,7 @@ def generate_launch_description():
             parameters=[
                 PathJoinSubstitution([FindPackageShare("racing_bot_bringup"), "config", "slam_params.yaml"]),
                 {
+                    "mode": "mapping",
                     "do_loop_closing": True,
                 },
                 common_params,
