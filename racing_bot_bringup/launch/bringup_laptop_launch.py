@@ -106,6 +106,7 @@ def generate_launch_description():
         launch_arguments={
             "slam_mode": slam_mode_robot,
             "publish_tf": NotSubstitution(use_ekf_robot),
+            "minimum_time_interval": "0.5",
         }.items(),
         condition=IfCondition(NotSubstitution(EqualsSubstitution(slam_mode_robot, "disabled"))),
     )

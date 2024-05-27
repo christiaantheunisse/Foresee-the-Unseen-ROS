@@ -29,7 +29,14 @@ obstacle_cars:
     movement: "turn"
     velocity: 0.2
     acceleration: 0.2
-    start_delay: 10.
+    start_delay: 2.
+
+  # obstacle_car2:
+  #   start_pose: [2, -0.13, 3.14]
+  #   movement: "turn"
+  #   velocity: 0.2
+  #   acceleration: 0.2
+  #   start_delay: 2.
 
   # obstacle1:
   #   start_pose: [5.0, -0.133, -3.14]

@@ -45,11 +45,17 @@ def generate_launch_description():
         default_value=TextSubstitution(text="[0., 0., 0.]"),
         description="2D start pose (x, y, orientation) of the robot in the map.",
     )
+    time_interval_launch_arg = DeclareLaunchArgument(
+        "time_interval",
+        default_value=TextSubstitution(text="1."),
+        description="SLAM update interval time (float)"
+    )
     slam_mode = LaunchConfiguration("slam_mode")
     map_file = LaunchConfiguration("map_file")
     do_publish_tf = LaunchConfiguration("publish_tf")
     namespace = LaunchConfiguration("namespace")
     start_pose = LaunchConfiguration("start_pose")
+    time_interval = LaunchConfiguration("time_interval")
 
     def setup_slam_node(
         context: LaunchContext,
@@ -58,12 +64,14 @@ def generate_launch_description():
         do_publish_tf: LaunchConfiguration,
         namespace: LaunchConfiguration,
         start_pose: LaunchConfiguration,
+        time_interval: LaunchConfiguration,
     ):
         do_publish_tf_bool = IfCondition(do_publish_tf).evaluate(context)
         transform_publish_period = 0.05 if do_publish_tf_bool else 0.0
         namespace_str = namespace.perform(context)
         start_pose_str = start_pose.perform(context)
         start_pose_double_array = [float(s) for s in start_pose_str.strip("[]()").split(",")]
+        time_interval_float = float(time_interval.perform(context))
 
         try:
             map_files_dir = os.environ["ROS_MAP_FILES_DIR"]
@@ -85,6 +93,7 @@ def generate_launch_description():
                     "map_file_name": PathJoinSubstitution([map_files_dir, map_file]),
                     "mode": "localization",
                     "do_loop_closing": False,
+                    "minimum_time_interval": time_interval_float,
                 },
                 common_params,
             ],
@@ -103,6 +112,7 @@ def generate_launch_description():
                 {
                     "mode": "mapping",
                     "do_loop_closing": True,
+                    "minimum_time_interval": time_interval_float,
                 },
                 common_params,
             ],

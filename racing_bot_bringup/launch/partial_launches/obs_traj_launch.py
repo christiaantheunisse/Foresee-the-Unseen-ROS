@@ -152,43 +152,47 @@ def generate_launch_description():
                     "map_file": map_file,
                     "publish_tf": NotSubstitution(use_ekf),
                     "namespace": namespace,
-                    "start_pose": start_pose_map,
+                    "start_pose": str(start_pose_map),
+                    "minimum_time_interval": "2.0",
                 }.items(),
             )
             slam_launches.append(slam_launch)
 
             # Publish the start pose in case the SLAM node is run on the robot
-            position_variance = 0.2
-            angle_variance = 0.1
-            covariance_array = [0.0] * 36
-            covariance_array[0] = covariance_array[7] = position_variance
-            covariance_array[35] = angle_variance
+            # position_variance = 0.2
+            # angle_variance = 0.1
+            # covariance_array = [0.0] * 36
+            # covariance_array[0] = covariance_array[7] = position_variance
+            # covariance_array[35] = angle_variance
 
-            initialpose_msg = {
-                "pose": {
-                    "pose": {
-                        "position": {"x": start_pose_map[0], "y": start_pose_map[1]},
-                        "orientation": {
-                            "z": str(math.sin(start_pose_map[2] / 2)),
-                            "w": str(math.cos(start_pose_map[2] / 2)),
-                        },
-                    }
-                },
-            }
-            initialpose_publisher = ExecuteProcess(
-                cmd=[
-                    *f"ros2 topic pub -t 1 /{namespace}/initialpose geometry_msgs/msg/PoseWithCovarianceStamped".split(
-                        " "
-                    ),
-                    str(initialpose_msg),
-                ],
-                name="Publish /initialpose",
-            )
-            initialpose_publishers.append(initialpose_publisher)
+            # initialpose_msg = {
+            #     "pose": {
+            #         "pose": {
+            #             "position": {"x": start_pose_map[0], "y": start_pose_map[1]},
+            #             "orientation": {
+            #                 "z": str(math.sin(start_pose_map[2] / 2)),
+            #                 "w": str(math.cos(start_pose_map[2] / 2)),
+            #             },
+            #         }
+            #     },
+            # }
+            # initialpose_publisher = ExecuteProcess(
+            #     cmd=[
+            #         # *f"ros2 topic pub -t 1 /{namespace}/initialpose geometry_msgs/msg/PoseWithCovarianceStamped".split(
+            #         *f"ros2 topic pub -t 5 -w 1 /{namespace}/initialpose geometry_msgs/msg/PoseWithCovarianceStamped".split(
+            #             " "
+            #         ),
+            #         str(initialpose_msg),
+            #         *["--qos-reliability", "reliable"],
+            #         *["--qos-durability", "transient_local"],
+            #     ],
+            #     name="Publish /initialpose",
+            # )
+            # initialpose_publishers.append(initialpose_publisher)
 
         return [
             *slam_launches,
-            *initialpose_publishers,
+            # *initialpose_publishers,
         ]
 
     return LaunchDescription(

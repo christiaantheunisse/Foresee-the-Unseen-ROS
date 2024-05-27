@@ -89,7 +89,10 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([FindPackageShare("racing_bot_bringup"), "launch/partial_launches", "slam_launch.py"])
         ),
-        launch_arguments=[("publish_tf", NotSubstitution(use_ekf))],
+        launch_arguments={
+            "publish_tf": NotSubstitution(use_ekf),
+            "minimum_time_interval": "2.0",
+        }.items(),
     )
 
     def namespace_as_string(context: LaunchContext, namespace: LaunchConfiguration):
