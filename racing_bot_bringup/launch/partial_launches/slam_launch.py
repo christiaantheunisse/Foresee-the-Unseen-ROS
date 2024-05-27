@@ -91,7 +91,7 @@ def generate_launch_description():
             executable="localization_slam_toolbox_node",
             name="slam_node",
             namespace=namespace,
-            remappings=[("pose", "slam_pose")],
+            remappings=[("pose", "slam_pose"), ("/scan", "scan")],
             condition=IfCondition(EqualsSubstitution(slam_mode, "localization")),
         )
 
@@ -108,12 +108,13 @@ def generate_launch_description():
             executable="sync_slam_toolbox_node",
             name="slam_node",
             namespace=namespace,
-            remappings=[("pose", "slam_pose")],
+            remappings=[("pose", "slam_pose"), ("/scan", "scan")],
             condition=IfCondition(EqualsSubstitution(slam_mode, "mapping")),
             # condition=IfCondition(AndSubstitution(use_mapping, NotSubstitution(use_localization))),
         )
 
         # if slam_mode == "disabled"
+        # TODO: Use the start pose
         transform_slam_disabled = Node(
             package="tf2_ros",
             executable="static_transform_publisher",
