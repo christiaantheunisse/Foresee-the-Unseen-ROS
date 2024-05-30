@@ -98,7 +98,8 @@ class DeskewLidarNode(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.subsample_rate: Optional[int] = None
-        self.subsample_rate: Optional[int] = 10
+        self.subsample_rate: Optional[int] = 5
+        self.last_scan: Optional[LaserScan] = None
 
         # define some dummy error models:
         #   Lidar error models are only dependent on the measured range, so 1D
@@ -126,24 +127,28 @@ class DeskewLidarNode(Node):
     def scan_callback(self, msg: LaserScan) -> None:
         """The scan callback"""
         exec_start_time = time.time()
+        if self.last_scan is None:
+            self.last_scan = msg
+            return
         try:
             # Apply the error models
-            ranges, angles, mask_invalid = self.laserscan_to_ranges_angles(msg, self.subsample_rate)
-            ranges_corr, angles_corr = self.apply_error_model(ranges, angles, mask_invalid, 2)
-            fov_points = make_fov(ranges_corr, angles_corr, mask_invalid)
-            points = self.ranges_angles_to_points(ranges_corr, angles_corr)[~mask_invalid]
+            for idx, scan in enumerate([self.last_scan, msg]):
+                ranges, angles, mask_invalid = self.laserscan_to_ranges_angles(scan, self.subsample_rate)
+                ranges_corr, angles_corr = self.apply_error_model(ranges, angles, mask_invalid, 2)
+                fov_points = make_fov(ranges_corr, angles_corr, mask_invalid)
+                points = self.ranges_angles_to_points(ranges_corr, angles_corr)[~mask_invalid]
 
-            # Deskew by INTERPOLATING tfs
-            points_deskewed, start_time = self.deskew_laserscan_interpolate_tf(msg, points)
-            fov_points_deskewed, start_time = self.deskew_laserscan_interpolate_tf(msg, fov_points)
+                # Deskew by INTERPOLATING tfs
+                points_deskewed, start_time = self.deskew_laserscan_interpolate_tf(scan, points)
+                fov_points_deskewed, start_time = self.deskew_laserscan_interpolate_tf(scan, fov_points)
 
-            # publish the deskewed pointcloud
-            pc_deskewed_msg = self.points_to_pointcloud_msg(points_deskewed, start_time)
-            self.deskewed_scan_pub.publish(pc_deskewed_msg)
+                # publish the deskewed pointcloud
+                pc_deskewed_msg = self.points_to_pointcloud_msg(points_deskewed, start_time)
+                self.deskewed_scan_pub.publish(pc_deskewed_msg)
 
-            # publish the fov
-            fov_marker_msg = self.points_to_linestrip_msg(fov_points_deskewed, "fov")
-            self.fov_pub.publish(fov_marker_msg)
+                # publish the fov
+                fov_marker_msg = self.points_to_linestrip_msg(fov_points_deskewed, f"fov_{idx}")
+                self.fov_pub.publish(fov_marker_msg)
 
             # add minimum range 15cm polygon
             # msg_min_range = copy.deepcopy(msg)
@@ -172,6 +177,8 @@ class DeskewLidarNode(Node):
         except TransformException as ex:
             print(ex)
             pass
+
+        self.last_scan = msg
         print(f"Total execution time = {(time.time() - exec_start_time) * 1000:.0f} ms")
 
     def apply_error_model(
@@ -243,10 +250,18 @@ class DeskewLidarNode(Node):
 
         # tf data is often not available for the end time (often about a few ms)
         # Get latest and subtract the total scan_time
-        t_end = self.tf_buffer.lookup_transform(self.deskew_frame, laser_frame, Time())
-        t_end_time = Time(seconds=t_end.header.stamp.sec, nanoseconds=t_end.header.stamp.nanosec)
-        t_start = self.tf_buffer.lookup_transform(self.deskew_frame, laser_frame, t_end_time - Duration(seconds=scan.scan_time))  # type: ignore
-        t_start_time = Time(seconds=t_start.header.stamp.sec, nanoseconds=t_start.header.stamp.nanosec)
+        use_latest = False
+        if use_latest:
+            t_end = self.tf_buffer.lookup_transform(self.deskew_frame, laser_frame, Time())
+            t_end_time = Time(seconds=t_end.header.stamp.sec, nanoseconds=t_end.header.stamp.nanosec)
+            t_start = self.tf_buffer.lookup_transform(self.deskew_frame, laser_frame, t_end_time - Duration(seconds=scan.scan_time))  # type: ignore
+            # t_start_time = Time(seconds=t_start.header.stamp.sec, nanoseconds=t_start.header.stamp.nanosec)
+        else:
+            t_end = self.tf_buffer.lookup_transform(self.deskew_frame, laser_frame, end_time)
+            # t_end_time = Time(seconds=t_end.header.stamp.sec, nanoseconds=t_end.header.stamp.nanosec)
+            t_start = self.tf_buffer.lookup_transform(self.deskew_frame, laser_frame, start_time)  # type: ignore
+            # t_start_time = Time(seconds=t_start.header.stamp.sec, nanoseconds=t_start.header.stamp.nanosec)
+
         t_start_mat, t_end_mat = matrix_from_transform(t_start), matrix_from_transform(t_end)
 
         points = self.laserscan_to_points(scan) if points is None else points
@@ -268,7 +283,6 @@ class DeskewLidarNode(Node):
         # add the origin
         laser_position = t_interp_mats[int(len(t_interp_mats)/2)][:2, 3]
         points_deskewed = np.vstack((laser_position, points_deskewed, laser_position))
-
 
         return points_deskewed, start_time
 
