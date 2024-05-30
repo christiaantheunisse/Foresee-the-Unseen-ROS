@@ -10,7 +10,7 @@ import copy
 import math
 from scipy.spatial.transform import Rotation as R
 from scipy.interpolate import interp1d
-from typing import Tuple, List, Union, Optional, Literal
+from typing import Tuple, List, Union, Optional, Literal, get_args
 
 from builtin_interfaces.msg import Time as TimeMsg
 from std_msgs.msg import Header, ColorRGBA
@@ -18,6 +18,7 @@ from geometry_msgs.msg import Point32, Point, Vector3, Quaternion, PolygonStampe
 from sensor_msgs.msg import LaserScan, PointCloud
 from nav_msgs.msg import Odometry
 from visualization_msgs.msg import Marker
+from rcl_interfaces.msg import ParameterDescriptor
 
 from tf2_ros import TransformException  # type: ignore
 from tf2_ros.buffer import Buffer
@@ -42,35 +43,64 @@ class FOVNode(Node):
     def __init__(self):
         super().__init__("scan_to_fov")
 
-        self.scan_topic = "scan"
-        self.deskewed_scan_topic = "scan/deskewed"
-        self.filtered_scan_topic = "scan/road_env"
-        self.fov_topic = "fov"
-        self.filter_polygon_topic = "visualization/road_env_polygon"
-        self.fov_frame = "map"
-        self.do_visualize = True
-        self.do_filter_scan = False
-        self.rotating_direction: Direction = "CW"
-        self.error_models_dir = "path/to/error_models"
-        self.filter_polygon = np.array([0.0, 1.0, 2.0, 1.0, 2.0, 0.0, 0.0, 0.0]).reshape(-1, 2)
-        self.view_range = 5.0  # TODO: get this from the configuration file
+        self.declare_parameter("fov_frame", "map")
+
+        self.declare_parameter("scan_topic", "scan")
+        self.declare_parameter("deskewed_scan_topic", "scan/deskewed")
+        self.declare_parameter("environment_scan_topic", "scan/road_env")
+        self.declare_parameter("fov_topic", "fov")
+        self.declare_parameter("environment_polygon_topic", "visualization/road_env_polygon")
+
+        self.declare_parameter("do_visualize", True)
+        self.declare_parameter("do_filter_scan", False)
+
+        self.declare_parameter("rotating_direction", "CW")
+        self.declare_parameter("view_range", 5.0)
+        self.declare_parameter("error_models_directory", "path/to/error_models")
+        self.declare_parameter(
+            "environment_boundary",
+            [0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0],
+            ParameterDescriptor(
+                description="Convex polygon describing the part of the fov frame that is visuable to the lidar of the"
+                " robot. The other points are removed and therefore unseen to the robot. [x1, y1, x2, y2, ...]"
+            ),
+        )
+        self.fov_frame = self.get_parameter("fov_frame").get_parameter_value().string_value
+
+        self.scan_topic = self.get_parameter("scan_topic").get_parameter_value().string_value
+        self.deskewed_scan_topic = self.get_parameter("deskewed_scan_topic").get_parameter_value().string_value
+        self.env_scan_topic = self.get_parameter("environment_scan_topic").get_parameter_value().string_value
+        self.fov_topic = self.get_parameter("fov_topic").get_parameter_value().string_value
+        self.env_polygon_topic = self.get_parameter("environment_polygon_topic").get_parameter_value().string_value
+
+        self.do_visualize = self.get_parameter("do_visualize").get_parameter_value().bool_value
+        self.do_filter_scan = self.get_parameter("do_filter_scan").get_parameter_value().bool_value
+
+        self.rotating_direction = self.get_parameter("rotating_direction").get_parameter_value().string_value
+        assert self.rotating_direction in get_args(
+            Direction
+        ), f"`rotating_direction` should have one of the following values: {get_args(Direction)}"
+        self.view_range = self.get_parameter("view_range").get_parameter_value().double_value
+        self.error_models_dir = self.get_parameter("error_models_directory").get_parameter_value().string_value
+        self.env_polygon = np.array(
+            self.get_parameter("environment_boundary").get_parameter_value().double_array_value
+        ).reshape(-1, 2)
 
         assert self.rotating_direction == "CW", "The node is specificially made for a clockwise rotating node."
 
         self.create_subscription(LaserScan, self.scan_topic, self.scan_callback, 5)
-        # self.merged_scan_pub = self.create_publisher(LaserScan, "/scan_merged", 5)
         self.deskewed_scan_pub = self.create_publisher(PointCloud, self.deskewed_scan_topic, 5)
-        self.filtered_scan_pub = self.create_publisher(LaserScan, self.filtered_scan_topic, 5)
+        self.environment_scan_pub = self.create_publisher(LaserScan, self.env_scan_topic, 5)
         self.fov_polygon_pub = self.create_publisher(PolygonStamped, self.fov_topic, 5)
         if self.do_visualize:
-            self.filter_polygon_pub = self.create_publisher(Marker, self.filter_polygon_topic, 5)
+            self.filter_polygon_pub = self.create_publisher(Marker, self.env_polygon_topic, 5)
             self.create_timer(5, self.visualize_filter_polygon_callback)
 
         # allow multithreading for the laser process functions
         laser_scan_process = ReentrantCallbackGroup()
         self.create_timer(1 / 100, self.process_scan, callback_group=laser_scan_process)
 
-        self.laser_filter_matrices = matrices_from_cw_cvx_polygon(self.filter_polygon)
+        self.laser_filter_matrices = matrices_from_cw_cvx_polygon(self.env_polygon)
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.subsample_rate: Optional[int] = None
@@ -118,7 +148,6 @@ class FOVNode(Node):
         exec_start_time = time.time()
         try:
             new_scan = self.merge_scans(self.last_scan, self.current_scan)
-            # self.merged_scan_pub.publish(new_scan)
             filtered_scan = self.filter_laserscan(new_scan) if self.do_filter_scan else new_scan
 
             ranges, angles, mask_invalid = self.laserscan_to_ranges_angles(
@@ -127,7 +156,7 @@ class FOVNode(Node):
             ranges_corr, angles_corr = self.apply_error_model(ranges, angles, mask_invalid, 2)
             fov_points = self.make_fov(ranges_corr, angles_corr, mask_invalid)
 
-            # Deskew the points constructing the FOV and publish the FOV
+            # Deskew the points defining the FOV and publish the FOV
             fov_points_deskewed, start_time = self.deskew_laserscan_interpolate_tf(filtered_scan, fov_points)
             fov_polygon_msg = self.points_to_polygon_msg(fov_points_deskewed, filtered_scan.header.stamp)
             self.fov_polygon_pub.publish(fov_polygon_msg)
@@ -140,7 +169,7 @@ class FOVNode(Node):
                 self.deskewed_scan_pub.publish(pc_deskewed_msg)
 
                 # publish the filtered laserscan
-                self.filtered_scan_pub.publish(filtered_scan)
+                self.environment_scan_pub.publish(filtered_scan)
 
             self.scan_processed = True
         except TransformException as ex:
@@ -191,9 +220,7 @@ class FOVNode(Node):
         laser_frame = scan.header.frame_id
         ranges, angles, _ = self.laserscan_to_ranges_angles(scan, self.view_range)
         points_laser = self.ranges_angles_to_points(ranges, angles)
-        points_map = self.transform_points(
-            points_laser, self.fov_frame, laser_frame, Time.from_msg(scan.header.stamp)
-        )
+        points_map = self.transform_points(points_laser, self.fov_frame, laser_frame, Time.from_msg(scan.header.stamp))
 
         # filter the points based on a polygon
         A, B = self.laser_filter_matrices
@@ -387,7 +414,7 @@ class FOVNode(Node):
 
     def visualize_filter_polygon_callback(self) -> None:
         """Visualize the polygon to filter the pointcloud resulting from the lidar scan"""
-        marker = self.points_to_linestrip_msg(self.filter_polygon, "Laser filter polygon")
+        marker = self.points_to_linestrip_msg(self.env_polygon, "Laser filter polygon")
         self.filter_polygon_pub.publish(marker)
 
     def points_to_pointcloud_msg(self, points: np.ndarray, start_time: Time) -> PointCloud:
@@ -415,7 +442,7 @@ class FOVNode(Node):
             ns=namespace,
         )
         return marker
-    
+
     def points_to_polygon_msg(self, points: np.ndarray, stamp: TimeMsg) -> PolygonStamped:
         """Convert a numpy array of points (shape = (N, 2)) to a ROS PolygonStamped message"""
         header = Header(stamp=stamp, frame_id=self.fov_frame)

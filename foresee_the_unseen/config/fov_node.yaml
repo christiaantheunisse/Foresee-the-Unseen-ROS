@@ -1,0 +1,40 @@
+fov_node:
+  ros__parameters:
+    fov_frame: map
+
+    scan_topic: scan 
+    deskewed_scan_topic: scan/deskewed 
+    environment_scan_topic: scan/road_env 
+    fov_topic: fov 
+    environment_polygon_topic: visualization/road_env_polygon
+
+    do_visualize: True
+    do_filter_scan: False
+    
+    # CW convex polygon [x1, y1, x2, y2, ...] in the fov frame
+    environment_boundary: [0., 2.5, 5., 2.5, 5., -3., 0., -3.]
+    rotating_direction: CW
+    view_range: 5.
+    # error_models_directory: ...
+    
+
+    datmo_topic: datmo/box_kf 
+    filtered_lidar_topic: scan/road_env
+    visualization_topic: visualization/planner
+    startup_topic: /goal_pose
+    
+    environment_boundary: [0., 2.5, 5., 2.5, 5., -3., 0., -3.]  # CW convex polygon [x1, y1, x2, y2, ...] in the map frame
+    
+    ego_vehicle_size: [0.25, 0.18, 0.12]
+    ego_vehicle_offset: [0., 0., 0.06]
+    planner_frequency: 4. # [Hz]
+
+    # use_triangulation: True
+    num_pred_to_visualize: 5
+    # do_visualize: True
+    
+    # road_xml: /home/christiaan/thesis/robot_ws/install/foresee_the_unseen/share/foresee_the_unseen/resource/road_structure.xml
+
+
+
+
