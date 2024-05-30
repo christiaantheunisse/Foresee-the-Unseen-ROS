@@ -81,10 +81,9 @@ class PlannerNode(Node):
         self.declare_parameter("lidar_frame", "laser")
         self.declare_parameter("planner_frame", "planner")
 
-        self.declare_parameter("lidar_topic", "scan")
+        self.declare_parameter("fov_topic", "fov")
         self.declare_parameter("odom_topic", "odom")
         self.declare_parameter("datmo_topic", "datmo/box_kf")
-        self.declare_parameter("filtered_lidar_topic", "scan/road_env")
         self.declare_parameter("visualization_topic", "visualization/planner")
         self.declare_parameter("trajectory_topic", "trajectory")
         self.declare_parameter("startup_topic", "/goal_pose")
@@ -128,10 +127,9 @@ class PlannerNode(Node):
         self.lidar_frame = self.get_parameter("lidar_frame").get_parameter_value().string_value
         self.planner_frame = self.get_parameter("planner_frame").get_parameter_value().string_value
 
-        self.lidar_topic = self.get_parameter("lidar_topic").get_parameter_value().string_value
+        self.fov_topic = self.get_parameter("fov_topic").get_parameter_value().string_value
         self.odom_topic = self.get_parameter("odom_topic").get_parameter_value().string_value
         self.datmo_topic = self.get_parameter("datmo_topic").get_parameter_value().string_value
-        self.filtered_lidar_topic = self.get_parameter("filtered_lidar_topic").get_parameter_value().string_value
         self.visualization_topic = self.get_parameter("visualization_topic").get_parameter_value().string_value
         self.trajectory_topic = self.get_parameter("trajectory_topic").get_parameter_value().string_value
         self.startup_topic = self.get_parameter("startup_topic").get_parameter_value().string_value
@@ -166,15 +164,12 @@ class PlannerNode(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
         # Subscribers and publishers
-        self.create_subscription(LaserScan, self.lidar_topic, self.laser_callback, 5)  # Laser scan
+        self.create_subscription(PolygonStamped, self.fov_topic, self.fov_callback, 5)  # Laser scan
         self.create_subscription(Odometry, self.odom_topic, self.odom_callback, 5)  # Ego vehicle pose
         self.create_subscription(TrackArray, self.datmo_topic, self.datmo_callback, 5)
         self.create_subscription(PoseStamped, self.startup_topic, self.startup_callback, 1)
-        self.filtered_laser_publisher = self.create_publisher(LaserScan, self.filtered_lidar_topic, 5)
         self.marker_array_publisher = self.create_publisher(MarkerArray, self.visualization_topic, 10)
         self.trajectory_publisher = self.create_publisher(TrajectoryMsg, self.trajectory_topic, 5)
-
-        self.laser_filter_matrices = matrices_from_cw_cvx_polygon(self.filter_polygon)
 
         self.foresee_the_unseen_planner = ForeseeTheUnseen(
             config_yaml=self.config_yaml,
@@ -190,7 +185,7 @@ class PlannerNode(Node):
         start_time = time.time()
         try:
             shadow_obstacles, sensor_view, trajectory, no_stop_zone, prediction = (
-                self.foresee_the_unseen_planner.update_scenario()
+                self.foresee_the_unseen_planner.update_scenario(self.get_clock().now().nanoseconds * 1e-9)
             )
         except NoUpdatePossible:
             self.get_logger().warn("No planner update step possible", throttle_duration_sec=self.throttle_duration)
@@ -237,9 +232,7 @@ class PlannerNode(Node):
             position = Point(x=float(state.position[0]), y=float(state.position[1]))
             time_diff = (state.time_step - init_time_step) * 1 / self.frequency
             header_pose = Header(
-                stamp=(
-                    start_stamp + Duration(seconds=int(time_diff), nanoseconds=int((time_diff % 1) * 1e9))
-                ).to_msg()
+                stamp=(start_stamp + Duration(seconds=int(time_diff), nanoseconds=int((time_diff % 1) * 1e9))).to_msg()
             )
             pose_stamped_list.append(
                 PoseStamped(header=header_pose, pose=Pose(position=position, orientation=quaternion))
@@ -260,6 +253,18 @@ class PlannerNode(Node):
         """This function allows the robot to start moving."""
         self.foresee_the_unseen_timer.reset()
 
+    def fov_callback(self, fov_msg: PolygonStamped) -> None:
+        try:
+            if fov_msg.header.frame_id != self.planner_frame:
+                fov_msg = self.tf_buffer.transform(fov_msg, self.planner_frame)  # type: ignore
+            fov_points = np.array(fov_msg.polygon.points)
+            if len(fov_points) >= 3:
+                self.foresee_the_unseen_planner.update_fov(
+                    ShapelyPolygon(fov_points), fov_msg.header.stamp.sec + fov_msg.header.stamp.nanosec * 1e-9
+                )
+        except TransformException as ex:
+            self.get_logger().info(str(ex), throttle_duration_sec=self.throttle_duration)
+
     def visualization_callback(
         self,
         shadow_obstacles: Optional[List[Obstacle]] = None,
@@ -273,7 +278,6 @@ class PlannerNode(Node):
         markers.append(Marker(action=Marker.DELETEALL))  # remove all markers
         markers += self.get_ego_vehicle_marker()
         markers += self.get_road_structure_marker()
-        markers += self.get_filter_polygon_marker()
         markers += self.get_goal_marker()
 
         if sensor_view is not None:
@@ -288,13 +292,6 @@ class PlannerNode(Node):
             markers += self.get_prediction_marker(prediction)
 
         self.marker_array_publisher.publish(MarkerArray(markers=markers))
-
-    def laser_callback(self, msg):
-        try:
-            filtered_msg = self.filter_pointcloud(msg)
-            self.fov_from_laser(filtered_msg)
-        except TransformException as e:
-            pass
 
     def datmo_callback(self, msg: TrackArray):
         """Converts DATMO detections to Commonroad obstacles"""
@@ -379,26 +376,7 @@ class PlannerNode(Node):
 
             markers.append(lanelet_marker)
         return markers
-
-    def get_filter_polygon_marker(self) -> List[Marker]:
-        """Get the marker that visualizes the boundaries of the environment within which the lidar points are stored."""
-        point_list = []
-        for point in [*self.filter_polygon, self.filter_polygon[0]]:
-            point_list.append(Point(**dict(zip(XYZ, np.array(point, dtype=np.float_)))))
-
-        header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.map_frame)
-        filter_marker = Marker(
-            header=header,
-            id=0,
-            type=Marker.LINE_STRIP,
-            action=Marker.ADD,
-            points=point_list,
-            scale=Vector3(x=0.01),
-            color=ColorRGBA(**BLUE),
-            ns="experiment env",
-        )
-        return [filter_marker]
-
+    
     def get_fov_marker(self, sensor_view: Optional[ShapelyPolygon] = None) -> List[Marker]:
         """Get the marker that visualizes the field of view (FOV)"""
         if sensor_view is not None:
@@ -596,13 +574,13 @@ class PlannerNode(Node):
         """Visualize the prediction of the future occupancies"""
         polygons = [o.shape.vertices for o in prediction.occupancy_set]
         markers_lines = self.polygons_to_ros_marker(
-                polygons=polygons,
-                color=TRANSPARENT_BLACK,
-                namespace="set based prediction",
-                use_triangulation=False,
-                linewidth=0.01,
-                z=0.01,
-            )
+            polygons=polygons,
+            color=TRANSPARENT_BLACK,
+            namespace="set based prediction",
+            use_triangulation=False,
+            linewidth=0.01,
+            z=0.01,
+        )
         if self.use_triangulation:
             markers_filled = self.polygons_to_ros_marker(
                 polygons=polygons,
@@ -616,57 +594,6 @@ class PlannerNode(Node):
         return markers_lines
 
     # OTHER
-
-    def filter_pointcloud(self, scan_msg: LaserScan) -> LaserScan:
-        """Filter points from the pointcloud from the lidar to reduce the computation of the `datmo` package."""
-        # Convert the ranges to a pointcloud
-        laser_frame = scan_msg.header.frame_id
-        points_laser = self.laserscan_to_pointcloud(scan_msg)
-        points_laser = np.nan_to_num(points_laser, nan=1e99, posinf=1e99, neginf=-1e99)
-        points_map = self.transform_pointcloud(points_laser, self.map_frame, laser_frame)
-
-        # filter the points based on a polygon
-        A, B = self.laser_filter_matrices
-        # mask_polygon = np.all(A @ points_map.T <= np.repeat(B.reshape(-1, 1), points_map.shape[0], axis=1), axis=0)
-        mask_polygon = np.all(A @ points_map.T <= B.reshape(-1, 1), axis=0)
-
-        # filter the points based on a circle -> distance from origin
-        mask_fov = np.array(scan_msg.ranges) <= self.configuration.get("view_range")
-
-        # Combine masks and make new message
-        mask = mask_polygon & mask_fov
-        new_msg = scan_msg
-        ranges = np.array(scan_msg.ranges).astype(np.float32)
-        ranges[~mask] = np.inf  # set filtered out values to infinite
-        new_msg.ranges = ranges
-
-        self.filtered_laser_publisher.publish(new_msg)
-
-        return new_msg
-
-    def fov_from_laser(self, scan_msg: LaserScan) -> None:
-        """Determines the field of view (FOV) based on the LaserScan message"""
-        laser_frame = scan_msg.header.frame_id
-        fov = get_underapproximation_fov(
-            scan_msg=scan_msg,
-            max_range=self.configuration.get("view_range"),
-            min_resolution=self.configuration.get("min_resolution"),
-            angle_margin=self.configuration.get("angle_margin_fov"),
-            use_abs_angle_margin=self.configuration.get("abs_angle_margin_fov"),
-            range_margin=self.configuration.get("range_margin_fov"),
-            use_abs_range_margin=self.configuration.get("abs_range_margin_fov"),
-            padding=self.configuration.get("padding_fov"),
-        )
-        x, y = fov.exterior.coords.xy
-        points_laser = np.asarray(tuple(zip(x, y)), dtype=np.float_)
-
-        try:
-            points_planner = self.transform_pointcloud(points_laser, self.planner_frame, laser_frame)
-            sensor_FOV = ShapelyPolygon(points_planner) if len(points_planner) >= 3 else None
-        except TransformException:
-            sensor_FOV = None
-        self.foresee_the_unseen_planner.update_fov(sensor_FOV)
-
     @staticmethod
     def state_from_odom(odom: Odometry, time_step: int = 0) -> State:
         """Convert a ROS odometry message to a commonroad state."""

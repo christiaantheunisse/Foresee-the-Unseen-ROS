@@ -22,6 +22,7 @@ from visualization_msgs.msg import Marker
 from tf2_ros import TransformException  # type: ignore
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
+from tf2_geometry_msgs import PolygonStamped  # necessary to enable Buffer.transform
 
 from foresee_the_unseen.lib.helper_functions import matrix_from_transform, matrices_from_cw_cvx_polygon
 
@@ -45,8 +46,10 @@ class FOVNode(Node):
         self.deskewed_scan_topic = "scan/deskewed"
         self.filtered_scan_topic = "scan/road_env"
         self.fov_topic = "fov"
+        self.filter_polygon_topic = "visualization/road_env_polygon"
         self.fov_frame = "map"
         self.do_visualize = True
+        self.do_filter_scan = False
         self.rotating_direction: Direction = "CW"
         self.error_models_dir = "path/to/error_models"
         self.filter_polygon = np.array([0.0, 1.0, 2.0, 1.0, 2.0, 0.0, 0.0, 0.0]).reshape(-1, 2)
@@ -59,6 +62,9 @@ class FOVNode(Node):
         self.deskewed_scan_pub = self.create_publisher(PointCloud, self.deskewed_scan_topic, 5)
         self.filtered_scan_pub = self.create_publisher(LaserScan, self.filtered_scan_topic, 5)
         self.fov_polygon_pub = self.create_publisher(PolygonStamped, self.fov_topic, 5)
+        if self.do_visualize:
+            self.filter_polygon_pub = self.create_publisher(Marker, self.filter_polygon_topic, 5)
+            self.create_timer(5, self.visualize_filter_polygon_callback)
 
         # allow multithreading for the laser process functions
         laser_scan_process = ReentrantCallbackGroup()
@@ -113,8 +119,7 @@ class FOVNode(Node):
         try:
             new_scan = self.merge_scans(self.last_scan, self.current_scan)
             # self.merged_scan_pub.publish(new_scan)
-            # filtered_scan = self.filter_laserscan(new_scan)
-            filtered_scan = new_scan
+            filtered_scan = self.filter_laserscan(new_scan) if self.do_filter_scan else new_scan
 
             ranges, angles, mask_invalid = self.laserscan_to_ranges_angles(
                 filtered_scan, self.view_range, self.subsample_rate
@@ -131,8 +136,7 @@ class FOVNode(Node):
                 # publish the deskewed pointcloud
                 points = self.ranges_angles_to_points(ranges_corr, angles_corr)[~mask_invalid]
                 points_deskewed, start_time = self.deskew_laserscan_interpolate_tf(filtered_scan, points)
-                # pc_deskewed_msg = self.points_to_pointcloud_msg(points_deskewed, start_time)
-                pc_deskewed_msg = self.points_to_pointcloud_msg(fov_points_deskewed, start_time)
+                pc_deskewed_msg = self.points_to_pointcloud_msg(points_deskewed, start_time)
                 self.deskewed_scan_pub.publish(pc_deskewed_msg)
 
                 # publish the filtered laserscan
@@ -181,14 +185,14 @@ class FOVNode(Node):
         ranges, angles, mask = FOVNode.laserscan_to_ranges_angles(scan, view_range)
         return FOVNode.ranges_angles_to_points(ranges[~mask], angles[~mask])
 
-    def filter_laserscan(self, scan_msg: LaserScan) -> LaserScan:
+    def filter_laserscan(self, scan: LaserScan) -> LaserScan:
         """Filter points from the pointcloud from the lidar to reduce the computation of the `datmo` package."""
         # Convert the ranges to a pointcloud
-        laser_frame = scan_msg.header.frame_id
-        ranges, angles, _ = self.laserscan_to_ranges_angles(scan_msg, self.view_range)
+        laser_frame = scan.header.frame_id
+        ranges, angles, _ = self.laserscan_to_ranges_angles(scan, self.view_range)
         points_laser = self.ranges_angles_to_points(ranges, angles)
         points_map = self.transform_points(
-            points_laser, self.fov_frame, laser_frame, Time.from_msg(scan_msg.header.stamp)
+            points_laser, self.fov_frame, laser_frame, Time.from_msg(scan.header.stamp)
         )
 
         # filter the points based on a polygon
@@ -197,12 +201,12 @@ class FOVNode(Node):
         mask_polygon = np.all(A @ points_map.T <= B.reshape(-1, 1), axis=0)
 
         # filter the points based on a circle -> distance from origin
-        mask_fov = np.array(scan_msg.ranges) <= self.view_range
+        mask_fov = np.array(scan.ranges) <= self.view_range
 
         # Combine masks and make new message
         mask = mask_polygon & mask_fov
-        new_msg = scan_msg
-        ranges = np.array(scan_msg.ranges).astype(np.float32)
+        new_msg = scan
+        ranges = np.array(scan.ranges).astype(np.float32)
         ranges[~mask] = np.inf  # set filtered out values to infinite
         new_msg.ranges = ranges
 
@@ -381,6 +385,11 @@ class FOVNode(Node):
         t_mat = matrix_from_transform(t)
         return (t_mat @ points_4D.T)[:2].T
 
+    def visualize_filter_polygon_callback(self) -> None:
+        """Visualize the polygon to filter the pointcloud resulting from the lidar scan"""
+        marker = self.points_to_linestrip_msg(self.filter_polygon, "Laser filter polygon")
+        self.filter_polygon_pub.publish(marker)
+
     def points_to_pointcloud_msg(self, points: np.ndarray, start_time: Time) -> PointCloud:
         """Convert a numpy array of points (shape = (N, 2)) to a ROS PointCloud message"""
         header = Header(stamp=start_time.to_msg(), frame_id=self.fov_frame)
@@ -406,7 +415,7 @@ class FOVNode(Node):
             ns=namespace,
         )
         return marker
-
+    
     def points_to_polygon_msg(self, points: np.ndarray, stamp: TimeMsg) -> PolygonStamped:
         """Convert a numpy array of points (shape = (N, 2)) to a ROS PolygonStamped message"""
         header = Header(stamp=stamp, frame_id=self.fov_frame)
