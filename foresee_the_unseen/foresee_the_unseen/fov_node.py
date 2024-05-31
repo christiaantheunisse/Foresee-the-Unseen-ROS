@@ -2,7 +2,7 @@ import rclpy
 from rclpy.time import Time
 from rclpy.duration import Duration
 from rclpy.node import Node
-from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
 import os
 import numpy as np
 import time
@@ -176,7 +176,7 @@ class FOVNode(Node):
     the Lidar measurements with an error model and merging multiple scans if necessary."""
 
     def __init__(self):
-        super().__init__("scan_to_fov")
+        super().__init__("fov_node")
 
         self.declare_parameter("fov_frame", "map")
 
@@ -231,8 +231,8 @@ class FOVNode(Node):
             self.filter_polygon_pub = self.create_publisher(Marker, self.env_polygon_topic, 5)
             self.create_timer(5, self.visualize_filter_polygon_callback)
 
-        # allow multithreading for the laser process functions
-        laser_scan_process = ReentrantCallbackGroup()
+        # Running the laser process functions in a separate, single thread
+        laser_scan_process = MutuallyExclusiveCallbackGroup()
         self.create_timer(1 / 100, self.process_scan, callback_group=laser_scan_process)
 
         self.laser_filter_matrices = matrices_from_cw_cvx_polygon(self.env_polygon)
@@ -243,7 +243,7 @@ class FOVNode(Node):
 
         self.scan_processed: bool = True
         self.last_scan: Optional[LaserScan] = None
-        self.current_scan: LaserScan = LaserScan()
+        self.current_scan: Optional[LaserScan] = None
 
         # TODO: load the right error models
         # define some dummy error models:
@@ -274,21 +274,24 @@ class FOVNode(Node):
     def process_scan(self) -> None:
         """The scan callback"""
         # Check if a new scan is available
-        if self.scan_processed:
+        if self.scan_processed or self.current_scan is None or self.last_scan is None:
             return
 
         # check if the transform for the last lidar point is already available
         msg = self.current_scan
         start_time = Time(seconds=msg.header.stamp.sec, nanoseconds=msg.header.stamp.nanosec)
         end_time = start_time + Duration(seconds=msg.scan_time)  # type: ignore
-        if not self.tf_buffer.can_transform(self.fov_frame, msg.header.frame_id, end_time) or self.last_scan is None:
+        if not self.tf_buffer.can_transform(self.fov_frame, msg.header.frame_id, end_time):
             return
 
         exec_start_time = time.time()
         try:
             new_scan = self.merge_scans(self.last_scan, self.current_scan)
+            if len(new_scan.ranges) <= 1: # deal with an empty scan
+                self.scan_processed = True
+                return
+            
             filtered_scan = self.filter_laserscan(new_scan) if self.do_filter_scan else new_scan
-
             ranges, angles, mask_invalid = self.laserscan_to_ranges_angles(
                 filtered_scan, self.view_range, self.subsample_rate
             )
@@ -381,7 +384,7 @@ class FOVNode(Node):
         mask = mask_polygon & mask_fov
         new_msg = scan
         ranges = np.array(scan.ranges).astype(np.float32)
-        ranges[~mask] = np.inf  # set filtered out values to infinite
+        ranges[~mask] = self.view_range  # set filtered out values to infinite
         new_msg.ranges = ranges
 
         return new_msg
@@ -398,12 +401,14 @@ class FOVNode(Node):
         delta_rotation = yaw_from_quaternion(t_end2.transform.rotation) - yaw_from_quaternion(
             t_start2.transform.rotation
         )
-        # if delta_rotation <= 0.0:  # a value bigger than 0. means that there is a gap in the deskewed pointcloud
+        delta_rotation = (delta_rotation - np.pi) % (2 * np.pi) - np.pi
+        print(f"{delta_rotation=}")
         if (
-            delta_rotation <= scan1.angle_increment
+            delta_rotation <= scan2.angle_increment
         ):  # a value bigger than 0. means that there is a gap in the deskewed pointcloud
             # remove points from the scan
-            N_to_delete = abs(math.ceil(delta_rotation / scan2.angle_increment))
+            N_to_delete = math.ceil(abs(delta_rotation / scan2.angle_increment))
+            print(f"{N_to_delete=}, {delta_rotation}")
             new_start_time2 = start_time2 + Duration(seconds=N_to_delete * scan2.time_increment)  # type: ignore
             # print(new_start_time2.nanoseconds // 1e9, new_start_time2.nanoseconds % 1e9)
             scan2.header.stamp = new_start_time2.to_msg()

@@ -46,6 +46,7 @@ def generate_launch_description():
     fov_node = Node(
         package="foresee_the_unseen",
         executable="fov_node",
+        name="fov_node",
         parameters=[
             PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "fov_node.yaml"]),
             {"do_visualize": do_visualize},

@@ -16,10 +16,11 @@ from commonroad.geometry.shape import Rectangle
 from commonroad.prediction.prediction import SetBasedPrediction
 from commonroad.scenario.trajectory import Trajectory as TrajectoryCR
 
-from shapely.geometry import Polygon as ShapelyPolygon
+from shapely.geometry import Polygon as ShapelyPolygon, MultiPolygon as ShapelyMultiPolygon
 
 from builtin_interfaces.msg import Time as TimeMsg
-from datmo.msg import TrackArray
+
+# from datmo.msg import TrackArray
 from nav_msgs.msg import Odometry, Path
 from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import ColorRGBA, Header
@@ -82,7 +83,7 @@ class PlannerNode(Node):
 
         self.declare_parameter("fov_topic", "fov")
         self.declare_parameter("odom_topic", "odom")
-        self.declare_parameter("datmo_topic", "datmo/box_kf")
+        # self.declare_parameter("datmo_topic", "datmo/box_kf")
         self.declare_parameter("visualization_topic", "visualization/planner")
         self.declare_parameter("trajectory_topic", "trajectory")
         self.declare_parameter("startup_topic", "/goal_pose")
@@ -120,7 +121,7 @@ class PlannerNode(Node):
 
         self.fov_topic = self.get_parameter("fov_topic").get_parameter_value().string_value
         self.odom_topic = self.get_parameter("odom_topic").get_parameter_value().string_value
-        self.datmo_topic = self.get_parameter("datmo_topic").get_parameter_value().string_value
+        # self.datmo_topic = self.get_parameter("datmo_topic").get_parameter_value().string_value
         self.visualization_topic = self.get_parameter("visualization_topic").get_parameter_value().string_value
         self.trajectory_topic = self.get_parameter("trajectory_topic").get_parameter_value().string_value
         self.startup_topic = self.get_parameter("startup_topic").get_parameter_value().string_value
@@ -154,7 +155,7 @@ class PlannerNode(Node):
         # Subscribers and publishers
         self.create_subscription(PolygonStamped, self.fov_topic, self.fov_callback, 5)  # Laser scan
         self.create_subscription(Odometry, self.odom_topic, self.odom_callback, 5)  # Ego vehicle pose
-        self.create_subscription(TrackArray, self.datmo_topic, self.datmo_callback, 5)
+        # self.create_subscription(TrackArray, self.datmo_topic, self.datmo_callback, 5)
         self.create_subscription(PoseStamped, self.startup_topic, self.startup_callback, 1)
         self.marker_array_publisher = self.create_publisher(MarkerArray, self.visualization_topic, 10)
         self.trajectory_publisher = self.create_publisher(TrajectoryMsg, self.trajectory_topic, 5)
@@ -249,7 +250,7 @@ class PlannerNode(Node):
             if len(fov_points) >= 3:
                 polygon = ShapelyPolygon(fov_points)
                 if polygon.is_valid:
-                    self.foresee_the_unseen_planner.update_fov(
+                    self.foresee_the_unseen_planner.set_field_of_view(
                         polygon, fov_msg.header.stamp.sec + fov_msg.header.stamp.nanosec * 1e-9
                     )
         except TransformException as ex:
@@ -260,7 +261,7 @@ class PlannerNode(Node):
         shadow_obstacles: Optional[List[Obstacle]] = None,
         sensor_view: Optional[ShapelyPolygon] = None,
         trajectory: Optional[TrajectoryCR] = None,
-        no_stop_zone: Optional[Obstacle] = None,
+        no_stop_zone: Optional[DynamicObstacle] = None,
         prediction: Optional[SetBasedPrediction] = None,
     ):
         # TODO: Only remove markers that need to and only add markers that need to be added every time step
@@ -283,31 +284,6 @@ class PlannerNode(Node):
 
         self.marker_array_publisher.publish(MarkerArray(markers=markers))
 
-    def datmo_callback(self, msg: TrackArray):
-        """Converts DATMO detections to Commonroad obstacles"""
-        if msg.tracks:  # length not zero
-            datmo_frame = msg.tracks[0].odom.header.frame_id
-            try:
-                t_planner_datmo = self.tf_buffer.lookup_transform(self.planner_frame, datmo_frame, rclpy.time.Time())
-            except TransformException as ex:
-                self.get_logger().info(
-                    f"Could not transform {datmo_frame} to {self.planner_frame}: {ex}",
-                    throttle_duration_sec=self.throttle_duration,
-                )
-                return None
-        detected_obstacles = []
-        for track in msg.tracks:
-            detected_obstacles.append(
-                DynamicObstacle(
-                    obstacle_id=0,  # Should be mutated
-                    obstacle_type=ObstacleType.CAR,
-                    obstacle_shape=Rectangle(track.length, track.width),
-                    initial_state=self.transform_state(self.state_from_odom(track.odom), t_planner_datmo),
-                )
-            )
-
-        self.foresee_the_unseen_planner.update_obstacles(detected_obstacles)
-
     def odom_callback(self, msg: Odometry):
         """Converts the odometry data to a Commonroad state and updates the Foresee the Unseen object."""
         odom_frame = msg.header.frame_id
@@ -322,7 +298,9 @@ class PlannerNode(Node):
 
         state_untransformed = self.state_from_odom(msg)
         ego_vehicle_state = self.transform_state(state_untransformed, t_planner_odom)
-        self.foresee_the_unseen_planner.update_state(ego_vehicle_state)
+        self.foresee_the_unseen_planner.set_ego_vehicle_state(
+            ego_vehicle_state, msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+        )
 
     # MARKER FUNCTIONS
 
@@ -369,12 +347,24 @@ class PlannerNode(Node):
 
     def get_fov_marker(self, sensor_view: Optional[ShapelyPolygon] = None) -> List[Marker]:
         """Get the marker that visualizes the field of view (FOV)"""
-        if sensor_view is not None:
+        if isinstance(sensor_view, ShapelyPolygon):
             x, y = sensor_view.exterior.coords.xy
             points = np.asarray(tuple(zip(x, y)), dtype=np.float_)
+            point_list = (
+                [Point(x=p[0], y=p[1]) for p in np.append(points, points[0:1], axis=0)]
+                if points.size and points.ndim == 2
+                else []
+            )
+        elif isinstance(sensor_view, ShapelyMultiPolygon):
             point_list = []
-            for point in [*points, points[0]]:
-                point_list.append(Point(**dict(zip(XYZ, np.array(point, dtype=np.float_)))))
+            for polygon in sensor_view:
+                x, y = polygon.exterior.coords.xy
+                points = np.asarray(tuple(zip(x, y)), dtype=np.float_)
+                point_list.extend(
+                    [Point(x=p[0], y=p[1]) for p in np.append(points, points[0:1], axis=0)]
+                    if points.size and points.ndim == 2
+                    else []
+                )
         else:
             point_list = []
 
