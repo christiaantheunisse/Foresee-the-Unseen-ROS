@@ -338,18 +338,15 @@ class FOVNode(Node):
         ranges = np.array(scan.ranges)
         if subsample_rate:
             ranges = np.resize(ranges, (math.ceil(len(ranges) / subsample_rate), subsample_rate)).min(axis=1)
-            ranges = np.append(ranges, scan.ranges[-1])
         # mask_invalid = (ranges < scan.range_min) | (ranges > scan.range_max)
         mask_invalid = ranges < scan.range_min
         ranges[mask_invalid | (ranges > view_range)] = view_range
         N = len(ranges)
         if subsample_rate:
-            angles = scan.angle_min + np.arange(N - 1) * scan.angle_increment * (
-                subsample_rate if subsample_rate else 1
-            )
+            angles = scan.angle_min + np.arange(N - 1) * scan.angle_increment * subsample_rate
             angles = np.append(angles, scan.angle_max)
         else:
-            angles = scan.angle_min + np.arange(N) * scan.angle_increment * (subsample_rate if subsample_rate else 1)
+            angles = scan.angle_min + np.arange(N) * scan.angle_increment
 
         return ranges, angles, mask_invalid
 
