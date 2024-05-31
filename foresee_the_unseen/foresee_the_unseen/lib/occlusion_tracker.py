@@ -257,13 +257,21 @@ class Occlusion_tracker:
         # plot(scenario, shadows=self.shadows)
         # plt.show()
 
-    def update(self, sensor_view, new_time):
+    def update(self, sensor_view, new_time: int, scan_delay: float):
+        """
+        new_time: is the planner step
+        scan_delay: is time in seconds ago the scan was made/started.
+        """
         if self.tracking_enabled == True:
-            self.update_tracker(sensor_view, new_time)
+            self.update_tracker(sensor_view, new_time, scan_delay)
         else:
             self.reset(sensor_view, new_time)
 
-    def update_tracker(self, sensor_view, new_time):
+    def update_tracker(self, sensor_view, new_time: int, scan_delay: float):
+        """
+        new_time: is the planner step
+        scan_delay: is time in seconds ago the scan was made/started.
+        """
         assert new_time >= self.time_step
         time_diff = new_time - self.time_step
         # Update the time
@@ -286,10 +294,14 @@ class Occlusion_tracker:
                         new_shadows.append(Shadow(intersection, shadow.lane))
         self.shadows = new_shadows
 
+        # extend the shadows to account for the scan delay
+        for shadow in self.shadows:
+            shadow.expand(self.max_vel * scan_delay)
+
         # Update the accumulated occluded area
         self.accumulated_occluded_area = self.accumulated_occluded_area + self.get_currently_occluded_area()
 
-    def reset(self, sensor_view=ShapelyPolygon(), new_time=0):
+    def reset(self, scan_delay: float, sensor_view=ShapelyPolygon(), new_time=0):
         # Update the time
         self.time_step = new_time
         # Reset all the shadows
@@ -306,6 +318,10 @@ class Occlusion_tracker:
                     current_shadow = Shadow(shadow_polygon, lane)
                     new_shadows.append(current_shadow)
         self.shadows = new_shadows
+
+        # extend the shadows to account for the scan delay
+        for shadow in self.shadows:
+            shadow.expand(self.max_vel * scan_delay)
 
         # Update the accumulated occluded area
         self.accumulated_occluded_area = self.accumulated_occluded_area + self.get_currently_occluded_area()

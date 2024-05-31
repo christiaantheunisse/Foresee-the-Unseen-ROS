@@ -6,14 +6,7 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
-        - /DATMO1/Namespaces1
-        - /Foresee The Unseen1
         - /Foresee The Unseen1/Namespaces1
-        - /Wheel Encoders Pose1/Topic1
-        - /Wheel Encoders Pose1/Shape1
-        - /Wheel Encoders Pose1/Covariance1
-        - /Wheel Encoders Pose1/Covariance1/Position1
-        - /Wheel Encoders Pose1/Covariance1/Orientation1
         - /Filtered Odometry Pose1/Shape1
         - /Filtered Odometry Pose1/Covariance1
         - /Filtered Odometry Pose1/Covariance1/Position1
@@ -95,18 +88,6 @@ Visualization Manager:
       Value: true
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true
-      Name: DATMO
-      Namespaces:
-        {}
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /datmo/marker_array
-      Value: true
-    - Class: rviz_default_plugins/MarkerArray
-      Enabled: true
       Name: Foresee The Unseen
       Namespaces:
         ego_vehicle: true
@@ -160,17 +141,17 @@ Visualization Manager:
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
-    - Alpha: 0.30000001192092896
+    - Alpha: 0.10000000149011612
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 10
-        Min Value: -10
+        Max Value: 0
+        Min Value: 0
         Value: true
       Axis: Z
       Channel Name: intensity
       Class: rviz_default_plugins/LaserScan
-      Color: 255; 255; 255
-      Color Transformer: Intensity
+      Color: 53; 132; 228
+      Color Transformer: FlatColor
       Decay Time: 0
       Enabled: true
       Invert Rainbow: false
@@ -178,7 +159,7 @@ Visualization Manager:
       Max Intensity: 47
       Min Color: 28; 113; 216
       Min Intensity: 0
-      Name: LaserScan Foresee-the-Unseen
+      Name: LaserScan Road Environment
       Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 3
@@ -194,45 +175,6 @@ Visualization Manager:
       Use Fixed Frame: true
       Use rainbow: false
       Value: true
-    - Angle Tolerance: 0.05000000074505806
-      Class: rviz_default_plugins/Odometry
-      Covariance:
-        Orientation:
-          Alpha: 0.10000000149011612
-          Color: 255; 255; 127
-          Color Style: Unique
-          Frame: Local
-          Offset: 1
-          Scale: 1
-          Value: false
-        Position:
-          Alpha: 0.10000000149011612
-          Color: 204; 51; 204
-          Scale: 1
-          Value: true
-        Value: false
-      Enabled: false
-      Keep: 10
-      Name: Wheel Encoders Pose
-      Position Tolerance: 0.05000000074505806
-      Shape:
-        Alpha: 0.699999988079071
-        Axes Length: 1
-        Axes Radius: 0.10000000149011612
-        Color: 0; 255; 0
-        Head Length: 0.05000000074505806
-        Head Radius: 0.05000000074505806
-        Shaft Length: 0.5
-        Shaft Radius: 0.019999999552965164
-        Value: Arrow
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        Filter size: 10
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /odometry/wheel_encoders
-      Value: false
     - Angle Tolerance: 0
       Class: rviz_default_plugins/Odometry
       Covariance:
@@ -420,7 +362,9 @@ Visualization Manager:
       Enabled: true
       Name: Trajectory
       Namespaces:
-        {}
+        closest point: true
+        positions: true
+        state: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -713,11 +657,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: -110.87227630615234
+      Scale: -120.79546356201172
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz_default_plugins)
-      X: -0.6446791291236877
-      Y: -1.3068859577178955
+      X: 2.54874324798584
+      Y: -0.2489117830991745
     Saved: ~
 Window Geometry:
   Displays:

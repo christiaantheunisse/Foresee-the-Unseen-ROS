@@ -109,14 +109,6 @@ class ForeseeTheUnseen:
             ego_vehicle_initial_state,
         )
 
-        self.sensor = Sensor(
-            position=self.ego_vehicle.initial_state.position,
-            orientation=self.ego_vehicle.initial_state.orientation,
-            field_of_view=self.configuration["field_of_view_degrees"] * 2 * np.pi / 360,
-            min_resolution=self.configuration["min_resolution"],
-            view_range=self.configuration["view_range"],
-        )
-
         self.occ_track = Occlusion_tracker(
             scenario=self.scenario,
             min_vel=self.configuration["min_velocity"],
@@ -156,10 +148,12 @@ class ForeseeTheUnseen:
 
         # Planner variables
         self.detected_obstacles: Optional[List[Obstacle]] = None
-        self.ego_vehicle_state: Optional[InitialState] = None
+        self._ego_vehicle_state: Optional[InitialState] = None
+        self._ego_vehicle_state_stamp: float = 0.0
         self.trajectory: Optional[Trajectory] = None
         self.planner_step: int = 0
-        self.sensor_view: Optional[ShapelyPolygon] = None
+        self._field_of_view: Optional[ShapelyPolygon] = None
+        self._field_of_view_stamp: float = 0.0
 
     def logger_warn(self, message: str):
         if self.logger is not None:
@@ -178,26 +172,31 @@ class ForeseeTheUnseen:
     def position_on_road_check(self, x: float, y: float):
         """Check if a certain position is on the road"""
 
-    def update_state(self, state: InitialState):
+    def set_ego_vehicle_state(self, state: InitialState, time_stamp: float):
         """State should be in the planner frame, which is the Commonroad frame"""
-        state.time_step = self.planner_step
-        self.ego_vehicle_state = state
+        assert isinstance(state, InitialState), f"`state` should be of type {InitialState}, but is {type(state)}"
+        self._ego_vehicle_state_stamp = time_stamp
+        self._ego_vehicle_state = state
 
-    def update_fov(self, fov: ShapelyPolygon):
+    def get_ego_vehicle_state(self, current_time: float) -> Optional[InitialState]:
+        """Return the ego_vehicle state with some margin"""
+        return self._ego_vehicle_state
+
+    def set_field_of_view(self, field_of_view: ShapelyPolygon, time_stamp: float) -> None:
         """FOV should be in the planner frame, which is the Commonroad frame"""
-        self.sensor_view = fov
+        assert isinstance(
+            field_of_view, ShapelyPolygon
+        ), f"`field_of_view` should be of type {ShapelyPolygon}, but is {type(field_of_view)}"
+        self._field_of_view_stamp = time_stamp
+        self._field_of_view = field_of_view
 
-    # Make a property
-    def update_obstacles(self, detected_obstacles: List[Obstacle]):
-        """Obstacles should be in the planner frame, which is the Commonroad frame"""
-        self.detected_obstacles = detected_obstacles
-
-    def get_obstacles(self, scenario: Scenario) -> List[Obstacle]:
-        for obs in self.detected_obstacles:
-            obs.initial_state.time_step = self.planner_step
-            # obstacle_id is an immutable property; this overrides the constraint
-            obs._obstacle_id = scenario.generate_object_id()
-        return self.detected_obstacles
+    def get_field_of_view(self, current_time: float) -> Optional[ShapelyPolygon]:
+        """Return the FOV with a padding"""
+        if self._field_of_view is None:
+            return None
+        # padding = (current_time - self._field_of_view_stamp) * self.configuration["max_velocity"]
+        # return self._field_of_view.buffer(-padding)  # type: ignore
+        return self._field_of_view
 
     @staticmethod
     def update_vehicle(vehicle: DynamicObstacle, state: InitialState):
@@ -209,57 +208,49 @@ class ForeseeTheUnseen:
             initial_state=state,
         )
 
-    def update_scenario(
-        self,
-    ) -> Tuple[
+    def update_scenario(self, current_time: float) -> Tuple[
         List[DynamicObstacle],
         ShapelyPolygon,
         Optional[Trajectory],
-        ShapelyPolygon,
+        DynamicObstacle,
         Optional[SetBasedPrediction],
     ]:
         """Gets called at a certain rate"""
+        self.planner_step += 1
+
         if self.do_track_exec_time:
             execution_times = {}
             start_time = time.time()
             interm_time = time.time()
 
-        # Do not require detected obstacles
-        # TODO: Remove detected obstacles
-        self.detected_obstacles = [] if self.detected_obstacles is None else self.detected_obstacles
-        no_obstacles = self.detected_obstacles is None
-        no_updated_state = self.ego_vehicle_state is None or self.ego_vehicle_state.time_step < self.planner_step
-        if no_obstacles or no_updated_state:
-            if no_obstacles:
-                self.logger_warn("No detected obstacles available")
-            if no_updated_state:
-                self.logger_warn("No up-to-date ego vehicle state available")
+        ego_vehicle_state = self.get_ego_vehicle_state(current_time)
+        if ego_vehicle_state is None or (self._ego_vehicle_state_stamp + 1 / self.frequency) < current_time:
+            self.logger_warn("No up-to-date ego vehicle state available")
             raise NoUpdatePossible()
+        ego_vehicle_state.time_step = self.planner_step
 
-        percieved_scenario = copy.deepcopy(self.scenario)  # start with a clean scenario
-        self.ego_vehicle = self.update_vehicle(self.ego_vehicle, self.ego_vehicle_state)
-        percieved_scenario.add_objects(self.get_obstacles(percieved_scenario))  # type: ignore
+        percieved_scenario = copy.deepcopy(self.scenario)  # start with a clean copy of the scenario
+        self.ego_vehicle = self.update_vehicle(self.ego_vehicle, ego_vehicle_state)
+        # percieved_scenario.add_objects(self.get_obstacles(percieved_scenario))  # type: ignore
 
         if self.do_track_exec_time:
             execution_times["init + make scenario"] = time.time() - interm_time
             interm_time = time.time()
 
         # Update the sensor view:
-        if self.configuration.get("laser_scan_fov", False):
-            sensor_view = self.sensor_view  # Based on laser scan
-            if sensor_view is None:
-                self.logger_warn("No FOV available")
-                raise NoUpdatePossible()
-        else:
-            self.sensor.update(self.ego_vehicle.initial_state)
-            sensor_view = self.sensor.get_sensor_view(percieved_scenario)  # Based on detected obstacles
+        field_of_view = self.get_field_of_view(current_time)  # Based on laser scan
+        if field_of_view is None:
+            self.logger_warn("No FOV available")
+            raise NoUpdatePossible()
 
         if self.do_track_exec_time:
-            execution_times["sensor_view"] = time.time() - interm_time
+            execution_times["field_of_view"] = time.time() - interm_time
             interm_time = time.time()
 
         # Update the tracker with the new sensor view and get the shadows and their prediction
-        self.occ_track.update(sensor_view, self.ego_vehicle.initial_state.time_step)
+        # TODO: increase the prediction for a delayed FOV instead of applying a buffer
+        scan_delay = current_time - self._field_of_view_stamp
+        self.occ_track.update(field_of_view, self.planner_step, scan_delay)
         shadow_obstacles = self.occ_track.get_dynamic_obstacles(percieved_scenario)
         percieved_scenario.add_objects(shadow_obstacles)
 
@@ -268,7 +259,7 @@ class ForeseeTheUnseen:
             percieved_scenario,
             self.planner_step + self.configuration.get("planning_horizon") - 1,
             self.configuration.get("safety_margin"),
-        )  # should not be necessary in every timestep
+        )
 
         if self.do_track_exec_time:
             execution_times["shadows + no_stop"] = time.time() - interm_time
@@ -301,14 +292,13 @@ class ForeseeTheUnseen:
             log_dict = {
                 "ego_vehicle": self.ego_vehicle,  # with the set_based_prediction
                 "scenario": percieved_scenario,
-                "sensor_view": sensor_view,
+                "sensor_view": field_of_view,
                 "trajectory": trajectory,
             }
             filename = os.path.join(self.log_dir, f"step {self.planner_step}.pickle")
             with open(filename, "wb") as handle:
                 pickle.dump(log_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-        self.planner_step += 1
         # self.logger.info(f"Scenario updated: planner step = {self.planner_step}")
 
         if self.do_track_exec_time:
@@ -318,7 +308,7 @@ class ForeseeTheUnseen:
 
         return (
             shadow_obstacles,
-            sensor_view,
+            field_of_view,
             trajectory,
             no_stop_zone_obstacle,
             prediction,

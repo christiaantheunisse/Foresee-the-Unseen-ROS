@@ -312,8 +312,12 @@ class PlannerNode(Node):
             id=0,
             type=Marker.CUBE,
             action=Marker.ADD,
-            pose=Pose(position=Point(**dict(zip(XYZ, self.ego_vehicle_offset)))),
-            scale=Vector3(**dict(zip(XYZ, self.ego_vehicle_size))),
+            # pose=Pose(position=Point(**dict(zip(XYZ, self.ego_vehicle_offset)))),
+            pose=Pose(
+                position=Point(x=self.ego_vehicle_offset[0], y=self.ego_vehicle_offset[1], z=self.ego_vehicle_offset[2])
+            ),
+            # scale=Vector3(**dict(zip(XYZ, self.ego_vehicle_size))),
+            scale=Vector3(x=self.ego_vehicle_size[0], y=self.ego_vehicle_size[1], z=self.ego_vehicle_size[2]),
             color=ColorRGBA(**TRANSPARENT_BLUE),
             frame_locked=True,
             ns="ego_vehicle",
@@ -328,7 +332,8 @@ class PlannerNode(Node):
             point_type_list = []
             points = points
             for point in points:
-                point_type_list.append(Point(**dict(zip(XYZ, point))))
+                # point_type_list.append(Point(**dict(zip(XYZ, point))))
+                point_type_list.append(Point(x=point[0], y=point[1]))
 
             header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.planner_frame)
             lanelet_marker = Marker(
