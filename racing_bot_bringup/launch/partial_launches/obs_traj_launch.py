@@ -31,10 +31,10 @@ def generate_launch_description():
     )
     slam_mode_launch_arg = DeclareLaunchArgument(
         "slam_mode_obs",
-        default_value=TextSubstitution(text="localization"),
-        choices=["localization", "disabled"],
-        description="Whether to use the slam_toolbox in localization mode (=localization) or"
-        + " don't use it at all, so map frame == odom frame (=disabled).",
+        default_value=TextSubstitution(text="elsewhere"),
+        choices=["mapping", "localization", "disabled", "elsewhere"],
+        description="Which mode of the slam_toolbox to use for the robot: SLAM (=mapping), only localization "
+        + "(=localization), don't use so map frame == odom frame (=disabled).",
     )
     map_file_launch_arg = DeclareLaunchArgument(
         "map_file",
@@ -104,7 +104,7 @@ def generate_launch_description():
 
         return obstacle_namespaces, start_poses
 
-    def slam_localization_based_on_yaml(
+    def slam_based_on_yaml(
         context: LaunchContext, yaml_file: LaunchConfiguration, use_ekf: LaunchConfiguration
     ):
         """Calculate the start pose in the `map` frame, based on the `map` -> `planner` transform and the start
@@ -116,7 +116,7 @@ def generate_launch_description():
 
         obstacle_namespaces, start_poses = get_config_from_yaml(yaml_filepath_str)
 
-        # Get the map to planner transform
+        # Get the `planner` to `map` frame transform
         commonroad_config_yamlpath = PathJoinSubstitution(
             [FindPackageShare("foresee_the_unseen"), "resource", "commonroad_scenario.yaml"]
         ).perform(context)
@@ -132,75 +132,68 @@ def generate_launch_description():
         t_matrix[:2, 2] = [x_transf, y_transf]
 
         # launch the slam node for each robot and publish the start position
-        slam_nodes, initialpose_publishers = [], []
-        for namespace, start_pose in zip(obstacle_namespaces, start_poses):
-            start_xy = np.array([start_pose[0], start_pose[1], 1])
-            start_theta = start_pose[2]
+        slam_launches, initialpose_publishers = [], []
+        for namespace, start_pose_planner in zip(obstacle_namespaces, start_poses):
+            # convert start pose in `planner` frame to `map` frame
+            start_xy = np.array([start_pose_planner[0], start_pose_planner[1], 1])
+            start_theta = start_pose_planner[2]
             start_xy_tf = t_matrix @ start_xy
             start_theta_tf = start_theta + th_transf
-            start_pose_tf = [float(start_xy_tf[0]), float(start_xy_tf[1]), float(start_theta_tf)]
-            print(f"========={start_pose_tf}===========")
-            slam_node = Node(
-                parameters=[
-                    PathJoinSubstitution([FindPackageShare("racing_bot_bringup"), "config", "slam_params.yaml"]),
-                    {
-                        "map_file_name": PathJoinSubstitution([map_files_dir, map_file]),
-                        "use_lifecycle_manager": False,
-                        "map_start_pose": start_pose_tf,  # this is the initial pose in the map frame
-                        "odom_frame": f"{namespace}/odom",
-                        "base_frame": f"{namespace}/base_link",
-                        "transform_publish_period": 0.0 if use_ekf_bool else 0.05,
-                        "do_loop_closing": False, 
-                    },
-                ],
-                # arguments="--ros-args --log-level debug".split(" "),
-                package="slam_toolbox",
-                executable="localization_slam_toolbox_node",
-                name="slam_node",
-                output="screen",
-                namespace=namespace,
-                remappings=[
-                    ("pose", "slam_pose"),
-                    # ("/map", "map"),
-                    # ("/map_metadata", "map_metadata"),
-                    ("/scan", "scan"),
-                ],
-            )
+            start_pose_map = [float(start_xy_tf[0]), float(start_xy_tf[1]), float(start_theta_tf)]
 
-            slam_nodes.append(slam_node)
+            slam_launch = IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    PathJoinSubstitution(
+                        [FindPackageShare("racing_bot_bringup"), "launch", "partial_launches", "slam_launch.py"]
+                    )
+                ),
+                launch_arguments={
+                    "slam_mode": slam_mode,
+                    "map_file": map_file,
+                    "publish_tf": NotSubstitution(use_ekf),
+                    "namespace": namespace,
+                    "start_pose": str(start_pose_map),
+                    "minimum_time_interval": "2.0",
+                }.items(),
+            )
+            slam_launches.append(slam_launch)
+
+            # Publish the start pose in case the SLAM node is run on the robot
+            # position_variance = 0.2
+            # angle_variance = 0.1
+            # covariance_array = [0.0] * 36
+            # covariance_array[0] = covariance_array[7] = position_variance
+            # covariance_array[35] = angle_variance
+
+            # initialpose_msg = {
+            #     "pose": {
+            #         "pose": {
+            #             "position": {"x": start_pose_map[0], "y": start_pose_map[1]},
+            #             "orientation": {
+            #                 "z": str(math.sin(start_pose_map[2] / 2)),
+            #                 "w": str(math.cos(start_pose_map[2] / 2)),
+            #             },
+            #         }
+            #     },
+            # }
+            # initialpose_publisher = ExecuteProcess(
+            #     cmd=[
+            #         # *f"ros2 topic pub -t 1 /{namespace}/initialpose geometry_msgs/msg/PoseWithCovarianceStamped".split(
+            #         *f"ros2 topic pub -t 5 -w 1 /{namespace}/initialpose geometry_msgs/msg/PoseWithCovarianceStamped".split(
+            #             " "
+            #         ),
+            #         str(initialpose_msg),
+            #         *["--qos-reliability", "reliable"],
+            #         *["--qos-durability", "transient_local"],
+            #     ],
+            #     name="Publish /initialpose",
+            # )
+            # initialpose_publishers.append(initialpose_publisher)
 
         return [
-            *slam_nodes,
+            *slam_launches,
+            # *initialpose_publishers,
         ]
-
-    def static_transforms_based_on_yaml(context: LaunchContext, yaml_file: LaunchConfiguration):
-        """Just set the `map` -> `odom` transform"""
-        yaml_filepath_str = PathJoinSubstitution(
-            [FindPackageShare("foresee_the_unseen"), "resource", yaml_file]
-        ).perform(context)
-        obstacle_namespaces, start_poses = get_config_from_yaml(yaml_filepath_str)
-
-        # Publish a static transform between the map frame and the odom frame of the obstacle
-        static_transforms = []
-        for namespace, start_pose in zip(obstacle_namespaces, start_poses):
-            static_transform = Node(
-                package="tf2_ros",
-                executable="static_transform_publisher",
-                arguments=(
-                    f"--frame-id map --child-frame-id {namespace}/odom"
-                ).split(" "),
-                # arguments=(
-                #         f"--x {start_pose[0]} --y {start_pose[1]} --z 0 --roll 0 --pitch 0 --yaw {start_pose[2]} "
-                #         + f"--frame-id planner --child-frame-id {namespace}/odom"
-                #     ).split(" "),
-                )
-            static_transforms.append(static_transform)
-
-        return static_transforms
-
-    # TODO: if slam_mode == 'localization'
-    # check if ekf is used
-    # launch the slam_toolbox nodes
 
     return LaunchDescription(
         [
@@ -215,15 +208,14 @@ def generate_launch_description():
             # nodes
             obstacle_trajectories_node,
             # transforms
+            # OpaqueFunction(
+            #     function=static_transforms_based_on_yaml,
+            #     args=[obstacles_config_file],
+            #     condition=IfCondition(EqualsSubstitution(slam_mode, "disabled")),
+            # ),
             OpaqueFunction(
-                function=static_transforms_based_on_yaml,
-                args=[obstacles_config_file],
-                condition=IfCondition(EqualsSubstitution(slam_mode, "disabled")),
-            ),
-            OpaqueFunction(
-                function=slam_localization_based_on_yaml,
+                function=slam_based_on_yaml,
                 args=[obstacles_config_file, use_ekf],
-                condition=IfCondition(EqualsSubstitution(slam_mode, "localization")),
             ),
         ]
     )

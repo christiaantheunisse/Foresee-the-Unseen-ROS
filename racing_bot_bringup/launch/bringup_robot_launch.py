@@ -45,18 +45,6 @@ def generate_launch_description():
         description="Use the extended kalman filter for the odometry data."
         "This will also activate and use the imu if available.",
     )
-    slam_mode_launch_arg = DeclareLaunchArgument(
-        "slam_mode",
-        default_value=TextSubstitution(text="elsewhere"),
-        choices=["mapping", "localization", "elsewhere", "disabled"],
-        description="Which mode of the slam_toolbox to use: SLAM (=mapping), only localization (=localization),"
-        + " on another device (=elsewhere) or don't use so map frame is odom frame (=disabled).",
-    )
-    map_file_launch_arg = DeclareLaunchArgument(
-        "map_file",
-        default_value=TextSubstitution(text="on_the_floor"),
-        description="If applicable, the name of the map file used for localization.",
-    )
     follow_traject_launch_arg = DeclareLaunchArgument(
         "follow_traject",
         default_value=TextSubstitution(text="true"),
@@ -74,8 +62,6 @@ def generate_launch_description():
     )
 
     use_ekf = LaunchConfiguration("use_ekf")
-    slam_mode = LaunchConfiguration("slam_mode")
-    map_file = LaunchConfiguration("map_file")
     follow_traject = LaunchConfiguration("follow_traject")
     play_rosbag = LaunchConfiguration("play_rosbag")
     do_visualize = LaunchConfiguration("do_visualize")
@@ -160,8 +146,6 @@ def generate_launch_description():
         condition=IfCondition(use_ekf),  # use_ekf
         # remappings=[("odometry/filtered", "odometry/position_ekf")],
     )
-    use_localization = EqualsSubstitution(slam_mode, "localization")
-    use_mapping = EqualsSubstitution(slam_mode, "mapping")
     slam_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution(
@@ -169,12 +153,10 @@ def generate_launch_description():
             )
         ),
         launch_arguments={
-            "localization": use_localization,
-            "mapping": use_mapping,
-            "map_file": map_file,
             "publish_tf": NotSubstitution(use_ekf),
+            "minimum_time_interval": "2.0",
+            "namespace": "",
         }.items(),
-        condition=IfCondition(AndSubstitution(use_localization, use_mapping))
     )
 
     # Other
@@ -192,13 +174,8 @@ def generate_launch_description():
         ],
         condition=IfCondition(AndSubstitution(follow_traject, NotSubstitution(play_rosbag))),
     )
+
     # CLI: ros2 run tf2_ros static_transform_publisher --x 0. --frame-id map --child-frame-id test_traject
-    static_trans_map_to_odom = Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        arguments=("--frame-id map --child-frame-id odom").split(" "),
-        condition=IfCondition(EqualsSubstitution(slam_mode, "disabled")),
-    )
     static_trans_base_link_to_laser = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
@@ -214,8 +191,6 @@ def generate_launch_description():
         [
             # arguments
             use_ekf_launch_arg,
-            slam_mode_launch_arg,
-            map_file_launch_arg,
             follow_traject_launch_arg,
             play_rosbag_launch_arg,
             do_visualize_launch_arg,
@@ -236,7 +211,6 @@ def generate_launch_description():
             lidar_launch,
             slam_launch,
             # static transforms
-            static_trans_map_to_odom,
             static_trans_base_link_to_laser,
             static_trans_base_link_to_imu_link,
         ]

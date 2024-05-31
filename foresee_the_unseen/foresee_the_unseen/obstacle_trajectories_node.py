@@ -8,14 +8,20 @@ import itertools
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import numpy as np
+import copy
 
 from commonroad.common.file_reader import CommonRoadFileReader
 from commonroad.scenario.trajectory import Trajectory as TrajectoryCR
+from commonroad.scenario.state import InitialState
 
 from racing_bot_interfaces.msg import Trajectory as TrajectoryMsg
-from geometry_msgs.msg import Point, Vector3, PoseStamped
+from geometry_msgs.msg import Point, Vector3, PoseStamped, PoseWithCovarianceStamped, TransformStamped
 from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import ColorRGBA, Header
+
+from tf2_ros import TransformException  # type: ignore
+from tf2_ros.buffer import Buffer
+from tf2_ros.transform_listener import TransformListener
 
 from foresee_the_unseen.lib.obstacle_trajectories import (
     read_obstacle_configuration_yaml,
@@ -24,8 +30,9 @@ from foresee_the_unseen.lib.obstacle_trajectories import (
     generate_velocity_profile,
     velocity_profile_to_state_list,
     get_ros_trajectory_from_commonroad_trajectory,
+    get_ros_pose_from_commonroad_state,
 )
-from foresee_the_unseen.lib.helper_functions import polygons_from_road_xml
+from foresee_the_unseen.lib.helper_functions import polygons_from_road_xml, matrix_from_transform
 
 
 class ObstacleTrajectoriesNode(Node):
@@ -37,7 +44,7 @@ class ObstacleTrajectoriesNode(Node):
         # self.declare_parameter("obstacle_config_yaml", "path/to/configuration.yaml")
         self.declare_parameter(
             "obstacle_config_yaml",
-            "/home/christiaan/thesis/robot_ws/src/foresee_the_unseen/resource/obstacle_trajectories_test.yaml",
+            "/home/christiaan/thesis/robot_ws/src/foresee_the_unseen/resource/obstacle_trajectories.yaml",
         )
         self.declare_parameter("do_visualize", False)
         self.declare_parameter("visualization_topic", "visualization/obstacle_trajectories")
@@ -52,7 +59,9 @@ class ObstacleTrajectoriesNode(Node):
         self.visualization_topic = self.get_parameter("visualization_topic").get_parameter_value().string_value
         self.startup_topic = self.get_parameter("startup_topic").get_parameter_value().string_value
 
-        self.create_subscription(PoseStamped, self.startup_topic, self.startup_callback, 1)
+        # Transformer listener
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
 
         scenario, _ = CommonRoadFileReader(self.obstacle_config["road_structure_xml"]).open()
         self.road_polygons = polygons_from_road_xml(self.obstacle_config["road_structure_xml"])
@@ -66,6 +75,8 @@ class ObstacleTrajectoriesNode(Node):
         self.trajectory_publishers: List[Publisher] = []
         self.trajectories_cr_delay: List[Tuple[TrajectoryCR, float]] = []
         self.trajectories_msg: Optional[List[TrajectoryMsg]] = None
+        self.initialpose_publishers: List[Publisher] = []
+        self.initialstates_commonroad: List[InitialState] = []
         for namespace, car_dict in self.obstacle_config["obstacle_cars"].items():
             waypoints, _, _ = generate_waypoints(
                 lanelet_network=lanelet_network,
@@ -87,27 +98,38 @@ class ObstacleTrajectoriesNode(Node):
                 velocity_profile, waypoints, self.obstacle_config["dt"]
             )
             self.trajectories_cr_delay.append((trajectory_commonroad, car_dict["start_delay"]))
-            publisher = self.create_publisher(TrajectoryMsg, f"/{namespace}/{self.trajectory_topic}", 1)
-            self.trajectory_publishers.append(publisher)
+            
+            publisher_traj = self.create_publisher(TrajectoryMsg, f"/{namespace}/{self.trajectory_topic}", 1)
+            self.trajectory_publishers.append(publisher_traj)
+
+            publisher_pose = self.create_publisher(PoseWithCovarianceStamped, f"/{namespace}/initialpose", 1)
+            self.initialpose_publishers.append(publisher_pose)
+            self.initialstates_commonroad.append(trajectory_commonroad.state_list[0])
 
             if self.do_visualize:
                 markers += self.get_trajectory_marker(waypoints, namespace, next(colors))
 
         self.trajectory_publish_timer = self.create_timer(1, self.publish_trajectory_callback)
         self.trajectory_publish_timer.cancel()
+        self.initialpose_publish_timer = self.create_timer(1, self.publish_initialpose_callback)
+
         # self.setup_timer_w_delay(namespace=namespace, delay=car_dict["start_delay"], msg=trajectory_msg)
 
         if self.do_visualize:
             self.create_timer(0.5, lambda: self.marker_array_publisher.publish(MarkerArray(markers=markers)))
             self.get_logger().info("trajectories visualized")
 
-        self.get_logger().info(
-            str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.get_clock().now().seconds_nanoseconds()[0])))
-        )
+        self.create_subscription(PoseStamped, self.startup_topic, self.startup_callback, 1)
+        # self.get_logger().info(
+        #     str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.get_clock().now().seconds_nanoseconds()[0])))
+        # )
 
     def startup_callback(self, msg: PoseStamped) -> None:
         """This function allows the robot to start moving."""
         if self.trajectories_msg is None:
+            # Stop publishing the initial pose
+            self.initialpose_publish_timer.cancel()
+
             self.trajectories_msg = []
             for trajectory_cr, delay in self.trajectories_cr_delay:
                 trajectory_msg = get_ros_trajectory_from_commonroad_trajectory(
@@ -130,26 +152,57 @@ class ObstacleTrajectoriesNode(Node):
         for publisher, trajectory in zip(self.trajectory_publishers, self.trajectories_msg, strict=True):
             publisher.publish(trajectory)
 
-    def setup_timer_w_delay(self, namespace: str, delay: float, msg: TrajectoryMsg) -> Callable[[], None]:
-        # create the publisher
-        publisher = self.create_publisher(TrajectoryMsg, f"/{namespace}/{self.trajectory_topic}", 1)
-
-        def timer_callback() -> None:
-            # publish the message only once
-            self.get_logger().info(
-                (
-                    f"[timer_callback {namespace} ({delay=})] "
-                    + time.strftime(
-                        "%Y-%m-%d %H:%M:%S", time.localtime(self.get_clock().now().seconds_nanoseconds()[0])
-                    )
+    def publish_initialpose_callback(self) -> None:
+        """Publish the initialpose for the other robots until the execution starts."""
+        for publisher, state_planner in zip(self.initialpose_publishers, self.initialstates_commonroad):
+            try:
+                # self.get_logger().info(str(state_planner))
+                # self.get_logger().info(str(publisher))
+                transform = self.tf_buffer.lookup_transform("map", "planner", rclpy.time.Time())
+                state_map = self.transform_state(state_planner, transform)
+                # self.get_logger().info(str(state_map))
+                pose_msg = get_ros_pose_from_commonroad_state(state_map)
+                publisher.publish(pose_msg)
+            except TransformException as ex:
+                self.get_logger().info(
+                    f"Could not transform `planner` to `map`: {ex}",
+                    throttle_duration_sec=3,
                 )
-            )
-            publisher.publish(msg)
-            # self.get_logger().info(f"message published: {msg}")
-            timer = getattr(self, f"timer_{namespace}")
-            # timer.cancel()
 
-        setattr(self, f"timer_{namespace}", self.create_timer(delay, timer_callback))
+    @staticmethod
+    def transform_state(state: InitialState, transform: TransformStamped) -> InitialState:
+        """Converts a Commonroad state (2D position, orientation and scalar velocity) based on a ROS transform"""
+        t_matrix = matrix_from_transform(transform)
+        position = np.hstack((state.position, [0, 1]))  # 4D position
+        state_tf = copy.deepcopy(state)
+        state_tf.position = (t_matrix @ position)[:2]
+        r_matrix = t_matrix[:2, :2]
+        state_tf.orientation = np.arctan2(
+            *np.flip(r_matrix @ np.array([np.cos(state_tf.orientation), np.sin(state_tf.orientation)]))
+        )
+
+        return state_tf
+    
+    # def setup_timer_w_delay(self, namespace: str, delay: float, msg: TrajectoryMsg) -> Callable[[], None]:
+    #     # create the publisher
+    #     publisher = self.create_publisher(TrajectoryMsg, f"/{namespace}/{self.trajectory_topic}", 1)
+
+    #     def timer_callback() -> None:
+    #         # publish the message only once
+    #         self.get_logger().info(
+    #             (
+    #                 f"[timer_callback {namespace} ({delay=})] "
+    #                 + time.strftime(
+    #                     "%Y-%m-%d %H:%M:%S", time.localtime(self.get_clock().now().seconds_nanoseconds()[0])
+    #                 )
+    #             )
+    #         )
+    #         publisher.publish(msg)
+    #         # self.get_logger().info(f"message published: {msg}")
+    #         timer = getattr(self, f"timer_{namespace}")
+    #         # timer.cancel()
+
+    #     setattr(self, f"timer_{namespace}", self.create_timer(delay, timer_callback))
 
         return timer_callback
 

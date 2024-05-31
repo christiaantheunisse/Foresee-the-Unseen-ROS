@@ -58,7 +58,6 @@ def generate_launch_description():
         cmd=["sudo", "pigpiod"],
         name="Start pigpiod",
     )
-
     hat_node = Node(
         package="racing_bot_hat",
         executable="hat_node",
@@ -86,10 +85,14 @@ def generate_launch_description():
         ],
         namespace=namespace,
     )
-    controller_node = Node(
-        package="racing_bot_controller",
-        executable="controller_node",
-        namespace=namespace,
+    slam_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([FindPackageShare("racing_bot_bringup"), "launch/partial_launches", "slam_launch.py"])
+        ),
+        launch_arguments={
+            "publish_tf": NotSubstitution(use_ekf),
+            "minimum_time_interval": "2.0",
+        }.items(),
     )
 
     def namespace_as_string(context: LaunchContext, namespace: LaunchConfiguration):
@@ -159,9 +162,6 @@ def generate_launch_description():
             ]
         )
 
-        # Needed: transform from map to odom: SLAM or static, but should be handle on the laptop because it is based on
-        #  the trajectory for the obstacle
-
         static_trans_base_link_to_laser = Node(
             package="tf2_ros",
             executable="static_transform_publisher",
@@ -204,7 +204,8 @@ def generate_launch_description():
             # nodes
             hat_node,
             encoder_node,
-            controller_node,
             OpaqueFunction(function=namespace_as_string, args=[namespace]),
+            # launch files
+            slam_launch,
         ]
     )

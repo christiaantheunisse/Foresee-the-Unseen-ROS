@@ -24,18 +24,6 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 BRINGUP OBSTACLES:
     $ ros2 launch foresee_the_unseen bringup_obstacle_launch.py lidar_reverse:=true use_ekf:=true namespace:=obstacle_car1 follow_traject:=false
 
-The bringup file for the laptop. Should (all optional):
-    if foresee_the_unseen:
-        planner_launch.py -> make a lifecycle node
-    if slam_mode == mapping / localization (for the racing bot): 
-        appropiate slam_toolbox node
-    if obstacles:
-        obs_traj_launch.py
-            - SLAM for the robots in the appropiate namespaces or static transforms
-                - Need to fix the start position. Possible solution: store the transform between the map and planner 
-                  frame in a .yaml file and make it accessible to the obs_traj_launch.py and the planner_launch.py.
-                  Pass as argument from this file.
-            - trajectories for the robots in the appropiate namespaces
 """
 
 ###### launch with a rosbag
@@ -51,7 +39,7 @@ def generate_launch_description():
     slam_mode_robot_launch_arg = DeclareLaunchArgument(
         "slam_mode_robot",
         default_value=TextSubstitution(text="mapping"),
-        choices=["mapping", "localization", "disabled"],
+        choices=["mapping", "localization", "disabled", "elsewhere"],
         description="Which mode of the slam_toolbox to use for the robot: SLAM (=mapping), only localization "
         + "(=localization), don't use so map frame is odom frame (=disabled).",
     )
@@ -116,10 +104,13 @@ def generate_launch_description():
             )
         ),
         launch_arguments={
-            "localization": EqualsSubstitution(slam_mode_robot, "localization"),
-            "mapping": EqualsSubstitution(slam_mode_robot, "mapping"),
+            "slam_mode": slam_mode_robot,
             "publish_tf": NotSubstitution(use_ekf_robot),
+            "minimum_time_interval": "0.5",
+            "namespace": "",
+            "start_pose": "[0, 0, 0]",
         }.items(),
+        condition=IfCondition(NotSubstitution(EqualsSubstitution(slam_mode_robot, "disabled"))),
     )
 
     planner_launch = IncludeLaunchDescription(

@@ -11,7 +11,16 @@ from shapely.geometry import MultiPoint, Point as ShapelyPoint, Polygon as Shape
 
 from rclpy.time import Duration, Time
 from std_msgs.msg import Header
-from geometry_msgs.msg import PoseStamped, Point as PointMsg, Quaternion, Pose, Vector3, Twist, Accel
+from geometry_msgs.msg import (
+    PoseStamped,
+    Point as PointMsg,
+    Quaternion,
+    Pose,
+    Vector3,
+    Twist,
+    Accel,
+    PoseWithCovarianceStamped,
+)
 from nav_msgs.msg import Path
 from racing_bot_interfaces.msg import Trajectory as TrajectoryMsg
 
@@ -279,6 +288,18 @@ def to_ros_trajectory_msg(
 
     return TrajectoryMsg(path=Path(header=header_path, poses=pose_stamped_list), velocities=twist_list)
 
+
+def get_ros_pose_from_commonroad_state(state: InitialState) -> PoseWithCovarianceStamped:
+    """Commonroad InitialState to ROS message PoseWithCovarianceStamped"""
+    x, y = state.position[0], state.position[1]
+    yaw = state.orientation
+    msg = PoseWithCovarianceStamped()
+    msg.pose.pose.position.x = x
+    msg.pose.pose.position.y = y
+    msg.pose.pose.orientation.z = np.sin(yaw / 2)
+    msg.pose.pose.orientation.w = np.cos(yaw / 2)
+
+    return msg
 
 def read_obstacle_configuration_yaml(yaml_file: str) -> Dict:
     with open(yaml_file) as f:
