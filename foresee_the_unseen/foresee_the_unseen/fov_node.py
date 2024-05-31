@@ -27,6 +27,11 @@ from tf2_geometry_msgs import PolygonStamped  # necessary to enable Buffer.trans
 
 from foresee_the_unseen.lib.helper_functions import matrix_from_transform, matrices_from_cw_cvx_polygon
 
+from shapely.geometry import Polygon as ShapelyPolygon, LineString  # temporary import
+from shapely.ops import polygonize, unary_union
+
+import matplotlib.pyplot as plt
+
 
 def yaw_from_quaternion(quaternion: Quaternion):
     x, y, z, w = quaternion.x, quaternion.y, quaternion.z, quaternion.w
@@ -34,6 +39,137 @@ def yaw_from_quaternion(quaternion: Quaternion):
 
 
 Direction = Literal["CW", "CCW"]
+
+
+def on_segment(p, q, r) -> bool:
+    """all inputs are points with shape (2,). The function checks if point q lies on line segment 'pr'."""
+    return (
+        (q[0] <= max(p[0], r[0]))
+        and (q[0] >= min(p[0], r[0]))
+        and (q[1] <= max(p[1], r[1]))
+        and (q[1] >= min(p[1], r[1]))
+    )
+
+
+def orientation(p, q, r) -> Literal[0, 1, 2]:
+    """all inputs are points with shape (2,)
+    function returns the following values:
+        0 : Collinear points
+        1 : Clockwise points
+        2 : Counterclockwise
+    """
+    val = ((q[1] - p[1]) * (r[0] - q[0])) - ((q[0] - p[0]) * (r[1] - q[1]))
+    if val > 0:
+        # Clockwise orientation
+        return 1
+    elif val < 0:
+        # Counterclockwise orientation
+        return 2
+    else:
+        # Collinear orientation
+        return 0
+
+
+def do_intersect(p1, q1, p2, q2) -> bool:
+    """All inputs are points with shape (2,).
+    The function returns true if the line segments 'p1q1' and 'p2q2' intersect."""
+    # Find the 4 orientations required for
+    # the general and special cases
+    o1 = orientation(p1, q1, p2)
+    o2 = orientation(p1, q1, q2)
+    o3 = orientation(p2, q2, p1)
+    o4 = orientation(p2, q2, q1)
+
+    # General case
+    if (o1 != o2) and (o3 != o4):
+        return True
+
+    # Special Cases
+    # p1 , q1 and p2 are collinear and p2 lies on segment p1q1
+    if (o1 == 0) and on_segment(p1, p2, q1):
+        return True
+    # p1 , q1 and q2 are collinear and q2 lies on segment p1q1
+    if (o2 == 0) and on_segment(p1, q2, q1):
+        return True
+    # p2 , q2 and p1 are collinear and p1 lies on segment p2q2
+    if (o3 == 0) and on_segment(p2, p1, q2):
+        return True
+    # p2 , q2 and q1 are collinear and q1 lies on segment p2q2
+    if (o4 == 0) and on_segment(p2, q1, q2):
+        return True
+    # If none of the cases
+    return False
+
+def ccw(A,B,C):
+    """All inputs are points with shape (2,)"""
+    return (C[1]-A[1]) * (B[0]-A[0]) > (B[1]-A[1]) * (C[0]-A[0])
+
+# Return true if line segments AB and CD intersect
+def do_intersect_simple(A,B,C,D):
+    """All inputs are points with shape (2,).
+    The function returns true if the line segments 'AB' and 'CD' intersect."""
+    return ccw(A,C,D) != ccw(B,C,D) and ccw(A,B,C) != ccw(A,B,D)
+
+
+def check_self_intersection_polygon(points: np.ndarray) -> np.ndarray:
+    """Check if the polygon intersects itself"""
+    line_segments = np.stack((points, np.roll(points, -1, axis=0)), axis=1)
+    N = len(line_segments)
+    masks = []
+    for idx, segment in enumerate(line_segments):
+        mask = [
+            (
+                do_intersect(segment[0], segment[1], ls[0], ls[1])
+                if idx_sub not in [(idx - 1) % N, idx, (idx + 1) % N]
+                else False
+            )
+            for idx_sub, ls in enumerate(line_segments)
+        ]
+        masks.append(mask)
+    masks = np.array(masks)
+    # return line_segments[masks.sum(axis=1) > 0]
+    return np.array(masks)
+
+
+def get_self_intersections_polygon(points: np.ndarray, no_of_neighbours_to_check: int = 6) -> np.ndarray:
+    """Gives an array of combinations of line segments that intersect: [[line_segment_i, line_segment_j], ...]
+    Only checks at a limited number of neighbours"""
+    line_segments = np.stack((points, np.roll(points, -1, axis=0)), axis=1)
+    N_line_segments = len(line_segments)
+    intersections = []
+    no_of_neighbours_to_check = 6
+    check_idxs = np.arange(2, no_of_neighbours_to_check + 1)
+    for idx_a, segment_a in enumerate(line_segments):
+        for idx_b in (check_idxs + idx_a) % N_line_segments:
+            segment_b = line_segments[idx_b]
+            if do_intersect_simple(segment_a[0], segment_a[1], segment_b[0], segment_b[1]):
+                intersections.append([idx_a, idx_b])
+    if len(intersections):
+        return np.sort(intersections, axis=1)  # [[ls_i, ls_j], ...]
+    else:
+        return np.array(intersections)
+
+
+def make_valid_polygon(points: np.ndarray) -> np.ndarray:
+    """Recursively remove self-intersections from a polygon"""
+    for i in range(100):
+        N = len(points)
+        mask_intersections = check_self_intersection_polygon(points)
+        intersections = np.array(np.where(mask_intersections)).T  # [[ls_i, ls_j], ...]
+        intersections = get_self_intersections_polygon(points)  # [[ls_i, ls_j], ...]
+        if not len(intersections):
+            return points
+
+        # just treat the first intersection, until no intersections are left:
+        intersect = intersections[0]
+        #  remove the lowest possible number of intermediate points
+        assert np.diff(intersect) > 0, f"{intersect=} {intersections=}"
+        if np.diff(intersect) < N / 2:
+            points = np.vstack((points[: intersect[0] + 1], points[intersect[1] :]))
+        else:
+            points = points[intersect[0] : intersect[1] + 1]
+
+    raise StopIteration
 
 
 class FOVNode(Node):
@@ -103,8 +239,9 @@ class FOVNode(Node):
         self.laser_filter_matrices = matrices_from_cw_cvx_polygon(self.env_polygon)
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
-        self.subsample_rate: Optional[int] = None
-        self.subsample_rate: Optional[int] = 2
+        # self.subsample_rate: Optional[int] = None
+        self.subsample_rate: Optional[int] = 20
+
         self.scan_processed: bool = True
         self.last_scan: Optional[LaserScan] = None
         self.current_scan: LaserScan = LaserScan()
@@ -127,10 +264,13 @@ class FOVNode(Node):
         self.range_error_model_mean = interp1d(input_data_range_xs, input_data_range_means, fill_value="extrapolate")
         self.range_error_model_std = interp1d(input_data_range_xs, input_data_range_stds, fill_value="extrapolate")
 
+        self.counter = 0
+
     def scan_callback(self, msg: LaserScan) -> None:
         self.last_scan = self.current_scan
         self.current_scan = msg
         self.scan_processed = False
+        self.counter += 1
 
     def process_scan(self) -> None:
         """The scan callback"""
@@ -154,10 +294,13 @@ class FOVNode(Node):
                 filtered_scan, self.view_range, self.subsample_rate
             )
             ranges_corr, angles_corr = self.apply_error_model(ranges, angles, mask_invalid, 2)
-            fov_points = self.make_fov(ranges_corr, angles_corr, mask_invalid)
+            fov_points, time_order = self.make_fov(ranges_corr, angles_corr, mask_invalid)
 
             # Deskew the points defining the FOV and publish the FOV
             fov_points_deskewed, start_time = self.deskew_laserscan_interpolate_tf(filtered_scan, fov_points)
+            fov_points_deskewed = make_valid_polygon(fov_points_deskewed)
+            if not ShapelyPolygon(fov_points_deskewed).is_valid:
+                self.get_logger().error(f"Invalid polygon! {get_self_intersections_polygon(fov_points_deskewed)}")
             fov_polygon_msg = self.points_to_polygon_msg(fov_points_deskewed, filtered_scan.header.stamp)
             self.fov_polygon_pub.publish(fov_polygon_msg)
 
@@ -165,16 +308,82 @@ class FOVNode(Node):
                 # publish the deskewed pointcloud
                 points = self.ranges_angles_to_points(ranges_corr, angles_corr)[~mask_invalid]
                 points_deskewed, start_time = self.deskew_laserscan_interpolate_tf(filtered_scan, points)
-                pc_deskewed_msg = self.points_to_pointcloud_msg(points_deskewed, start_time)
+                # pc_deskewed_msg = self.points_to_pointcloud_msg(points_deskewed, start_time)
+                pc_deskewed_msg = self.points_to_pointcloud_msg(fov_points_deskewed, start_time)
                 self.deskewed_scan_pub.publish(pc_deskewed_msg)
 
                 # publish the filtered laserscan
                 self.environment_scan_pub.publish(filtered_scan)
 
+            # points_numpy = np.array(polygon.exterior.coords.xy).T
+
+            # print(polygon.is_valid, check_self_intersection_polygon(fov_points).shape)
+            # print(polygon.is_valid, np.sum(check_self_intersection_polygon(fov_points),axis=1))
+            # print(type(polygon), polygon.is_valid, f"\t{len(np.unique(fov_points, axis=0)) / len(np.array(list(set(tuple(p) for p in fov_points))))}")
+            # print(fov_points[-2:], fov_points[:2])
+            # if not polygon.is_valid:
+            #     exit(1)
+
+            # Check number of polygons
+            # polygons = list(polygonize(unary_union(LineString(fov_points))))q
+            # if len(polygons) > 0:
+            #     print("line is forming the polygons by intersecting itself")
+            #     print(len(polygons))
+
+            # print(f"{len(ranges)=} {len(ranges_corr)=} {len(fov_points)=} {len(fov_points_deskewed)=} {len(fov_polygon_msg.polygon.points)=}")
+
+            # print(self.counter)
+            # if self.counter % 30 == 0:
+
+            # polygon_points = np.array([[p.x, p.y] for p in fov_polygon_msg.polygon.points])
+            # polygon = ShapelyPolygon(polygon_points)
+            # # print(polygon.is_valid, len(check_self_intersection_polygon(polygon_points)))
+            # if not polygon.is_valid or np.any(check_self_intersection_polygon(polygon_points)):
+            #     print("should plot")
+            #     # plt.cla()
+            #     ax = plt.gca()
+            #     ax.set_aspect("equal")
+            #     ax.scatter(*polygon_points.T, color="k")
+            #     ax.scatter(*polygon_points[::2].T, color="tab:gray")
+            #     # ax.plot(*polygon_points.T, color="tab:green" if polygon.is_valid else "tab:red")
+            #     ax.plot(*polygon_points.T, color="tab:green")
+
+            #     masks = check_self_intersection_polygon(polygon_points)
+            #     line_segments = np.stack((polygon_points, np.roll(polygon_points, -1, axis=0)), axis=1)
+            #     for ls in line_segments[masks.sum(axis=1) > 0]:
+            #         ax.plot(*ls.T, color="tab:red")
+
+            #     ax.set_title(
+            #         f"is valid: {polygon.is_valid}; ch_self_ints: {np.any(check_self_intersection_polygon(polygon_points))}"
+            #     )
+            #     plt.show()
+
+            #     polygon_points = make_valid_polygon(polygon_points)
+
+            #     ax = plt.gca()
+            #     ax.set_aspect("equal")
+            #     ax.scatter(*polygon_points.T, color="k")
+            #     ax.scatter(*polygon_points[::2].T, color="tab:gray")
+            #     # ax.plot(*polygon_points.T, color="tab:green" if polygon.is_valid else "tab:red")
+            #     ax.plot(*polygon_points.T, color="tab:green")
+
+            #     masks = check_self_intersection_polygon(polygon_points)
+            #     line_segments = np.stack((polygon_points, np.roll(polygon_points, -1, axis=0)), axis=1)
+            #     for ls in line_segments[masks.sum(axis=1) > 0]:
+            #         ax.plot(*ls.T, color="tab:red")
+
+            #     ax.set_title(
+            #         f"is valid: {polygon.is_valid}; ch_self_ints: {np.any(check_self_intersection_polygon(polygon_points))}"
+            #     )
+            #     plt.show()
+            # plt.pause(1e-6)
+
             self.scan_processed = True
         except TransformException as ex:
             self.get_logger().info(str(ex))
             pass
+
+        print(f"Execution time is: {(time.time() - exec_start_time) * 1000:.0f} ms")
 
     @staticmethod
     def laserscan_to_ranges_angles(
@@ -251,7 +460,10 @@ class FOVNode(Node):
         delta_rotation = yaw_from_quaternion(t_end2.transform.rotation) - yaw_from_quaternion(
             t_start2.transform.rotation
         )
-        if delta_rotation <= 0.0:  # a value bigger than 0. means that there is a gap in the deskewed pointcloud
+        # if delta_rotation <= 0.0:  # a value bigger than 0. means that there is a gap in the deskewed pointcloud
+        if (
+            delta_rotation <= scan1.angle_increment
+        ):  # a value bigger than 0. means that there is a gap in the deskewed pointcloud
             return scan2
         else:
             if scan1.header.frame_id != scan2.header.frame_id:
@@ -260,7 +472,8 @@ class FOVNode(Node):
                 )
                 raise TransformException
             # concetanate the last part of scan1
-            N_to_concat = abs(math.ceil(delta_rotation / scan1.angle_increment))
+            # N_to_concat = abs(math.ceil(delta_rotation / scan1.angle_increment))
+            N_to_concat = abs(int(delta_rotation / scan1.angle_increment))
             concat_header = Header(
                 stamp=(start_time2 - Duration(seconds=N_to_concat * scan1.time_increment)).to_msg(),  # type: ignore
                 frame_id=scan2.header.frame_id,
@@ -319,9 +532,8 @@ class FOVNode(Node):
         angles: np.ndarray,
         mask_invalid: np.ndarray,
         max_incl_angle: float = np.radians(70),
-    ) -> np.ndarray:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """Determine an underapproximating field of view from the LaserScan message."""
-        smallest_range = ranges.min()
         start_idx = np.argmin(ranges)
         default_angle_incr = abs(np.abs(angles[1] - angles[0]))
 
@@ -332,14 +544,8 @@ class FOVNode(Node):
         #               x        x          x---  ---x
         # x     == lidar measurement
         # -|/   == boundary of field of view (fov) constructed from these measurements
-        ranges, angles = ranges[~mask_invalid], angles[~mask_invalid]
-        ranges_extended = np.vstack((np.roll(ranges, 1), ranges, np.roll(ranges, -1))).T.flatten()
-        is_bigger_than_prev = ranges > np.roll(ranges, 1)
-        is_bigger_than_next = ranges > np.roll(ranges, -1)
-        keep_original = np.ones_like(ranges, dtype=np.bool_)
-        mask = np.vstack((is_bigger_than_prev, keep_original, is_bigger_than_next)).T.flatten()
-        angles_extended = np.repeat(angles, 3)
-        ranges, angles = ranges_extended[mask], angles_extended[mask]
+        time_order = np.arange(len(ranges))
+        ranges, angles, time_order = ranges[~mask_invalid], angles[~mask_invalid], time_order[~mask_invalid]
 
         # calculate the ranges for an fov with a certain maximum inclination angles. This limits the maximum increase in
         #  the range between subsequent ranges.
@@ -347,31 +553,41 @@ class FOVNode(Node):
         ranges = ranges.copy()
         for idx in np.roll(np.arange(N), -start_idx):  # [start_idx, start_idx+1, ..., N-1, 0, 1, ..., start_idx-1]
             current_range = ranges[idx]
-            angle_incr = abs(angles[(idx + 1) % N] - angles[idx])
-            angle_incr = default_angle_incr if angle_incr > 5 * default_angle_incr else angle_incr
-            if angle_incr == 0.0:
-                max_step = 0.0
-            else:
-                max_step = FOVNode.approx_max_step(current_range, max_incl_angle, angle_incr)
+            angle_incr = angles[(idx + 1) % N] - angles[idx] if (idx + 1) != N else default_angle_incr
+            # angle_incr = default_angle_incr if angle_incr > 5 * default_angle_incr else angle_incr
+            # if angle_incr == 0.0:
+            #     max_step = 0.0
+            # else:
+            max_step = FOVNode.approx_max_step(current_range, max_incl_angle, angle_incr)
             ranges[(idx + 1) % N] = min(current_range + max_step, ranges[(idx + 1) % N])
 
         for idx in np.roll(np.arange(N), -start_idx)[::-1]:  # [start_idx-1, ..., 1, 0, N-1, N-2, ..., start_idx]
             current_range = ranges[idx]
-            angle_incr = abs(angles[idx] - angles[(idx - 1) % N])
-            angle_incr = default_angle_incr if angle_incr > 5 * default_angle_incr else angle_incr
-            if angle_incr == 0.0:
-                max_step = 0.0
-            else:
-                max_step = FOVNode.approx_max_step(current_range, max_incl_angle, angle_incr)
+            angle_incr = angles[idx] - angles[(idx - 1) % N] if idx != 0 else default_angle_incr
+            # angle_incr = default_angle_incr if angle_incr > 5 * default_angle_incr else angle_incr
+            # if angle_incr == 0.0:
+            #     max_step = 0.0
+            # else:
+            max_step = FOVNode.approx_max_step(current_range, max_incl_angle, angle_incr)
             ranges[(idx - 1) % N] = min(current_range + max_step, ranges[(idx - 1) % N])
+
+        ranges_extended = np.vstack((np.roll(ranges, 1), ranges, np.roll(ranges, -1))).T.flatten()
+        is_bigger_than_prev = ranges > np.roll(ranges, 1)
+        is_bigger_than_next = ranges > np.roll(ranges, -1)
+        # keep_original = np.ones_like(ranges, dtype=np.bool_)
+        keep_original = ~(is_bigger_than_prev & is_bigger_than_next)
+        mask = np.vstack((is_bigger_than_prev, keep_original, is_bigger_than_next)).T.flatten()
+        angles_extended = np.repeat(angles, 3)
+        time_order_extended = np.repeat(np.arange(len(ranges)), 3)
+        ranges, angles, time_order = ranges_extended[mask], angles_extended[mask], time_order_extended[mask]
 
         cos_sin_map = np.array([np.cos(angles), np.sin(angles)])
         points = (ranges * cos_sin_map).T  # 2D points
 
-        return points
+        return points, time_order
 
     def deskew_laserscan_interpolate_tf(
-        self, scan: LaserScan, points: Optional[np.ndarray] = None
+        self, scan: LaserScan, points: Optional[np.ndarray] = None, time_order: Optional[np.ndarray] = None
     ) -> Tuple[np.ndarray, Time]:
         """Deskew a ROS Laserscan using /tf. The transforms at the beginning and the end of the scan is obtained and are
         linearly interpolated for the intermediate points."""
@@ -390,8 +606,13 @@ class FOVNode(Node):
 
         # linearly interpolate the transformation matrix
         N = len(points)
-        f = interp1d(np.array([0, 1]), np.array([t_start_mat.flatten(), t_end_mat.flatten()]).T)
-        t_interp_mats = f(np.linspace(0, 1, N)).reshape(4, 4, N).transpose((2, 0, 1))
+        if time_order is None:
+            time_order = np.linspace(0, 1, N)
+            value_range = [0, 1]
+        else:
+            value_range = np.array([time_order.min(), time_order.max()])
+        f = interp1d(value_range, np.array([t_start_mat.flatten(), t_end_mat.flatten()]).T)
+        t_interp_mats = f(time_order).reshape(4, 4, N).transpose((2, 0, 1))
 
         # VERY ugly method
         points_deskewed = []

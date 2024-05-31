@@ -34,7 +34,7 @@ def generate_launch_description():
 
     do_visualize = LaunchConfiguration("do_visualize")
     do_triangulate = LaunchConfiguration("do_triangulate")
-        
+
     log_messages = []
     try:
         log_files_dir = os.environ["ROS_LOG_FILES_DIR"]
@@ -43,7 +43,14 @@ def generate_launch_description():
         log_messages.append(LogInfo(msg="`ROS_LOG_FILES_DIR` is not set!"))
         log_files_dir = ""
 
-
+    fov_node = Node(
+        package="foresee_the_unseen",
+        executable="fov_node",
+        parameters=[
+            PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "fov_node.yaml"]),
+            {"do_visualize": do_visualize},
+        ],
+    )
     planner_node = Node(
         package="foresee_the_unseen",
         executable="planner_node",
@@ -75,8 +82,8 @@ def generate_launch_description():
             package="tf2_ros",
             executable="static_transform_publisher",
             arguments=(
-                f"--x {init_x} --y {init_y} --z 0 --roll 0 --pitch 0 --yaw {init_th} " +
-                "--frame-id map --child-frame-id planner"
+                f"--x {init_x} --y {init_y} --z 0 --roll 0 --pitch 0 --yaw {init_th} "
+                + "--frame-id map --child-frame-id planner"
             ).split(" "),
         )
 
@@ -87,6 +94,7 @@ def generate_launch_description():
             do_visualize_launch_arg,
             do_triangulate_launch_arg,
             *log_messages,
+            fov_node,
             planner_node,
             OpaqueFunction(
                 function=get_map_to_planner_frame_tf,

@@ -42,16 +42,15 @@ from racing_bot_interfaces.msg import Trajectory as TrajectoryMsg
 from tf2_ros import TransformException  # type: ignore
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
+from tf2_geometry_msgs import PolygonStamped  # necessary to enable Buffer.transform
 
 from foresee_the_unseen.lib.helper_functions import (
     polygons_from_road_xml,
     matrix_from_transform,
-    matrices_from_cw_cvx_polygon,
     euler_from_quaternion,
 )
 from foresee_the_unseen.lib.foresee_the_unseen import ForeseeTheUnseen, NoUpdatePossible
 from foresee_the_unseen.lib.triangulate import triangulate, remove_redudant_vertices_polygon
-from foresee_the_unseen.lib.filter_fov import get_underapproximation_fov
 
 
 Color = TypedDict("Color", {"r": float, "g": float, "b": float, "a": float})
@@ -106,14 +105,6 @@ class PlannerNode(Node):
         )
         self.declare_parameter("log_directory", "none")
 
-        self.declare_parameter(
-            "environment_boundary",
-            [0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0],
-            ParameterDescriptor(
-                description="Convex polygon describing part of the map frame visuable to the lidar of the ego_vehicle"
-                "in the foresee-the-unseen algorithm. [x1, y1, x2, y2, ...]"
-            ),
-        )
         self.declare_parameter("ego_vehicle_size", [0.3, 0.18, 0.12])  # L x W x H [m]
         self.declare_parameter("ego_vehicle_offset", [0.0, 0.0, 0.06])  # L x W x H [m]
         self.declare_parameter("planner_frequency", 2.0)
@@ -137,9 +128,6 @@ class PlannerNode(Node):
         self.road_xml = self.get_parameter("road_xml").get_parameter_value().string_value
         self.config_yaml = self.get_parameter("foresee_the_unseen_yaml").get_parameter_value().string_value
         self.log_root_directory = self.get_parameter("log_directory").get_parameter_value().string_value
-        self.filter_polygon = np.array(
-            self.get_parameter("environment_boundary").get_parameter_value().double_array_value
-        ).reshape(-1, 2)
         self.ego_vehicle_size = self.get_parameter("ego_vehicle_size").get_parameter_value().double_array_value
         self.ego_vehicle_offset = self.get_parameter("ego_vehicle_offset").get_parameter_value().double_array_value
         self.frequency = self.get_parameter("planner_frequency").get_parameter_value().double_value
@@ -257,11 +245,13 @@ class PlannerNode(Node):
         try:
             if fov_msg.header.frame_id != self.planner_frame:
                 fov_msg = self.tf_buffer.transform(fov_msg, self.planner_frame)  # type: ignore
-            fov_points = np.array(fov_msg.polygon.points)
+            fov_points = np.array([[p.x, p.y] for p in fov_msg.polygon.points])
             if len(fov_points) >= 3:
-                self.foresee_the_unseen_planner.update_fov(
-                    ShapelyPolygon(fov_points), fov_msg.header.stamp.sec + fov_msg.header.stamp.nanosec * 1e-9
-                )
+                polygon = ShapelyPolygon(fov_points)
+                if polygon.is_valid:
+                    self.foresee_the_unseen_planner.update_fov(
+                        polygon, fov_msg.header.stamp.sec + fov_msg.header.stamp.nanosec * 1e-9
+                    )
         except TransformException as ex:
             self.get_logger().info(str(ex), throttle_duration_sec=self.throttle_duration)
 
@@ -376,7 +366,7 @@ class PlannerNode(Node):
 
             markers.append(lanelet_marker)
         return markers
-    
+
     def get_fov_marker(self, sensor_view: Optional[ShapelyPolygon] = None) -> List[Marker]:
         """Get the marker that visualizes the field of view (FOV)"""
         if sensor_view is not None:
