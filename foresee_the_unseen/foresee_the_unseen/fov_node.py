@@ -309,7 +309,7 @@ class FOVNode(Node):
         if not self.tf_buffer.can_transform(self.fov_frame, msg.header.frame_id, end_time):
             return
 
-        exec_start_time = time.time()
+        # exec_start_time = time.time()
         try:
             new_scan = self.merge_scans(self.last_scan, self.current_scan)
             if len(new_scan.ranges) <= 1:  # deal with an empty scan
@@ -355,7 +355,7 @@ class FOVNode(Node):
             self.get_logger().info(str(ex))
             pass
 
-        print(f"Execution time is: {(time.time() - exec_start_time) * 1000:.0f} ms")
+        # print(f"Execution time is: {(time.time() - exec_start_time) * 1000:.0f} ms")
 
     @staticmethod
     def laserscan_to_ranges_angles(
@@ -430,15 +430,12 @@ class FOVNode(Node):
             t_start2.transform.rotation
         )
         delta_rotation = (delta_rotation - np.pi) % (2 * np.pi) - np.pi
-        print(f"{delta_rotation=}")
         if (
             delta_rotation <= scan2.angle_increment
         ):  # a value bigger than 0. means that there is a gap in the deskewed pointcloud
             # remove points from the scan
             N_to_delete = math.ceil(abs(delta_rotation / scan2.angle_increment))
-            print(f"{N_to_delete=}, {delta_rotation}")
             new_start_time2 = start_time2 + Duration(seconds=N_to_delete * scan2.time_increment)  # type: ignore
-            # print(new_start_time2.nanoseconds // 1e9, new_start_time2.nanoseconds % 1e9)
             scan2.header.stamp = new_start_time2.to_msg()
             scan2.angle_min = scan2.angle_min + N_to_delete * scan2.angle_increment
             scan2.scan_time = scan2.scan_time - scan2.time_increment * N_to_delete
