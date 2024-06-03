@@ -51,6 +51,13 @@ class ErrorModel:
         mean, std = self.mean_interpolator(xs), self.std_interpolator(xs)
         return mean + stds_margin * std if not self.lognormal else np.exp(mean + stds_margin * std)
 
+    def get_mean_std(self, xs: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """Calculate the mean and standard deviation"""
+        self.assert_inputs(xs)
+        if not self.bounds_error:
+            xs = self.clip_inputs(xs)
+        return self.mean_interpolator(xs), self.std_interpolator(xs)
+    
     @property
     def bounds_error(self):
         return self._bounds_error
@@ -180,6 +187,14 @@ class ErrorModelWithStdScaleFunc(ErrorModel):
         std *= self.std_scale_func(**kwargs)
         return mean + stds_margin * std if not self.lognormal else np.exp(mean + stds_margin * std)
 
+    def get_mean_std(self, xs: np.ndarray, **kwargs) -> Tuple[np.ndarray, np.ndarray]:
+        """Calculate the mean and standard deviation"""
+        self.assert_inputs(xs)
+        if not self.bounds_error:
+            xs = self.clip_inputs(xs)
+        mean, std = self.mean_interpolator(xs), self.std_interpolator(xs)
+        std *= self.std_scale_func(**kwargs)
+        return mean, std
 
 def plot_error_model_2D(error_model) -> None:
     fig, axs = plt.subplots(1, 2, layout="constrained", figsize=(9, 3))

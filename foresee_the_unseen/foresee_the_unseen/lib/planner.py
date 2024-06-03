@@ -20,7 +20,7 @@ from commonroad_dc.collision.collision_detection.pycrcc_collision_dispatch impor
 from commonroad.common.util import Interval
 
 from foresee_the_unseen.lib.utilities import Lanelet2ShapelyPolygon, Logger, PrintLogger
-from foresee_the_unseen.lib.error_model import ErrorModel
+from foresee_the_unseen.lib.error_model import ErrorModel, ErrorModelWithStdScaleFunc
 from shapely.geometry import Point
 from shapely.geometry import LineString
 
@@ -64,22 +64,23 @@ class Planner:
     def __init__(
         self,
         lanelet_network: LaneletNetwork,
-        initial_state,
-        goal_point,
+        initial_state: Union[List, np.ndarray],
+        goal_point: Union[List, np.ndarray],
         vehicle_size: Tuple[float, float],
         vehicle_center_offset: Tuple[float, float],
-        reference_speed,
-        max_acceleration,
-        max_deceleration,
-        time_horizon,
-        dt,
-        min_dist_waypoint,
+        reference_speed: float,
+        max_acceleration: float,
+        max_deceleration: float,
+        time_horizon: int,
+        dt: float,
+        min_dist_waypoint: float,
+        apply_error_models: bool,
         logger: Type[Logger] = PrintLogger,
         max_dist_corner_smoothing: float = 0.1,
         waypoints: Optional[np.ndarray] = None,
         localization_position_std: Optional[float] = None,
         localization_orientation_std: Optional[float] = None,
-        longitudinal_error_rate_model: Optional[ErrorModel] = None,
+        longitudinal_error_rate_model: Optional[ErrorModelWithStdScaleFunc] = None,
         lateral_error_model: Optional[ErrorModel] = None,
         orientation_error_model: Optional[ErrorModel] = None,
         z_values_configuration: Optional[ZValuesConfiguration] = None,
@@ -107,15 +108,21 @@ class Planner:
 
         self.goal_reached = False
 
-        self.loc_position_std = localization_position_std
-        self.loc_orientation_std = localization_orientation_std
-        self.long_dt_error_model = longitudinal_error_rate_model
-        self.lat_error_model = lateral_error_model
-        self.orient_error_model = orientation_error_model
-        self.z_values_configuration = z_values_configuration
-        if self.z_values_configuration is not None:
+        self.apply_error_models = apply_error_models
+        if self.apply_error_models:
+            assert localization_position_std is not None
+            self.loc_position_std = localization_position_std
+            assert localization_orientation_std is not None
+            self.loc_orientation_std = localization_orientation_std
+            assert longitudinal_error_rate_model is not None
+            self.long_error_rate_model = longitudinal_error_rate_model
+            assert lateral_error_model is not None
+            self.lat_error_model = lateral_error_model
+            assert orientation_error_model is not None
+            self.orient_error_model = orientation_error_model
+            assert z_values_configuration is not None
             assert all(
-                k in self.z_values_configuration
+                k in z_values_configuration
                 for k in [
                     "localization_position",
                     "localization_orientation",
@@ -124,6 +131,7 @@ class Planner:
                     "trajectory_orientation",
                 ]
             ), "The z-value is not defined for all the errors."
+            self.z_values = z_values_configuration
 
     @property
     def waypoints(self) -> npt.NDArray[npt.Shape["N, 2"], npt.Float]:
@@ -361,12 +369,22 @@ class Planner:
         self.goal_waypoint_idx = idx_before + 1
 
         self.waypoints = np.vstack(
-            (
-                center_vertices[: idx_before + 1],
-                [self.goal_point],
-                center_vertices[idx_before + 1 :],
-            )
+            (center_vertices[: idx_before + 1], [self.goal_point], center_vertices[idx_before + 1 :])
         )
+        # determine the smallest radius
+        diff_waypoints = np.diff(self.waypoints, axis=0)
+        orient_bw_waypoints = np.arctan2(*diff_waypoints.T[::-1])
+        orient_diff = np.abs((np.diff(orient_bw_waypoints) + np.pi) % (2 * np.pi) - np.pi)  # orient. changes in points
+
+        dists_bw_waypoints = np.hypot(*diff_waypoints.T)
+        dists_to_corner = np.minimum(
+            dists_bw_waypoints[:-1] / 2,
+            dists_bw_waypoints[1:] / 2,
+            np.full(len(dists_bw_waypoints) - 1, self.max_dist_corner_smoothing),
+        )  # smallest distance to the corner
+        radii = dists_to_corner * np.tan((np.pi - orient_diff) / 2)
+        self.max_curvature_waypoints = 1 / np.min(radii)
+        self.logger.info(f"smallest radius = {np.min(radii)} and biggest curvature = {self.max_curvature_waypoints}")
 
     def update_passed_waypoints(self) -> None:
         for waypoint in self.waypoints[self.passed_waypoints :]:
@@ -610,18 +628,39 @@ class Planner:
                 - Lateral trajectory error [m]
                 - Orientation trajectory error [m]
         """
+        if not self.apply_error_models:
+            return (0.0, 0.0, 0.0, 0.0, 0.0)
         if velocity_profile.ndim == 2:  # range of velocities
             velocity_profile = velocity_profile.mean(axis=1)
+        acceleration_profile = np.diff(np.insert(velocity_profile, 0, self.initial_state.velocity)) / self.dt
 
-        loc_pos_error = 0.0
-        loc_orient_error = 0.0
-        traj_long_error = 0.0
-        traj_lat_error = 0.0
-        traj_orient_error = 0.0
-        # return (
-        #     self.localization_position_error * localization_stds,
-        #     self.localization_orientation_error * localization_stds,
-        # )
+        # the localization position and orientation error are scalar
+        loc_pos_error = self.loc_position_std * self.z_values["localization_position"]  # type: ignore
+        loc_orient_error = self.loc_orientation_std * self.z_values["localization_orientation"]  # type: ignore
+
+        # the trajectory longitudinal error rate needs to be integrated
+        acc_vel_params = np.vstack((acceleration_profile, velocity_profile)).T
+        dt_model = self.long_error_rate_model.model_info.get("dt", 1 / 30)  # TODO: make sure the model has this value
+        long_rate_mean, long_rate_std = self.long_error_rate_model.get_mean_std(
+            acc_vel_params, curvature=self.max_curvature_waypoints
+        )
+        mask_zero_vel = np.abs(velocity_profile) < 1e-6
+        long_rate_mean[mask_zero_vel], long_rate_std[mask_zero_vel] = 0., 0.
+        # scale the std to account for a different rate (interval for the differentiation/integration)
+        long_rate_std_scaled = np.sqrt(dt_model / self.dt) * long_rate_std
+        long_mean = np.cumsum(long_rate_mean * self.dt)
+        long_std = np.sqrt(np.cumsum(long_rate_std_scaled**2 * self.dt**2))
+        traj_long_error_lower = long_mean - self.z_values["trajectory_longitudinal_rate"] * long_std
+        traj_long_error_upper = long_mean + self.z_values["trajectory_longitudinal_rate"] * long_std
+        traj_long_error = np.vstack((traj_long_error_lower, traj_long_error_upper)).T
+
+        # the trajectory lateral and orientation error
+        curv_vel_params = np.vstack((np.full_like(velocity_profile, self.max_curvature_waypoints), velocity_profile)).T
+        traj_lat_error = self.lat_error_model(curv_vel_params, stds_margin=self.z_values["trajectory_lateral"])
+        traj_orient_error = self.orient_error_model(curv_vel_params, stds_margin=self.z_values["trajectory_orientation"])
+
+        # self.logger.info(f"{velocity_profile=}")
+        self.logger.info(f"{loc_pos_error=} {loc_orient_error=} {traj_long_error[:, 0].min()=} {traj_long_error[:, 1].max()=} {traj_lat_error.max()=} {traj_orient_error.max()=}")
         return (
             loc_pos_error,
             loc_orient_error,
@@ -699,17 +738,14 @@ class Planner:
 
         # Calculate the polygons representing the occupancies for the ranges of distance along the centerline of the
         #  path which represents the occupancy at each time step
+        xy_ths_all_times = self.get_xy_ths_for_range(
+            dist_time_min, dist_time_max, self.dist_along_points, self.orient_bw_points, self.waypoints_w_ego_pos
+        )
         occupancies = []
-        for idx, xy_ths in enumerate(
-            self.get_xy_ths_for_range(
-                dist_time_min,
-                dist_time_max,
-                self.dist_along_points,
-                self.orient_bw_points,
-                self.waypoints_w_ego_pos,
-            )
+        for idx, (xy_ths, left_width, right_width) in enumerate(
+            zip(xy_ths_all_times, width_offset_left, width_offset_right)
         ):
-            polygon = self.xy_ths_to_polygon(xy_ths, left_width=width_offset_left, right_width=width_offset_right)
+            polygon = self.xy_ths_to_polygon(xy_ths, left_width=left_width, right_width=right_width)
             occupancies.append(Occupancy(idx + 1 + self.initial_state.time_step, polygon))  # type: ignore
 
         return SetBasedPrediction(self.initial_state.time_step, occupancies)  # type: ignore

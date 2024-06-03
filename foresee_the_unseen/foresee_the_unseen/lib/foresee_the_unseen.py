@@ -40,11 +40,13 @@ from foresee_the_unseen.lib.helper_functions import (
     create_log_directory,
     recursive_getitem,
 )
-import foresee_the_unseen.lib.error_model as error_model # to load the pickled error models
+import foresee_the_unseen.lib.error_model as error_model  # to load the pickled error models
 import sys
-sys.modules['error_model'] = error_model
+
+sys.modules["error_model"] = error_model
 
 from error_model import ErrorModel, LongErrorRateScaleFunction, ErrorModelWithStdScaleFunc
+
 
 class NoUpdatePossible(Exception):
     """The position is not on a lane."""
@@ -108,6 +110,7 @@ class ForeseeTheUnseen:
                 filepath = os.path.join(self.error_models_dir, "long_dt_error_model.pickle")
                 with open(filepath, "rb") as f:
                     long_dt_error_model = pickle.load(f)
+                long_dt_error_model.bounds_error = False
                 self.logger_info(f"`Trajectory Longitudinal error rate model` loaded from {filepath} ")
             except FileNotFoundError:
                 self.logger_warn(f"No `Trajectory Longitudinal error rate model` found at {filepath}")
@@ -116,6 +119,7 @@ class ForeseeTheUnseen:
                 filepath = os.path.join(self.error_models_dir, "lat_error_model.pickle")
                 with open(filepath, "rb") as f:
                     lat_error_model = pickle.load(f)
+                lat_error_model.bounds_error = False
                 self.logger_info(f"`Lateral error model` loaded from {filepath} ")
             except FileNotFoundError:
                 self.logger_warn(f"No `Lateral error model` found at {filepath}")
@@ -125,6 +129,7 @@ class ForeseeTheUnseen:
                 filepath = os.path.join(self.error_models_dir, "orient_error_model.pickle")
                 with open(filepath, "rb") as f:
                     orient_error_model = pickle.load(f)
+                orient_error_model.bounds_error = False
                 self.logger_info(f"`Orientation error model` loaded from {filepath} ")
             except FileNotFoundError:
                 self.logger_warn(f"No `Orientation error model` found at {filepath}")
@@ -179,16 +184,21 @@ class ForeseeTheUnseen:
             min_dist_waypoint=self.configuration["minimum_distance_waypoint"],
             logger=self.logger,
             max_dist_corner_smoothing=self.configuration["max_dist_corner_smoothing"],
+            apply_error_models=self.configuration["apply_error_models"],
             localization_position_std=recursive_getitem(
-                self.configuration, ["localization_standard_deviations", "position"], default=None,
+                self.configuration,
+                ["localization_standard_deviations", "position"],
+                default=None,
             ),
             localization_orientation_std=recursive_getitem(
-                self.configuration, ["localization_standard_deviations", "orientation"], default=None,
+                self.configuration,
+                ["localization_standard_deviations", "orientation"],
+                default=None,
             ),
             longitudinal_error_rate_model=long_dt_error_model,
             lateral_error_model=lat_error_model,
             orientation_error_model=orient_error_model,
-            z_values_configuration=self.configuration.get("z_values_planner", None)
+            z_values_configuration=self.configuration.get("z_values_planner", None),
         )
         self.logger.info("commonroad scenario initialized")
 
