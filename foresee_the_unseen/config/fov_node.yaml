@@ -11,6 +11,11 @@ fov_node:
     do_filter_scan: False
     # CW convex polygon [x1, y1, x2, y2, ...] in the fov frame
     environment_boundary: [0., 2.5, 5., 2.5, 5., -3., 0., -3.]
+    subsample_rate: 5
     rotating_direction: CW
     view_range: 5.
-    error_models_directory: some/path/to/the/error/model
+
+    apply_errors_models: True
+    # error_models_directory: some/path/to/the/error/model
+    range_stds_margin: 2.
+    angle_stds_margin: 2.

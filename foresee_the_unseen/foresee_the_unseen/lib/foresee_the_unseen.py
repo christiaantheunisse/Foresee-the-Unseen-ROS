@@ -40,12 +40,11 @@ from foresee_the_unseen.lib.helper_functions import (
     create_log_directory,
     recursive_getitem,
 )
-import foresee_the_unseen.lib.error_model as error_model  # to load the pickled error models
+
+# to load the pickled error models
+import foresee_the_unseen.lib.error_model as error_model
 import sys
-
 sys.modules["error_model"] = error_model
-
-from error_model import ErrorModel, LongErrorRateScaleFunction, ErrorModelWithStdScaleFunc
 
 
 class NoUpdatePossible(Exception):
@@ -76,7 +75,7 @@ class ForeseeTheUnseen:
         self.road_xml = road_xml
         self.logger = logger
         self.frequency = frequency
-        self.throttle_duration = 3  # set the throttle duration for the logging when used with ROS
+        self.throttle_duration = None  # set the throttle duration for the logging when used with ROS
         self.do_track_exec_time = False
 
         if self.logger is not None:
@@ -112,6 +111,7 @@ class ForeseeTheUnseen:
                     long_dt_error_model = pickle.load(f)
                 long_dt_error_model.bounds_error = False
                 self.logger_info(f"`Trajectory Longitudinal error rate model` loaded from {filepath} ")
+                self.logger_info(str(long_dt_error_model))
             except FileNotFoundError:
                 self.logger_warn(f"No `Trajectory Longitudinal error rate model` found at {filepath}")
                 long_dt_error_model = None
@@ -121,6 +121,7 @@ class ForeseeTheUnseen:
                     lat_error_model = pickle.load(f)
                 lat_error_model.bounds_error = False
                 self.logger_info(f"`Lateral error model` loaded from {filepath} ")
+                self.logger_info(str(lat_error_model))
             except FileNotFoundError:
                 self.logger_warn(f"No `Lateral error model` found at {filepath}")
                 lat_error_model = None
@@ -131,6 +132,7 @@ class ForeseeTheUnseen:
                     orient_error_model = pickle.load(f)
                 orient_error_model.bounds_error = False
                 self.logger_info(f"`Orientation error model` loaded from {filepath} ")
+                self.logger_info(str(orient_error_model))
             except FileNotFoundError:
                 self.logger_warn(f"No `Orientation error model` found at {filepath}")
                 orient_error_model = None

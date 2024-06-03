@@ -645,7 +645,7 @@ class Planner:
             acc_vel_params, curvature=self.max_curvature_waypoints
         )
         mask_zero_vel = np.abs(velocity_profile) < 1e-6
-        long_rate_mean[mask_zero_vel], long_rate_std[mask_zero_vel] = 0., 0.
+        long_rate_mean[mask_zero_vel], long_rate_std[mask_zero_vel] = 0.0, 0.0
         # scale the std to account for a different rate (interval for the differentiation/integration)
         long_rate_std_scaled = np.sqrt(dt_model / self.dt) * long_rate_std
         long_mean = np.cumsum(long_rate_mean * self.dt)
@@ -657,10 +657,10 @@ class Planner:
         # the trajectory lateral and orientation error
         curv_vel_params = np.vstack((np.full_like(velocity_profile, self.max_curvature_waypoints), velocity_profile)).T
         traj_lat_error = self.lat_error_model(curv_vel_params, stds_margin=self.z_values["trajectory_lateral"])
-        traj_orient_error = self.orient_error_model(curv_vel_params, stds_margin=self.z_values["trajectory_orientation"])
+        traj_orient_error = self.orient_error_model(
+            curv_vel_params, stds_margin=self.z_values["trajectory_orientation"]
+        )
 
-        # self.logger.info(f"{velocity_profile=}")
-        self.logger.info(f"{loc_pos_error=} {loc_orient_error=} {traj_long_error[:, 0].min()=} {traj_long_error[:, 1].max()=} {traj_lat_error.max()=} {traj_orient_error.max()=}")
         return (
             loc_pos_error,
             loc_orient_error,

@@ -8,6 +8,7 @@ import numpy as np
 import time
 import copy
 import math
+import pickle
 from scipy.spatial.transform import Rotation as R
 from scipy.interpolate import interp1d
 from typing import Tuple, List, Union, Optional, Literal, get_args
@@ -25,9 +26,14 @@ from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 from tf2_geometry_msgs import PolygonStamped  # necessary to enable Buffer.transform
 
+from shapely.geometry import Polygon as ShapelyPolygon
+
 from foresee_the_unseen.lib.helper_functions import matrix_from_transform, matrices_from_cw_cvx_polygon
 
-from shapely.geometry import Polygon as ShapelyPolygon
+# to load the pickled error models
+import foresee_the_unseen.lib.error_model as error_model
+import sys
+sys.modules["error_model"] = error_model
 
 
 def yaw_from_quaternion(quaternion: Quaternion):
@@ -189,9 +195,9 @@ class FOVNode(Node):
         self.declare_parameter("do_visualize", True)
         self.declare_parameter("do_filter_scan", False)
 
+        self.declare_parameter("subsample_rate", 1)
         self.declare_parameter("rotating_direction", "CW")
         self.declare_parameter("view_range", 5.0)
-        self.declare_parameter("error_models_directory", "path/to/error_models")
         self.declare_parameter(
             "environment_boundary",
             [0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0],
@@ -200,6 +206,11 @@ class FOVNode(Node):
                 " robot. The other points are removed and therefore unseen to the robot. [x1, y1, x2, y2, ...]"
             ),
         )
+        self.declare_parameter("apply_error_models", False)
+        self.declare_parameter("error_models_directory", "none")
+        self.declare_parameter("range_stds_margin", 2.)
+        self.declare_parameter("angle_stds_margin", 2.)
+
         self.fov_frame = self.get_parameter("fov_frame").get_parameter_value().string_value
 
         self.scan_topic = self.get_parameter("scan_topic").get_parameter_value().string_value
@@ -211,15 +222,27 @@ class FOVNode(Node):
         self.do_visualize = self.get_parameter("do_visualize").get_parameter_value().bool_value
         self.do_filter_scan = self.get_parameter("do_filter_scan").get_parameter_value().bool_value
 
+        subsample_rate = self.get_parameter("subsample_rate").get_parameter_value().integer_value
+        self.subsample_rate = None if subsample_rate <= 1 else int(subsample_rate)
         self.rotating_direction = self.get_parameter("rotating_direction").get_parameter_value().string_value
         assert self.rotating_direction in get_args(
             Direction
         ), f"`rotating_direction` should have one of the following values: {get_args(Direction)}"
         self.view_range = self.get_parameter("view_range").get_parameter_value().double_value
-        self.error_models_dir = self.get_parameter("error_models_directory").get_parameter_value().string_value
         self.env_polygon = np.array(
             self.get_parameter("environment_boundary").get_parameter_value().double_array_value
         ).reshape(-1, 2)
+
+        do_apply_error_models = self.get_parameter("apply_error_models").get_parameter_value().bool_value
+        self.error_models_dir = self.get_parameter("error_models_directory").get_parameter_value().string_value
+        error_model_dir_exists = os.path.exists(self.error_models_dir)
+        self.do_apply_error_models = True if do_apply_error_models and error_model_dir_exists else False
+        if do_apply_error_models and not error_model_dir_exists:
+            self.get_logger().error(
+                f"The error model directory does not exist: {self.error_models_dir}. Error models are not applied"
+            )
+        self.range_stds_margin = self.get_parameter("range_stds_margin").get_parameter_value().double_value
+        self.angle_stds_margin = self.get_parameter("angle_stds_margin").get_parameter_value().double_value
 
         assert self.rotating_direction == "CW", "The node is specificially made for a clockwise rotating node."
 
@@ -238,38 +261,40 @@ class FOVNode(Node):
         self.laser_filter_matrices = matrices_from_cw_cvx_polygon(self.env_polygon)
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
-        # self.subsample_rate: Optional[int] = None
-        self.subsample_rate: Optional[int] = 20
 
         self.scan_processed: bool = True
         self.last_scan: Optional[LaserScan] = None
         self.current_scan: Optional[LaserScan] = None
 
-        # TODO: load the right error models
-        # define some dummy error models:
-        #   Lidar error models are only dependent on the measured range, so 1D
-        # angle error model
-        no_samples = 1000
-        input_data_angle_xs = np.linspace(0.15, 6, no_samples)  # the ranges
-        input_data_angle_means = np.linspace(-0.005, -0.015, no_samples)
-        input_data_angle_stds = np.linspace(0.005, 0.005, no_samples)
-        self.angle_error_model_mean = interp1d(input_data_angle_xs, input_data_angle_means, fill_value="extrapolate")
-        self.angle_error_model_std = interp1d(input_data_angle_xs, input_data_angle_stds, fill_value="extrapolate")
-        # range error model
-        no_samples = 1000
-        input_data_range_xs = np.linspace(0.15, 6, no_samples)  # the ranges
-        input_data_range_means = np.linspace(0.002, 0.08, no_samples)
-        input_data_range_stds = np.linspace(0.02, 0.06, no_samples)
-        self.range_error_model_mean = interp1d(input_data_range_xs, input_data_range_means, fill_value="extrapolate")
-        self.range_error_model_std = interp1d(input_data_range_xs, input_data_range_stds, fill_value="extrapolate")
-
-        self.counter = 0
+        try:
+            filepath = os.path.join(self.error_models_dir, "lidar_range_error_model.pickle")
+            with open(filepath, "rb") as f:
+                range_error_model = pickle.load(f)
+            self.range_error_model = range_error_model.get_model_with_lower_dimension(
+                mean_method="worst case", std_method="worst case", dim_to_rm=1
+            )
+            self.range_error_model.bounds_error = False
+            self.get_logger().info(f"`Lidar Range error model` loaded from {filepath} and dimension 1 is removed.")
+            self.get_logger().info(str(self.range_error_model))
+        except FileNotFoundError:
+            self.get_logger().warn(f"No `Lidar Range error model` found at {filepath}")
+        try:
+            filepath = os.path.join(self.error_models_dir, "lidar_angle_error_model.pickle")
+            with open(filepath, "rb") as f:
+                angle_error_model = pickle.load(f)
+            self.angle_error_model = angle_error_model.get_model_with_lower_dimension(
+                mean_method="worst case", std_method="worst case", dim_to_rm=1
+            )
+            self.angle_error_model.bounds_error = False
+            self.get_logger().info(f"`Lidar Range error model` loaded from {filepath} and dimension 1 is removed.")
+            self.get_logger().info(str(self.angle_error_model))
+        except FileNotFoundError:
+            self.get_logger().warn(f"No `Lidar Range error model` found at {filepath}")
 
     def scan_callback(self, msg: LaserScan) -> None:
         self.last_scan = self.current_scan
         self.current_scan = msg
         self.scan_processed = False
-        self.counter += 1
 
     def process_scan(self) -> None:
         """The scan callback"""
@@ -287,15 +312,18 @@ class FOVNode(Node):
         exec_start_time = time.time()
         try:
             new_scan = self.merge_scans(self.last_scan, self.current_scan)
-            if len(new_scan.ranges) <= 1: # deal with an empty scan
+            if len(new_scan.ranges) <= 1:  # deal with an empty scan
                 self.scan_processed = True
                 return
-            
+
             filtered_scan = self.filter_laserscan(new_scan) if self.do_filter_scan else new_scan
             ranges, angles, mask_invalid = self.laserscan_to_ranges_angles(
                 filtered_scan, self.view_range, self.subsample_rate
             )
-            ranges_corr, angles_corr = self.apply_error_model(ranges, angles, mask_invalid, 2)
+            if self.do_apply_error_models:
+                ranges_corr, angles_corr = self.apply_error_model(ranges, angles, mask_invalid)
+            else:
+                ranges_corr, angles_corr = ranges, angles
             fov_points, time_order = self.make_fov(ranges_corr, angles_corr, mask_invalid)
 
             # Deskew the points defining the FOV and publish the FOV
@@ -445,7 +473,7 @@ class FOVNode(Node):
             return concat_scan
 
     def apply_error_model(
-        self, ranges: np.ndarray, angles: np.ndarray, mask_invalid: np.ndarray, stds_margin: float
+        self, ranges: np.ndarray, angles: np.ndarray, mask_invalid: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Apply the error model on the measured ranges and angles:
             range error = an deviation from the true range of the measured range value
@@ -456,11 +484,9 @@ class FOVNode(Node):
             Map the measured range at each angle over a sweep of angles in both angular directions by the error size.
             Choose the closest range at each angle from the overlapping sweeps.
         """
-        range_errors = self.range_error_model_mean(ranges) + stds_margin * self.range_error_model_std(ranges)
-        # angle error should be strictly positive: negative error means that obstacles are lost
-        angle_errors = np.minimum(
-            self.angle_error_model_mean(ranges) + stds_margin * self.angle_error_model_std(ranges), 0
-        )
+        range_errors = self.range_error_model(ranges, stds_margin=self.range_stds_margin)
+        angle_errors = self.angle_error_model(ranges, stds_margin=self.angle_stds_margin)
+
         ranges = ranges - range_errors
         angle_increment = np.abs(angles[1] - angles[0])
         angle_error_steps = np.ceil(angle_errors / angle_increment).astype(np.int_)
