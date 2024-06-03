@@ -105,6 +105,7 @@ class PlannerNode(Node):
             ),
         )
         self.declare_parameter("log_directory", "none")
+        self.declare_parameter("error_models_directory", "none")
 
         self.declare_parameter("ego_vehicle_size", [0.3, 0.18, 0.12])  # L x W x H [m]
         self.declare_parameter("ego_vehicle_offset", [0.0, 0.0, 0.06])  # L x W x H [m]
@@ -129,6 +130,9 @@ class PlannerNode(Node):
         self.road_xml = self.get_parameter("road_xml").get_parameter_value().string_value
         self.config_yaml = self.get_parameter("foresee_the_unseen_yaml").get_parameter_value().string_value
         self.log_root_directory = self.get_parameter("log_directory").get_parameter_value().string_value
+        self.log_root_directory = None if self.log_root_directory == "none" else self.log_root_directory
+        self.error_models_directory = self.get_parameter("error_models_directory").get_parameter_value().string_value
+        self.error_models_directory = None if self.error_models_directory == "none" else self.error_models_directory
         self.ego_vehicle_size = self.get_parameter("ego_vehicle_size").get_parameter_value().double_array_value
         self.ego_vehicle_offset = self.get_parameter("ego_vehicle_offset").get_parameter_value().double_array_value
         self.frequency = self.get_parameter("planner_frequency").get_parameter_value().double_value
@@ -164,8 +168,9 @@ class PlannerNode(Node):
             config_yaml=self.config_yaml,
             road_xml=self.road_xml,
             frequency=self.frequency,
-            logger=self.get_logger(),
-            log_dir=self.log_root_directory if self.log_root_directory != "none" else None,
+            logger=self.get_logger(),  # type: ignore -- apply ducktyping principle for the logger
+            log_dir=self.log_root_directory,
+            error_models_dir=self.error_models_directory,
         )
 
     # CALLBACKS

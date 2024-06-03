@@ -21,10 +21,11 @@ setup(
             glob(os.path.join("launch", "partial_launches", "*launch.[pxy][yma]*")),
         ),
         (os.path.join("share", package_name, "config"), glob(os.path.join("config/*.yaml"))),
+        (os.path.join("share", package_name, "resource"), glob(os.path.join("resource", "*.yaml"))),
+        (os.path.join("share", package_name, "resource"), glob(os.path.join("resource", "*.xml"))),
         (
-            os.path.join("share", package_name, "resource"),
-            # exlude the package name file to prevent errors thrown by colcon build
-            [f for f in glob(os.path.join("resource/*")) if f != os.path.join("resource", package_name)],
+            os.path.join("share", package_name, "resource", "error_models"),
+            glob(os.path.join("resource", "error_models", "*.pickle")),
         ),
     ],
     install_requires=["setuptools"],

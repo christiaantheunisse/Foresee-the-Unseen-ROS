@@ -38,8 +38,13 @@ from foresee_the_unseen.lib.utilities import add_no_stop_zone, Logger, PrintLogg
 from foresee_the_unseen.lib.helper_functions import (
     euler_from_quaternion,
     create_log_directory,
+    recursive_getitem,
 )
+import foresee_the_unseen.lib.error_model as error_model # to load the pickled error models
+import sys
+sys.modules['error_model'] = error_model
 
+from error_model import ErrorModel, LongErrorRateScaleFunction, ErrorModelWithStdScaleFunc
 
 class NoUpdatePossible(Exception):
     """The position is not on a lane."""
@@ -63,6 +68,7 @@ class ForeseeTheUnseen:
         frequency: float,
         logger: Logger = PrintLogger(),
         log_dir: Optional[str] = None,
+        error_models_dir: Optional[str] = None,
     ):
         self.config_yaml = config_yaml
         self.road_xml = road_xml
@@ -95,6 +101,36 @@ class ForeseeTheUnseen:
             filename = os.path.join(self.log_dir, "settings.pickle")
             with open(filename, "wb") as handle:
                 pickle.dump(settings_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+        self.error_models_dir = error_models_dir
+        if self.error_models_dir is not None:
+            try:
+                filepath = os.path.join(self.error_models_dir, "long_dt_error_model.pickle")
+                with open(filepath, "rb") as f:
+                    long_dt_error_model = pickle.load(f)
+                self.logger_info(f"`Trajectory Longitudinal error rate model` loaded from {filepath} ")
+            except FileNotFoundError:
+                self.logger_warn(f"No `Trajectory Longitudinal error rate model` found at {filepath}")
+                long_dt_error_model = None
+            try:
+                filepath = os.path.join(self.error_models_dir, "lat_error_model.pickle")
+                with open(filepath, "rb") as f:
+                    lat_error_model = pickle.load(f)
+                self.logger_info(f"`Lateral error model` loaded from {filepath} ")
+            except FileNotFoundError:
+                self.logger_warn(f"No `Lateral error model` found at {filepath}")
+                lat_error_model = None
+
+            try:
+                filepath = os.path.join(self.error_models_dir, "orient_error_model.pickle")
+                with open(filepath, "rb") as f:
+                    orient_error_model = pickle.load(f)
+                self.logger_info(f"`Orientation error model` loaded from {filepath} ")
+            except FileNotFoundError:
+                self.logger_warn(f"No `Orientation error model` found at {filepath}")
+                orient_error_model = None
+        else:
+            long_dt_error_model, lat_error_model, orient_error_model = None, None, None
 
         # Setup the objects necessary for the planner
         ego_shape = Rectangle(
@@ -143,6 +179,16 @@ class ForeseeTheUnseen:
             min_dist_waypoint=self.configuration["minimum_distance_waypoint"],
             logger=self.logger,
             max_dist_corner_smoothing=self.configuration["max_dist_corner_smoothing"],
+            localization_position_std=recursive_getitem(
+                self.configuration, ["localization_standard_deviations", "position"], default=None,
+            ),
+            localization_orientation_std=recursive_getitem(
+                self.configuration, ["localization_standard_deviations", "orientation"], default=None,
+            ),
+            longitudinal_error_rate_model=long_dt_error_model,
+            lateral_error_model=lat_error_model,
+            orientation_error_model=orient_error_model,
+            z_values_configuration=self.configuration.get("z_values_planner", None)
         )
         self.logger.info("commonroad scenario initialized")
 

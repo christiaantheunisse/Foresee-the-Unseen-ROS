@@ -63,6 +63,9 @@ def generate_launch_description():
                 "road_xml": PathJoinSubstitution(
                     [FindPackageShare("foresee_the_unseen"), "resource", "road_structure_15_reduced_points.xml"]
                 ),
+                "error_models_directory": PathJoinSubstitution(
+                    [FindPackageShare("foresee_the_unseen"), "resource", "error_models"]
+                ),
                 "log_directory": PathJoinSubstitution(log_files_dir),
             },
         ],

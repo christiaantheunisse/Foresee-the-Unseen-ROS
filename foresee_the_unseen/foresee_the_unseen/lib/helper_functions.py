@@ -6,6 +6,9 @@ import math
 from collections import namedtuple
 import os
 import time
+from typing import Dict, Iterable, Any
+from functools import reduce
+from operator import getitem
 
 
 def polygons_from_road_xml(xml_file: str, offset: np.ndarray = np.array([0.0, 0.0])):
@@ -138,6 +141,26 @@ def create_log_directory(base_dir: str):
         return log_dir
     else:
         raise TypeError(f"The path specified for the log files does not exist: {base_dir}")
+
+
+def recursive_getitem(dictionary: Dict, keys: Iterable, **kwargs) -> Any:
+    """Recursively acces a nested dictionary. Should work for any object that implements __getitem__.
+
+    Arguments:
+        default -- if given, default value to return
+
+    Returns:
+        obtained value or the default value if defined
+
+    Raises:
+        KeyError -- this error is just passed forward from the dictionary
+    """
+    try:
+        return reduce(getitem, keys, dictionary)
+    except KeyError:
+        if "default" in kwargs:
+            return kwargs["default"]
+        raise
 
 
 # if __name__ =="__main__":

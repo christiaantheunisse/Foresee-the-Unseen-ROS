@@ -20,12 +20,23 @@ from commonroad_dc.collision.collision_detection.pycrcc_collision_dispatch impor
 from commonroad.common.util import Interval
 
 from foresee_the_unseen.lib.utilities import Lanelet2ShapelyPolygon, Logger, PrintLogger
+from foresee_the_unseen.lib.error_model import ErrorModel
 from shapely.geometry import Point
 from shapely.geometry import LineString
 
 Scalar = Union[float, int]
 PlanningResult = TypedDict(
     "PlanningResult", {"trajectory": Optional[Trajectory], "prediction": Optional[SetBasedPrediction]}
+)
+ZValuesConfiguration = TypedDict(
+    "ZValuesConfiguration",
+    {
+        "localization_position": float,
+        "localization_orientation": float,
+        "trajectory_longitudinal_rate": float,
+        "trajectory_lateral": float,
+        "trajectory_orientation": float,
+    },
 )
 
 
@@ -66,12 +77,20 @@ class Planner:
         logger: Type[Logger] = PrintLogger,
         max_dist_corner_smoothing: float = 0.1,
         waypoints: Optional[np.ndarray] = None,
+        localization_position_std: Optional[float] = None,
+        localization_orientation_std: Optional[float] = None,
+        longitudinal_error_rate_model: Optional[ErrorModel] = None,
+        lateral_error_model: Optional[ErrorModel] = None,
+        orientation_error_model: Optional[ErrorModel] = None,
+        z_values_configuration: Optional[ZValuesConfiguration] = None,
     ):
         self.lanelet_network = lanelet_network
         self.initial_state = initial_state
         self.goal_point = goal_point
         self.vehicle_size = vehicle_size
         self.vehicle_center_offset = vehicle_center_offset
+        self.vehicle_boundaries = self.get_vehicle_boundaries(self.vehicle_size, self.vehicle_center_offset)
+
         self.reference_speed = reference_speed
         self.max_acc = max_acceleration
         self.max_dec = np.abs(max_deceleration)
@@ -87,6 +106,24 @@ class Planner:
         self.max_dist_corner_smoothing = max_dist_corner_smoothing
 
         self.goal_reached = False
+
+        self.loc_position_std = localization_position_std
+        self.loc_orientation_std = localization_orientation_std
+        self.long_dt_error_model = longitudinal_error_rate_model
+        self.lat_error_model = lateral_error_model
+        self.orient_error_model = orientation_error_model
+        self.z_values_configuration = z_values_configuration
+        if self.z_values_configuration is not None:
+            assert all(
+                k in self.z_values_configuration
+                for k in [
+                    "localization_position",
+                    "localization_orientation",
+                    "trajectory_longitudinal_rate",
+                    "trajectory_lateral",
+                    "trajectory_orientation",
+                ]
+            ), "The z-value is not defined for all the errors."
 
     @property
     def waypoints(self) -> npt.NDArray[npt.Shape["N, 2"], npt.Float]:
@@ -135,6 +172,31 @@ class Planner:
             self._set_waypoints_variables()
         return self._orient_bw_points  # type: ignore
 
+    @staticmethod
+    def get_vehicle_boundaries(
+        vehicle_size: Tuple[float, float], vehicle_center_offset: Tuple[float, float]
+    ) -> Tuple[float, float, float, float]:
+        """
+        Arguments:
+            vehicle_size -- Tuple of: (length of vehicle, widht of vehicle) [m]
+            vehicle_center_offset -- Distance the rectangle shape has to move from the actual center point of the robot
+                to fit the robot. Positive values if the actual center point is more on the back and the left side of
+                the robot: (distance in length direction, distance in width direction)
+
+        Returns:
+            Tuple of distances from the centerpoint of the robot to the boundaries for: (front, right, back, left) [m]
+
+        """
+        veh_front_l, veh_back_l = (
+            vehicle_size[0] / 2 + vehicle_center_offset[0],
+            vehicle_size[0] / 2 - vehicle_center_offset[0],
+        )
+        veh_left_w, veh_right_w = (
+            vehicle_size[1] / 2 - vehicle_center_offset[1],
+            vehicle_size[1] / 2 + vehicle_center_offset[1],
+        )
+        return (veh_front_l, veh_right_w, veh_back_l, veh_left_w)
+
     def _set_waypoints_variables(self) -> None:
         self._waypoints_w_ego_pos = np.insert(
             self.waypoints, self.passed_waypoints, self.initial_state.position, axis=0
@@ -172,17 +234,14 @@ class Planner:
 
         best_result_so_far: PlanningResult = {"trajectory": None, "prediction": None}
 
-        loc_pos_error = 0.0
-        loc_orient_error = 0.0
-        traj_long_error = 0.0
-        traj_lat_error = 0.0
-        traj_orient_error = 0.0
-
         velocity_profiles = self.generate_velocity_profiles()
         self.collision_checker = create_collision_checker(scenario)
 
         def check_velocity_profile(idx: int) -> bool:
             velocity_profile = velocity_profiles[idx]
+            loc_pos_error, loc_orient_error, traj_long_error, traj_lat_error, traj_orient_error = (
+                self.calc_errors_for_velocity_profile(velocity_profile)
+            )
             set_based_prediction = self.create_occupancy_set(
                 velocity_profile=velocity_profile,
                 loc_pos_error=loc_pos_error,
@@ -198,7 +257,7 @@ class Planner:
 
             return is_safe
 
-        # If the fastest velocity profiles -> try the others
+        # If not the fastest velocity profile -> try the others
         if not check_velocity_profile(0):
             # Try slowest velocity profile and subsequently the others by a branch-and-bound approach starting at the center
             check_velocity_profile(-1)
@@ -210,7 +269,7 @@ class Planner:
                 step_N /= 2
                 current_N -= step_N if check_velocity_profile(round(current_N) - 1) else -step_N
 
-        if best_result_so_far["prediction"] is not None and best_result_so_far["trajectory"]:
+        if best_result_so_far["prediction"] is not None and best_result_so_far["trajectory"] is not None:
             return best_result_so_far["trajectory"], best_result_so_far["prediction"]
         else:
             raise NoSafeTrajectoryFound
@@ -228,12 +287,8 @@ class Planner:
             v_diffs = velocity_profile_avg - np.insert(velocity_profile_avg[:-1], 0, init_velocity)
             accelerations = v_diffs / self.dt
 
-        # use the 'trapezoidal rule' for integrating the velocity
-        # TODO: trapezoidal integration rule
-        # velocity_extend = np.insert(velocity_profile, 0, self.initial_state.velocity)
-        # velocity_trapez = (velocity_extend[:-1] + velocity_extend[1:]) / 2
-        # dist = np.cumsum(velocity_trapez * self.dt)
-        dist = np.cumsum(velocity_profile_avg * self.dt)
+        # dist = np.cumsum(velocity_profile_avg * self.dt)
+        dist = self.trapezoidal_integration(np.insert(velocity_profile_avg, 0, self.initial_state.velocity), self.dt)
         x_coords = np.interp(dist, self.dist_along_points, self.waypoints_w_ego_pos[:, 0])
         y_coords = np.interp(dist, self.dist_along_points, self.waypoints_w_ego_pos[:, 1])
 
@@ -340,11 +395,11 @@ class Planner:
         assert velocity >= 0.0, f"velocity should be bigger than zero: {velocity=}"
         velocity_decs = velocity - max_dec * dt * np.arange(time_horizon)
 
-        # fastest possible velocity profile which is set below depending on the current velocity and the distance to
-        #  the goal
+        # Find the fastest possible velocity profile which is set below depending on the current velocity and the
+        #  distance to the goal
         acc_profile = np.full(time_horizon, -max_dec)
 
-        velocity = min(velocity, reference_speed) # FIXME: is mistake
+        velocity = min(velocity, reference_speed)  # FIXME: is mistake
 
         if velocity <= reference_speed:
             # maximum reachable velocity within the limited distance
@@ -523,23 +578,68 @@ class Planner:
             raise FlatOccupancy
         return Polygon(np.vstack((right_points, np.flip(left_points, axis=0))))
 
+    @staticmethod
+    def trapezoidal_integration(
+        velocity_profile: npt.NDArray[npt.Shape["N"], npt.Float], dt: float
+    ) -> npt.NDArray[npt.Shape["M"], npt.Float]:  # M = N - 1
+        """Integrate a velocity profile with the trapezoidal rule. Velocity profile should included the current
+        velocity. Return distances list is one element smaller."""
+        velocity_trapez = (velocity_profile[:-1] + velocity_profile[1:]) / 2
+        return np.cumsum(velocity_trapez * dt)
+
+    def calc_errors_for_velocity_profile(
+        self, velocity_profile: Union[npt.NDArray[npt.Shape["N"], npt.Float], npt.NDArray[npt.Shape["N, 2"], npt.Float]]
+    ) -> Tuple[
+        Union[float, npt.NDArray[npt.Shape["N"], npt.Float]],
+        Union[float, npt.NDArray[npt.Shape["N"], npt.Float]],
+        Union[float, npt.NDArray[npt.Shape["N, 2"], npt.Float]],
+        Union[float, npt.NDArray[npt.Shape["N"], npt.Float]],
+        Union[float, npt.NDArray[npt.Shape["N"], npt.Float]],
+    ]:
+        """Calculate the errors for a velocity profile. The localization errors depend on a worst case error on the
+         localization and are a parameter of the planner. The trajectory errors are calculated with the error models.
+
+        Arguments:
+            velocity_profile -- 1 or 2D array with velocities [m/s]
+
+        Returns:
+            Tuple with arrays with the same length of the velocity profile:
+                - Position error from the localization (the same in all directions) [m]
+                - Orientation error from the localization [rad]
+                - scalar or 2D array with a upper and lower bound on the longitudinal trajectory error [m]
+                - Lateral trajectory error [m]
+                - Orientation trajectory error [m]
+        """
+        if velocity_profile.ndim == 2:  # range of velocities
+            velocity_profile = velocity_profile.mean(axis=1)
+
+        loc_pos_error = 0.0
+        loc_orient_error = 0.0
+        traj_long_error = 0.0
+        traj_lat_error = 0.0
+        traj_orient_error = 0.0
+        # return (
+        #     self.localization_position_error * localization_stds,
+        #     self.localization_orientation_error * localization_stds,
+        # )
+        return (
+            loc_pos_error,
+            loc_orient_error,
+            traj_long_error,
+            traj_lat_error,
+            traj_orient_error,
+        )
+
     def create_occupancy_set(
         self,
-        velocity_profile: Union[
-            npt.NDArray[npt.Shape["N"], npt.Float],
-            npt.NDArray[npt.Shape["N, 2"], npt.Float],
-        ],
-        loc_pos_error: float = 0,
-        loc_orient_error: float = 0,
-        traj_long_error: float = 0,
-        traj_lat_error: float = 0,
-        traj_orient_error: float = 0,
+        velocity_profile: Union[npt.NDArray[npt.Shape["N"], npt.Float], npt.NDArray[npt.Shape["N, 2"], npt.Float]],
+        loc_pos_error: Union[float, npt.NDArray[npt.Shape["N"], npt.Float]],
+        loc_orient_error: Union[float, npt.NDArray[npt.Shape["N"], npt.Float]],
+        traj_long_error: Union[float, npt.NDArray[npt.Shape["N, 2"], npt.Float]],
+        traj_lat_error: Union[float, npt.NDArray[npt.Shape["N"], npt.Float]],
+        traj_orient_error: Union[float, npt.NDArray[npt.Shape["N"], npt.Float]],
     ) -> SetBasedPrediction:
-        """Custom class that generates a occupancy prediction for every timestep that accounts for uncertainty.
-
-        Important notes:
-            - First waypoint should be current position to account for deviation from the centerline
-            - Check somehow (maybe in hindsight) that the occupancies stay in its own lane.
+        """Function that generates a occupancy prediction for every timestep that accounts for uncertainty.
 
         Errors that are accounted for:
             - Localization error: position error and orientation error
@@ -550,51 +650,48 @@ class Planner:
             velocity_profile -- The velocity profile with a velocity or range of velocities for each point on the
                 horizon. [m/s]
             waypoints -- The waypoints along which to plan the trajectory [m]
-            loc_pos_error -- The magnitude of the error on the ego vehicle position to account for [m]
-            loc_orient_error -- The magnitude of the error on the ego vehicle orienation to account for [rad]
-            traj_long_error -- The magnitude of the tracking error of the trajectory in the longitudinal direction [m]
-            traj_lat_error -- The magnitude of the tracking error of the trajectory in the lateral direction [m]
-            traj_orient_error -- The magnitude of the orientation error of the trajectory in the lateral direction [m]
-            vehicle_size -- The vehicle dimension: (length, width) [m]
-            vehicle_center_offset -- distance the rectangle shape has to move from the actual center point of the robot to
-                fit the robot. So positive values if the actual center point is more on the back and the left side of the
-                robot.
+            loc_pos_error -- Maximum error in the ego vehicle's position estimation [m]
+            loc_orient_error -- Maximum error in ego vehicle's orientation estimation [rad]
+            traj_long_error -- Upper and lower bound of the longitudinal trajectory tracking error [m]
+            traj_lat_error -- Maximum lateral trajectory tracking error [m]
+            traj_orient_error -- Maximum orientation trajectory tracking error [rad]
 
         Returns:
-            An overapproximation of the possible occupancies for the given velocity profile
+            An list overapproximations of the possible occupancy for the given velocity profile at each timestep
         """
-        veh_front_l, veh_back_l = (
-            self.vehicle_size[0] / 2 + self.vehicle_center_offset[0],
-            self.vehicle_size[0] / 2 - self.vehicle_center_offset[0],
-        )
-        veh_left_w, veh_right_w = (
-            self.vehicle_size[1] / 2 - self.vehicle_center_offset[1],
-            self.vehicle_size[1] / 2 + self.vehicle_center_offset[1],
-        )
+        veh_front_l, veh_right_w, veh_back_l, veh_left_w = self.vehicle_boundaries
 
         # overapproximate added length and width because of the rotation errors
-        orient_error_l = np.sin(loc_orient_error + traj_orient_error) * max(veh_left_w, veh_right_w) / 2
-        orient_error_w = np.sin(loc_orient_error + traj_orient_error) * max(veh_front_l, veh_back_l) / 2
+        orient_error_l = np.sin(loc_orient_error + traj_orient_error) * max(veh_left_w, veh_right_w)
+        orient_error_w = np.sin(loc_orient_error + traj_orient_error) * max(veh_front_l, veh_back_l)
+
+        if isinstance(traj_long_error, float):
+            traj_long_error_min, traj_long_error_max = -traj_long_error, traj_long_error
+        elif isinstance(traj_long_error, np.ndarray):
+            traj_long_error_min, traj_long_error_max = traj_long_error.T
+        else:
+            raise TypeError
 
         # Calculate the range of reachable positions along the centerline of the path given the errors and (optionally)
         #  velocity range
         velocity_profile = np.maximum(velocity_profile, 0)
         if velocity_profile.ndim == 1:  # single velocities
-            # TODO: trapezoidal integration rule
-            vel_integr = np.cumsum(velocity_profile * self.dt)  # the distance along the centerline
-            dist_time_max = vel_integr + veh_front_l + loc_pos_error + traj_long_error + orient_error_l
-            dist_time_min = vel_integr - veh_back_l - loc_pos_error - traj_long_error + orient_error_l
+            v_profile_init_vel = np.insert(velocity_profile, 0, self.initial_state.velocity)  # type: ignore
+            vel_integr = self.trapezoidal_integration(v_profile_init_vel, self.dt)
+            # vel_integr = np.cumsum(velocity_profile * self.dt)  # the distance along the centerline
+            dist_time_max = vel_integr + veh_front_l + loc_pos_error + traj_long_error_max + orient_error_l
+            dist_time_min = vel_integr - veh_back_l - loc_pos_error + traj_long_error_min + orient_error_l
             width_offset_left = veh_left_w + loc_pos_error + traj_lat_error + orient_error_w
             width_offset_right = veh_right_w + loc_pos_error + traj_lat_error + orient_error_w
         elif velocity_profile.ndim == 2:  # range of velocities
-            # TODO: trapezoidal integration rule
-            # the distance along centerline for highest velocity
-            vel_integr_max = np.cumsum(velocity_profile[:, 1] * self.dt)
-            # TODO: trapezoidal integration rule
-            # the distance along centerline for lowest velocity
-            vel_integr_min = np.cumsum(velocity_profile[:, 0] * self.dt)
-            dist_time_max = vel_integr_max + veh_front_l + loc_pos_error + traj_long_error + orient_error_l
-            dist_time_min = vel_integr_min - veh_back_l - loc_pos_error - traj_long_error + orient_error_l
+            v_profile_max_init_vel = np.insert(velocity_profile[:, 1], 0, self.initial_state.velocity.end)  # type: ignore
+            vel_integr_max = self.trapezoidal_integration(v_profile_max_init_vel, self.dt)  # type: ignore
+            # vel_integr_max = np.cumsum(velocity_profile[:, 1] * self.dt)
+            v_profile_min_init_vel = np.insert(velocity_profile[:, 0], 0, self.initial_state.velocity.start)  # type: ignore
+            vel_integr_min = self.trapezoidal_integration(v_profile_min_init_vel, self.dt)  # type: ignore
+            # vel_integr_min = np.cumsum(velocity_profile[:, 0] * self.dt)
+            dist_time_max = vel_integr_max + veh_front_l + loc_pos_error + traj_long_error_max + orient_error_l
+            dist_time_min = vel_integr_min - veh_back_l - loc_pos_error + traj_long_error_min + orient_error_l
             width_offset_left = veh_left_w + loc_pos_error + traj_lat_error + orient_error_w
             width_offset_right = veh_right_w + loc_pos_error + traj_lat_error + orient_error_w
         else:

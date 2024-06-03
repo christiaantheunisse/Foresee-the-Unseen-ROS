@@ -22,13 +22,24 @@ goal_point_x : -3
 goal_point_y : -0.13333
 
 #PLANNER
-reference_speed : 0.3 # trajectory planner limits norm_vel on 0.873 (r_min = 0.5)
-max_acceleration : 0.2
-max_deceleration : 0.2
+reference_speed : 0.5 # trajectory planner limits norm_vel on 0.873 (r_min = 0.5)
+max_acceleration : 0.25
+max_deceleration : 0.25
 planning_horizon : 60
-safety_margin : 0.65
+# safety_margin : 0.65
+safety_margin : 0.4
 minimum_distance_waypoint: 0.1
 max_dist_corner_smoothing: 0.2
+localization_standard_deviations:  # worst case / average assumptions  used in the trajectory planner
+  position: 0.2  # [m]
+  orientation: 0.4  # [rad]
+z_values_planner:  # the confidence intervals to use for each part of the planner
+  localization_position: 2
+  localization_orientation: 2
+  trajectory_longitudinal_rate: 2
+  trajectory_lateral: 2
+  trajectory_orientation: 2
+
 
 #SENSOR
 field_of_view_degrees : 360
@@ -37,7 +48,7 @@ view_range : 20
 
 #OCCLUSION_TRACKER
 min_velocity : 0
-max_velocity : 1
+max_velocity : 0.5
 min_shadow_area : 0.01  # Change this
 prediction_horizon : 60
 prediction_step_size: 5 # no. of time steps to combine in the occupancy prediction
