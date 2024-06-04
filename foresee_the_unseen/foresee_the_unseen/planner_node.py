@@ -215,19 +215,21 @@ class PlannerNode(Node):
 
     def publish_trajectory(self, trajectory: TrajectoryCR) -> None:
         """Publishes the Commonroad trajectory on a topic for the trajectory follower node."""
-        start_stamp = self.get_clock().now()
-        header_path = Header(stamp=start_stamp.to_msg(), frame_id=self.planner_frame)
+        # start_stamp = self.get_clock().now()
+        header_path = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.planner_frame)
         pose_stamped_list = []
-        init_time_step = trajectory.state_list[0].time_step - 1
+        # init_time_step = trajectory.state_list[0].time_step - 1
         for state in trajectory.state_list:
             quaternion = Quaternion(
                 **{k: v for k, v in zip(["x", "y", "z", "w"], self.quaternion_from_yaw(state.orientation))}
             )
             position = Point(x=float(state.position[0]), y=float(state.position[1]))
-            time_diff = (state.time_step - init_time_step) * 1 / self.frequency
-            header_pose = Header(
-                stamp=(start_stamp + Duration(seconds=int(time_diff), nanoseconds=int((time_diff % 1) * 1e9))).to_msg()
-            )
+            pose_stamp = Time(seconds=state.time_step).to_msg()
+            # time_diff = (state.time_step - init_time_step) * 1 / self.frequency
+            # header_pose = Header(
+            #     stamp=(start_stamp + Duration(seconds=int(time_diff), nanoseconds=int((time_diff % 1) * 1e9))).to_msg()
+            # )
+            header_pose = Header(stamp=pose_stamp)
             pose_stamped_list.append(
                 PoseStamped(header=header_pose, pose=Pose(position=position, orientation=quaternion))
             )
@@ -236,7 +238,6 @@ class PlannerNode(Node):
             accel_list = [Accel(linear=Vector3(x=float(s.acceleration))) for s in trajectory.state_list]
         else:
             accel_list = []
-        # FIXME: accel_list might be undefined
         trajectory_msg = TrajectoryMsg(
             path=Path(header=header_path, poses=pose_stamped_list), velocities=twist_list, accelerations=accel_list
         )

@@ -251,9 +251,6 @@ class Planner:
             next_velocity = next((s.velocity for s in current_trajectory.state_list if s.time_step == next_t), None)
         if next_velocity is None:
             next_velocity = current_velocity.end if isinstance(current_velocity, Interval) else current_velocity
-            self.logger.info("current used")
-
-        self.logger.info(f"{current_velocity:.2f} -- {next_velocity:.2f}")
 
         velocity_profiles = self.generate_velocity_profiles(next_velocity)
         self.collision_checker = create_collision_checker(scenario)
@@ -397,7 +394,7 @@ class Planner:
         )  # smallest distance to the corner
         radii = dists_to_corner * np.tan((np.pi - orient_diff) / 2)
         self.max_curvature_waypoints = 1 / np.min(radii)
-        self.logger.info(f"smallest radius = {np.min(radii)} and biggest curvature = {self.max_curvature_waypoints}")
+        self.logger.info(f"[planner] smallest radius = {np.min(radii)} and biggest curvature = {self.max_curvature_waypoints}")
 
     def update_passed_waypoints(self) -> None:
         for waypoint in self.waypoints[self.passed_waypoints :]:

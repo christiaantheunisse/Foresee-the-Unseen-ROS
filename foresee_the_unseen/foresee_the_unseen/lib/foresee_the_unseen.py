@@ -326,7 +326,7 @@ class ForeseeTheUnseen:
             self.planner.update(self.ego_vehicle.initial_state)  # type: ignore
             trajectory, prediction = self.planner.plan(percieved_scenario, self.trajectory)
             self.ego_vehicle.prediction = prediction
-            self.trajectory = trajectory
+            self.trajectory = copy.deepcopy(trajectory)
         except NoSafeTrajectoryFound:
             self.logger_info("No safe trajectory found")
             trajectory, prediction = None, None
@@ -364,6 +364,11 @@ class ForeseeTheUnseen:
             self.logger.info(str({key: (value * 1000) for key, value in execution_times.items()}))
         
         # TODO: add real timestamps based on current time to the trajectory.
+        if trajectory is not None:
+            dt = 1 / self.frequency
+            for state in trajectory.state_list:
+                state.time_step = (state.time_step - self.planner_step) * dt + current_time
+        
         return (
             shadow_obstacles,
             field_of_view,
