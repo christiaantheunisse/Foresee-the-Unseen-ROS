@@ -306,7 +306,6 @@ class ForeseeTheUnseen:
             interm_time = time.time()
 
         # Update the tracker with the new sensor view and get the shadows and their prediction
-        # TODO: increase the prediction for a delayed FOV instead of applying a buffer
         scan_delay = current_time - self._field_of_view_stamp
         self.occ_track.update(field_of_view, self.planner_step, scan_delay)
         shadow_obstacles = self.occ_track.get_dynamic_obstacles(percieved_scenario)
@@ -325,9 +324,9 @@ class ForeseeTheUnseen:
 
         try:
             self.planner.update(self.ego_vehicle.initial_state)  # type: ignore
-            trajectory, prediction = self.planner.plan(percieved_scenario)
+            trajectory, prediction = self.planner.plan(percieved_scenario, self.trajectory)
             self.ego_vehicle.prediction = prediction
-            # self.trajectory = trajectory
+            self.trajectory = trajectory
         except NoSafeTrajectoryFound:
             self.logger_info("No safe trajectory found")
             trajectory, prediction = None, None
@@ -363,7 +362,8 @@ class ForeseeTheUnseen:
             execution_times["logging"] = time.time() - interm_time
             execution_times["total"] = time.time() - start_time
             self.logger.info(str({key: (value * 1000) for key, value in execution_times.items()}))
-
+        
+        # TODO: add real timestamps based on current time to the trajectory.
         return (
             shadow_obstacles,
             field_of_view,

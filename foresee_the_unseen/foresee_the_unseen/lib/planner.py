@@ -234,7 +234,9 @@ class Planner:
         self._clear_waypoints_variables()
         self.update_passed_waypoints()
 
-    def plan(self, scenario: Scenario) -> Tuple[Trajectory, SetBasedPrediction]:
+    def plan(
+        self, scenario: Scenario, current_trajectory: Optional[Trajectory] = None
+    ) -> Tuple[Trajectory, SetBasedPrediction]:
         """Finds the fastest possible trajectory by iterative trying different velocity profiles."""
         # TODO: make comp time dependant
         if self.goal_reached:
@@ -242,7 +244,18 @@ class Planner:
 
         best_result_so_far: PlanningResult = {"trajectory": None, "prediction": None}
 
-        velocity_profiles = self.generate_velocity_profiles()
+        # planning takes 250 ms, so need to adjust with the first 250 ms of the current trajectory
+        next_velocity = None
+        current_velocity, next_t = self.initial_state.velocity, self.initial_state.time_step + 1
+        if current_trajectory is not None:
+            next_velocity = next((s.velocity for s in current_trajectory.state_list if s.time_step == next_t), None)
+        if next_velocity is None:
+            next_velocity = current_velocity.end if isinstance(current_velocity, Interval) else current_velocity
+            self.logger.info("current used")
+
+        self.logger.info(f"{current_velocity:.2f} -- {next_velocity:.2f}")
+
+        velocity_profiles = self.generate_velocity_profiles(next_velocity)
         self.collision_checker = create_collision_checker(scenario)
 
         def check_velocity_profile(idx: int) -> bool:
@@ -399,6 +412,46 @@ class Planner:
             else:
                 return
 
+    def generate_velocity_profiles(
+        self, next_velocity: float, number_of_trajectories: int = 10
+    ) -> Union[npt.NDArray[npt.Shape["N, M"], npt.Float], npt.NDArray[npt.Shape["N, M, 2"], npt.Float]]:
+        dist_to_goal = self.dist_along_points[self.goal_waypoint_idx + 1]
+        if isinstance(self.initial_state.velocity, Scalar):
+            d_first_step = (self.initial_state.velocity + next_velocity) / 2 * self.dt
+            velocity_profiles = self._generate_scalar_velocity_profiles(
+                velocity=next_velocity,
+                max_dec=self.max_dec,
+                max_acc=self.max_acc,
+                dt=self.dt,
+                time_horizon=self.time_horizon - 1,
+                reference_speed=self.reference_speed,
+                number_of_trajectories=number_of_trajectories,
+                dist_to_goal=dist_to_goal - d_first_step,
+            )
+            velocity_profiles = np.array([np.insert(v, 0, next_velocity) for v in velocity_profiles])
+        elif isinstance(self.initial_state.velocity, Interval):
+            v_range = self.initial_state.velocity.end - self.initial_state.velocity.start
+            next_velocity_inter = Interval(next_velocity - v_range / 2, next_velocity + v_range / 2)
+            d_first_step = (self.initial_state.velocity.end + next_velocity_inter.end) / 2 * self.dt
+            velocity_profiles_max = self._generate_scalar_velocity_profiles(
+                velocity=next_velocity_inter.end,
+                max_dec=self.max_dec,
+                max_acc=self.max_acc,
+                dt=self.dt,
+                time_horizon=self.time_horizon - 1,
+                reference_speed=self.reference_speed,
+                number_of_trajectories=number_of_trajectories,
+                dist_to_goal=dist_to_goal - d_first_step,
+            )
+            velocity_profiles_max = np.array([np.insert(v, 0, next_velocity_inter.end) for v in velocity_profiles_max])
+            velocity_profiles_max = velocity_profiles_max[..., np.newaxis]
+            velocity_profiles_min = np.maximum(velocity_profiles_max - v_range, 0)
+            velocity_profiles = np.concatenate((velocity_profiles_min, velocity_profiles_max), axis=2)
+        else:
+            raise TypeError
+
+        return velocity_profiles
+
     @staticmethod
     def _generate_scalar_velocity_profiles(
         velocity: float,
@@ -409,7 +462,7 @@ class Planner:
         reference_speed: float,
         number_of_trajectories: int,
         dist_to_goal: float,
-    ):
+    ) -> npt.NDArray[npt.Shape["N, M"], npt.Float]:  # N = no. of trajectories, M = time horizon length
         assert velocity >= 0.0, f"velocity should be bigger than zero: {velocity=}"
         velocity_decs = velocity - max_dec * dt * np.arange(time_horizon)
 
@@ -484,39 +537,6 @@ class Planner:
             velocity_profiles.append(velocity_profile)
 
         return np.array(velocity_profiles)
-
-    def generate_velocity_profiles(self, number_of_trajectories=10):
-        dist_to_goal = self.dist_along_points[self.goal_waypoint_idx + 1]
-        if isinstance(self.initial_state.velocity, Scalar):
-            velocity_profiles = self._generate_scalar_velocity_profiles(
-                velocity=self.initial_state.velocity,
-                max_dec=self.max_dec,
-                max_acc=self.max_acc,
-                dt=self.dt,
-                time_horizon=self.time_horizon,
-                reference_speed=self.reference_speed,
-                number_of_trajectories=number_of_trajectories,
-                dist_to_goal=dist_to_goal,
-            )
-        elif isinstance(self.initial_state.velocity, Interval):
-            velocity_profiles_max = self._generate_scalar_velocity_profiles(
-                velocity=self.initial_state.velocity.end,
-                max_dec=self.max_dec,
-                max_acc=self.max_acc,
-                dt=self.dt,
-                time_horizon=self.time_horizon,
-                reference_speed=self.reference_speed,
-                number_of_trajectories=number_of_trajectories,
-                dist_to_goal=dist_to_goal,
-            )
-            velocity_profiles_max = velocity_profiles_max[..., np.newaxis]
-            v_range = self.initial_state.velocity.end - self.initial_state.velocity.start
-            velocity_profiles_min = np.maximum(velocity_profiles_max - v_range, 0)
-            velocity_profiles = np.concatenate((velocity_profiles_min, velocity_profiles_max), axis=2)
-        else:
-            raise TypeError
-
-        return velocity_profiles
 
     def get_xy_ths_for_range(
         self,
