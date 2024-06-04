@@ -12,6 +12,7 @@ import pickle
 from scipy.spatial.transform import Rotation as R
 from scipy.interpolate import interp1d
 from typing import Tuple, List, Union, Optional, Literal, get_args
+from collections import deque
 
 from builtin_interfaces.msg import Time as TimeMsg
 from std_msgs.msg import Header, ColorRGBA
@@ -33,6 +34,7 @@ from foresee_the_unseen.lib.helper_functions import matrix_from_transform, matri
 # to load the pickled error models
 import foresee_the_unseen.lib.error_model as error_model
 import sys
+
 sys.modules["error_model"] = error_model
 
 
@@ -157,7 +159,7 @@ def get_self_intersections_polygon(points: np.ndarray, no_of_neighbours_to_check
 
 def make_valid_polygon(points: np.ndarray) -> np.ndarray:
     """Recursively remove self-intersections from a polygon"""
-    for i in range(10):
+    for i in range(4):
         N = len(points)
         mask_intersections = check_self_intersection_polygon(points)
         intersections = np.array(np.where(mask_intersections)).T  # [[ls_i, ls_j], ...]
@@ -191,9 +193,11 @@ class FOVNode(Node):
         self.declare_parameter("environment_scan_topic", "scan/road_env")
         self.declare_parameter("fov_topic", "fov")
         self.declare_parameter("environment_polygon_topic", "visualization/road_env_polygon")
+        self.declare_parameter("odometry_topic", "odometry/filtered")  # get the transform uncertainty from this topic
 
         self.declare_parameter("do_visualize", True)
         self.declare_parameter("do_filter_scan", False)
+        self.declare_parameter("do_correct_state_uncertainty", False)
 
         self.declare_parameter("subsample_rate", 1)
         self.declare_parameter("rotating_direction", "CW")
@@ -208,8 +212,10 @@ class FOVNode(Node):
         )
         self.declare_parameter("apply_error_models", False)
         self.declare_parameter("error_models_directory", "none")
-        self.declare_parameter("range_stds_margin", 2.)
-        self.declare_parameter("angle_stds_margin", 2.)
+        self.declare_parameter("range_stds_margin", 2.0)
+        self.declare_parameter("angle_stds_margin", 2.0)
+        self.declare_parameter("state_pos_stds_margin", 2.0)
+        self.declare_parameter("state_orient_stds_margin", 2.0)
 
         self.fov_frame = self.get_parameter("fov_frame").get_parameter_value().string_value
 
@@ -218,9 +224,11 @@ class FOVNode(Node):
         self.env_scan_topic = self.get_parameter("environment_scan_topic").get_parameter_value().string_value
         self.fov_topic = self.get_parameter("fov_topic").get_parameter_value().string_value
         self.env_polygon_topic = self.get_parameter("environment_polygon_topic").get_parameter_value().string_value
+        self.odometry_topic = self.get_parameter("odometry_topic").get_parameter_value().string_value
 
         self.do_visualize = self.get_parameter("do_visualize").get_parameter_value().bool_value
         self.do_filter_scan = self.get_parameter("do_filter_scan").get_parameter_value().bool_value
+        self.do_correct_state_unc = self.get_parameter("do_correct_state_uncertainty").get_parameter_value().bool_value
 
         subsample_rate = self.get_parameter("subsample_rate").get_parameter_value().integer_value
         self.subsample_rate = None if subsample_rate <= 1 else int(subsample_rate)
@@ -243,10 +251,14 @@ class FOVNode(Node):
             )
         self.range_stds_margin = self.get_parameter("range_stds_margin").get_parameter_value().double_value
         self.angle_stds_margin = self.get_parameter("angle_stds_margin").get_parameter_value().double_value
+        self.st_pos_stds_margin = self.get_parameter("state_pos_stds_margin").get_parameter_value().double_value
+        self.st_orient_stds_margin = self.get_parameter("state_orient_stds_margin").get_parameter_value().double_value
 
         assert self.rotating_direction == "CW", "The node is specificially made for a clockwise rotating node."
 
         self.create_subscription(LaserScan, self.scan_topic, self.scan_callback, 5)
+        if self.do_correct_state_unc:
+            self.create_subscription(Odometry, self.odometry_topic, self.odometry_callback, 5)
         self.deskewed_scan_pub = self.create_publisher(PointCloud, self.deskewed_scan_topic, 5)
         self.environment_scan_pub = self.create_publisher(LaserScan, self.env_scan_topic, 5)
         self.fov_polygon_pub = self.create_publisher(PolygonStamped, self.fov_topic, 5)
@@ -265,6 +277,7 @@ class FOVNode(Node):
         self.scan_processed: bool = True
         self.last_scan: Optional[LaserScan] = None
         self.current_scan: Optional[LaserScan] = None
+        self.odom_msgs_deque: deque = deque(maxlen=15)
 
         try:
             filepath = os.path.join(self.error_models_dir, "lidar_range_error_model.pickle")
@@ -292,17 +305,23 @@ class FOVNode(Node):
             self.get_logger().warn(f"No `Lidar Range error model` found at {filepath}")
 
     def scan_callback(self, msg: LaserScan) -> None:
+        """The scan callback"""
         self.last_scan = self.current_scan
         self.current_scan = msg
         self.scan_processed = False
 
+    def odometry_callback(self, msg: Odometry) -> None:
+        """Odometry callback"""
+        stamp = Time.from_msg(msg.header.stamp)
+        self.odom_msgs_deque.append((stamp, msg))
+
     def process_scan(self) -> None:
-        """The scan callback"""
+        """This function is applied on every scan and calls the other functions. It should run at a constant rate"""
         # Check if a new scan is available
         if self.scan_processed or self.current_scan is None or self.last_scan is None:
             return
 
-        # check if the transform for the last lidar point is already available
+        # check if the transform for the last lidar point is already available, if not, wait for the next iteration
         msg = self.current_scan
         start_time = Time(seconds=msg.header.stamp.sec, nanoseconds=msg.header.stamp.nanosec)
         end_time = start_time + Duration(seconds=msg.scan_time)  # type: ignore
@@ -312,7 +331,7 @@ class FOVNode(Node):
         # exec_start_time = time.time()
         try:
             new_scan = self.merge_scans(self.last_scan, self.current_scan)
-            if len(new_scan.ranges) <= 1:  # deal with an empty scan
+            if len(new_scan.ranges) <= 1:  # return if scan is empty
                 self.scan_processed = True
                 return
 
@@ -320,8 +339,13 @@ class FOVNode(Node):
             ranges, angles, mask_invalid = self.laserscan_to_ranges_angles(
                 filtered_scan, self.view_range, self.subsample_rate
             )
-            if self.do_apply_error_models:
-                ranges_corr, angles_corr = self.apply_error_model(ranges, angles, mask_invalid)
+            if self.do_apply_error_models or self.do_correct_state_unc:
+                odom_msg = (
+                    self.get_closest_odometry_msg(Time.from_msg(new_scan.header.stamp))
+                    if self.do_correct_state_unc
+                    else None
+                )
+                ranges_corr, angles_corr = self.apply_error_model(ranges, angles, mask_invalid, odom_msg)
             else:
                 ranges_corr, angles_corr = ranges, angles
             fov_points, time_order = self.make_fov(ranges_corr, angles_corr, mask_invalid)
@@ -330,10 +354,12 @@ class FOVNode(Node):
             fov_points_deskewed, start_time = self.deskew_laserscan_interpolate_tf(
                 filtered_scan, fov_points, time_order
             )
+            # Remove self-intersections from the polygon
             try:
                 fov_points_deskewed = make_valid_polygon(fov_points_deskewed)
             except StopIteration:
                 self.get_logger().error("Making polygon valid failed")
+
             if not ShapelyPolygon(fov_points_deskewed).is_valid:
                 self.get_logger().error("Invalid polygon!")
             fov_polygon_msg = self.points_to_polygon_msg(fov_points_deskewed, filtered_scan.header.stamp)
@@ -353,7 +379,6 @@ class FOVNode(Node):
             self.scan_processed = True
         except TransformException as ex:
             self.get_logger().info(str(ex))
-            pass
 
         # print(f"Execution time is: {(time.time() - exec_start_time) * 1000:.0f} ms")
 
@@ -391,6 +416,15 @@ class FOVNode(Node):
         """Simple convert a ROS LaserScan message to a array of points"""
         ranges, angles, mask = FOVNode.laserscan_to_ranges_angles(scan, view_range)
         return FOVNode.ranges_angles_to_points(ranges[~mask], angles[~mask])
+
+    def get_closest_odometry_msg(self, scan_stamp: Time) -> Optional[Odometry]:
+        closest_msg = None
+        time_diff = Duration(seconds=10)
+        for odom_stamp, msg in self.odom_msgs_deque:
+            if (odom_stamp - scan_stamp) < time_diff or (scan_stamp - odom_stamp) > time_diff:
+                closest_msg = msg
+                time_diff = odom_stamp - scan_stamp
+        return closest_msg
 
     def filter_laserscan(self, scan: LaserScan) -> LaserScan:
         """Filter points from the pointcloud from the lidar to reduce the computation of the `datmo` package."""
@@ -470,7 +504,11 @@ class FOVNode(Node):
             return concat_scan
 
     def apply_error_model(
-        self, ranges: np.ndarray, angles: np.ndarray, mask_invalid: np.ndarray
+        self,
+        ranges: np.ndarray,
+        angles: np.ndarray,
+        mask_invalid: np.ndarray,
+        odometry_msg: Optional[Odometry] = None,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Apply the error model on the measured ranges and angles:
             range error = an deviation from the true range of the measured range value
@@ -481,10 +519,22 @@ class FOVNode(Node):
             Map the measured range at each angle over a sweep of angles in both angular directions by the error size.
             Choose the closest range at each angle from the overlapping sweeps.
         """
-        range_errors = self.range_error_model(ranges, stds_margin=self.range_stds_margin)
-        angle_errors = self.angle_error_model(ranges, stds_margin=self.angle_stds_margin)
+        range_errors, angle_errors = np.zeros_like(ranges), np.zeros_like(ranges)
+        if self.do_apply_error_models:
+            range_errors += self.range_error_model(ranges, stds_margin=self.range_stds_margin)
+            angle_errors += self.angle_error_model(ranges, stds_margin=self.angle_stds_margin)
 
-        ranges = ranges - range_errors
+        if self.do_correct_state_unc and odometry_msg is not None:
+            # add position uncertainty to the range errors
+            pos_covar = np.array(odometry_msg.pose.covariance)[[0, 1, 6, 7]].reshape(2, 2)
+            eigenvals, _ = np.linalg.eig(pos_covar)
+            std_max = np.sqrt(eigenvals).max()
+            range_errors += std_max * self.st_pos_stds_margin
+            # add orientation uncertainty to the angle errors
+            orient_var = odometry_msg.pose.covariance[35]
+            angle_errors += orient_var * self.st_orient_stds_margin
+
+        ranges = np.maximum(ranges - range_errors, 0)
         angle_increment = np.abs(angles[1] - angles[0])
         angle_error_steps = np.ceil(angle_errors / angle_increment).astype(np.int_)
         angle_error_steps[mask_invalid] = 0
