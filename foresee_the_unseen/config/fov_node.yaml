@@ -8,7 +8,7 @@ fov_node:
     fov_topic: fov 
     environment_polygon_topic: visualization/road_env_polygon
 
-    do_filter_scan: False
+    do_filter_scan: True
     do_correct_state_uncertainty: True
     # CW convex polygon [x1, y1, x2, y2, ...] in the fov frame
     environment_boundary: [0., 2.5, 5., 2.5, 5., -3., 0., -3.]

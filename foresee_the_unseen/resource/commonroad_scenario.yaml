@@ -11,19 +11,19 @@ initial_state_orientation: 1.5708
 initial_state_velocity: 0
 
 vehicle_type : car
-vehicle_length : 0.3
+vehicle_length : 0.25
 vehicle_width : 0.18
 
 # Distance the rectangle shape has to move from the actual center point of the robot to fit the robot. 
 #  Positive values if the actual center point is more on the back and the left side of the robot.
-vehicle_length_offset : 0.05
+vehicle_length_offset : 0.015
 vehicle_width_offset : 0.0
 goal_point_x : -3
 goal_point_y : -0.13333
 
 #PLANNER
 apply_error_models: True
-reference_speed : 0.5 # trajectory planner limits norm_vel on 0.873 (r_min = 0.5)
+reference_speed : 0.4 # trajectory planner limits norm_vel on 0.873 (r_min = 0.5)
 max_acceleration : 0.25
 max_deceleration : 0.25
 planning_horizon : 60
@@ -31,15 +31,15 @@ safety_margin : 0.65
 minimum_distance_waypoint: 0.1
 max_dist_corner_smoothing: 0.2
 localization_standard_deviations:  # worst case / average assumptions  used in the trajectory planner
-  position: 0.05  # [m]
-  orientation: 0.05  # [rad]
+  position: 0.087  # [m]
+  orientation: 0.0054  # [rad]
 z_values_planner:  # the confidence intervals to use for each part of the planner
   # localization_position: 1
-  localization_position: 0
+  localization_position: 1
   localization_orientation: 1
   trajectory_longitudinal_rate: 2
-  # trajectory_lateral: 1
-  trajectory_lateral: 0
+  trajectory_lateral: 1
+  # trajectory_lateral: 0
   trajectory_orientation: 1
 
 

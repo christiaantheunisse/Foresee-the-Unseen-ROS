@@ -65,9 +65,9 @@ def generate_launch_description():
             {
                 "use_triangulation": do_triangulate,
                 "do_visualize": do_visualize,
-                "road_xml": PathJoinSubstitution(
-                    [FindPackageShare("foresee_the_unseen"), "resource", "road_structure_15_reduced_points.xml"]
-                ),
+                # "road_xml": PathJoinSubstitution(
+                #     [FindPackageShare("foresee_the_unseen"), "resource", "road_structure_15_reduced_points.xml"]
+                # ),
                 "error_models_directory": PathJoinSubstitution(
                     [FindPackageShare("foresee_the_unseen"), "resource", "error_models"]
                 ),

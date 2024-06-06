@@ -91,7 +91,7 @@ def generate_launch_description():
         ),
         launch_arguments={
             "publish_tf": NotSubstitution(use_ekf),
-            "minimum_time_interval": "2.0",
+            "time_interval": "2.0",
         }.items(),
     )
 

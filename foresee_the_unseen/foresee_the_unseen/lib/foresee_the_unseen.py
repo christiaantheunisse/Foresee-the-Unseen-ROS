@@ -76,7 +76,7 @@ class ForeseeTheUnseen:
         self.logger = logger
         self.frequency = frequency
         self.throttle_duration = None  # set the throttle duration for the logging when used with ROS
-        self.do_track_exec_time = False
+        self.do_track_exec_time = True
 
         if self.logger is not None:
             assert hasattr(self.logger, "info") and hasattr(
