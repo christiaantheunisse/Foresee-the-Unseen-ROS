@@ -270,28 +270,31 @@ class Occlusion_tracker:
         # plot(scenario, shadows=self.shadows)
         # plt.show()
 
-    def update(self, sensor_view, new_time: int, scan_delay: float):
+    def update(self, sensor_view, new_time_step: int, scan_delay: float):
         """
         new_time: is the planner step
         scan_delay: is time in seconds ago the scan was made/started.
         """
         if self.tracking_enabled == True:
-            self.update_tracker(sensor_view, new_time, scan_delay)
+            self.update_tracker(sensor_view, new_time_step, scan_delay)
         else:
-            self.reset(sensor_view, new_time)
+            self.reset(sensor_view, new_time_step)
 
-    def update_tracker(self, sensor_view, new_time: int, scan_delay: float):
+    def update_tracker(self, sensor_view, new_time_step: int, scan_delay: float):
         """
-        new_time: is the planner step
+        newnew_time_step_time: is the planner step
         scan_delay: is time in seconds ago the scan was made/started.
         """
-        assert new_time >= self.time_step
-        time_diff = new_time - self.time_step
+        assert new_time_step >= self.time_step
+        time_diff = (new_time_step - self.time_step) * self.dt
         # Update the time
-        self.time_step = new_time
+        self.time_step = new_time_step
+
+        time_before_scan = max(time_diff - scan_delay, 0)
+        time_after_scan = time_diff - time_before_scan
         # Expand all the shadows
         for shadow in self.shadows:
-            shadow.expand(self.dt * self.max_vel * time_diff)
+            shadow.expand(time_before_scan * self.max_vel)
 
         # Intersect them with the current sensorview
         new_shadows = []
@@ -309,7 +312,7 @@ class Occlusion_tracker:
 
         # extend the shadows to account for the scan delay
         for shadow in self.shadows:
-            shadow.expand(self.max_vel * scan_delay)
+            shadow.expand(self.max_vel * time_after_scan)
 
         # Update the accumulated occluded area
         self.accumulated_occluded_area = self.accumulated_occluded_area + self.get_currently_occluded_area()
