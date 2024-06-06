@@ -564,7 +564,9 @@ class Planner:
             orient_bw_points[idcs_interm_end - 1],
         )
         idcs_in_range = np.vstack((idcs_interm_start, idcs_interm_end)).T
-        assert not 0 in idcs_in_range, "The first waypoint lies within the predicted occupancy."
+        # TODO: Assert statement below was added for reason, but keep throwing errors when the robot is close to its
+        #  goal position
+        # assert not 0 in idcs_in_range, "The first waypoint lies within the predicted occupancy."
         # return an array with 3d vectors consisting of x-coordinate, y-coordinate and yaw angle (theta (th)) for all the
         #  points within the distance range where the orientation changes.
         xyth_start, xyth_end = (

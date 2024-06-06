@@ -27,7 +27,7 @@ from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 from tf2_geometry_msgs import PolygonStamped  # necessary to enable Buffer.transform
 
-from shapely.geometry import Polygon as ShapelyPolygon
+from shapely.geometry import Polygon as ShapelyPolygon, MultiPolygon as ShapelyMultiPolygon
 
 from foresee_the_unseen.lib.helper_functions import matrix_from_transform, matrices_from_cw_cvx_polygon
 
@@ -360,8 +360,12 @@ class FOVNode(Node):
             except StopIteration:
                 self.get_logger().error("Making polygon valid failed")
 
-            if not ShapelyPolygon(fov_points_deskewed).is_valid:
+            shapely_polygon = ShapelyPolygon(fov_points_deskewed)
+            if not shapely_polygon.is_valid:
                 self.get_logger().error("Invalid polygon!")
+            if isinstance(shapely_polygon, ShapelyMultiPolygon):
+                self.get_logger().error("Multi Polygon!")
+
             fov_polygon_msg = self.points_to_polygon_msg(fov_points_deskewed, filtered_scan.header.stamp)
             self.fov_polygon_pub.publish(fov_polygon_msg)
 

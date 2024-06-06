@@ -6,6 +6,7 @@ from shapely.geometry import LineString as ShapelyLineString
 from shapely.geometry import Point as ShapelyPoint
 from shapely.geometry import LinearRing
 from shapely.ops import substring
+from shapely.errors import GEOSException
 
 from commonroad.scenario.scenario import Scenario, Lanelet
 from commonroad.scenario.obstacle import DynamicObstacle, ObstacleType
@@ -20,6 +21,7 @@ from foresee_the_unseen.lib.utilities import (
     polygon_union,
     cut_line,
 )
+
 
 class Shadow:
     def __init__(self, polygon, lane):
@@ -96,12 +98,8 @@ class Shadow:
         for pred_step in range(int(prediction_horizon / steps_per_occ_pred)):
             # Extend the top edges without overpasing the length of the lane
             #   the front and rear of the prediction sets are always made perpendicular to the path / flat.
-            new_top_right = max(
-                top_right + dist, self.right_line.project(self.left_line.interpolate(top_left + dist))
-            )
-            new_top_left = max(
-                top_left + dist, self.left_line.project(self.right_line.interpolate(top_right + dist))
-            )
+            new_top_right = max(top_right + dist, self.right_line.project(self.left_line.interpolate(top_left + dist)))
+            new_top_left = max(top_left + dist, self.left_line.project(self.right_line.interpolate(top_right + dist)))
             top_right = new_top_right
             top_left = new_top_left
             top_right = min(top_right, self.right_line.length)
@@ -110,7 +108,12 @@ class Shadow:
             pred_polygon_shapely = self.__build_polygon(bottom_right, bottom_left, top_right, top_left)
             pred_polygon = ShapelyPolygon2Polygon(pred_polygon_shapely)
 
-            occupancy_set.extend([Occupancy(time_step + pred_step * steps_per_occ_pred + i, pred_polygon) for i in range(steps_per_occ_pred)])
+            occupancy_set.extend(
+                [
+                    Occupancy(time_step + pred_step * steps_per_occ_pred + i, pred_polygon)
+                    for i in range(steps_per_occ_pred)
+                ]
+            )
 
         # Populate the rest of the planning horizon with the last prediction
         # for i in range(prediction_horizon, planning_horizon):
@@ -119,6 +122,8 @@ class Shadow:
 
         return occupancy_set
 
+    # TODO:Use the same approach as for the future occupancy prediction (in `self.get_occupancy_set`). Is basically the
+    #  same problem, but provides a faster solution.
     def __get_next_occ(self, poly, dist):
         smallest_projection = 999999
         for edge in poly.exterior.coords:
@@ -135,12 +140,20 @@ class Shadow:
 
         if smallest_projection > 0:  # if the starting point of the occlusion is not the starting point of the lane
             sub_center_line = substring(self.center_line, 0, smallest_projection)
-            left_side = sub_center_line.parallel_offset(2.8, "left")  # FIXME: seems to be hardcoded lane width
-            right_side = sub_center_line.parallel_offset(2.8, "right")  # FIXME: seems to be hardcoded lane width
+            left_side = sub_center_line.parallel_offset(2.8, "left")  # FIXME: hardcoded maximum lane width
+            right_side = sub_center_line.parallel_offset(2.8, "right")  # FIXME: hardcoded maximum lane width
             Area_to_substract = ShapelyPolygon(
-                np.concatenate((np.array(left_side.coords), np.array(right_side.coords)))
+                # The orientation of the left_side and right_side seems to be similar, so one of them needs to be reversed.
+                #  At least in some situations, this causes and error so for now, I'll reverse one of them
+                np.concatenate((np.array(left_side.coords), np.flip(np.array(right_side.coords), axis=0)))
             )
             diff = polygon_diff(poly, Area_to_substract)
+            # try:
+            #     diff = polygon_diff(poly, Area_to_substract)
+            # except GEOSException as e:
+            #     raise Exception(
+            #         f"{smallest_projection=} {type(poly)=} {projections=} {dist=} {poly.is_valid=} {Area_to_substract.is_valid=} {np.concatenate((np.array(left_side.coords), np.flip(np.array(right_side.coords), axis=0)))=}"
+            #     ) from e
             # poly = diff[0] #This has to be fixed
             poly = diff[0] if diff else None  # This has to be fixed
 

@@ -34,12 +34,10 @@ localization_standard_deviations:  # worst case / average assumptions  used in t
   position: 0.087  # [m]
   orientation: 0.0054  # [rad]
 z_values_planner:  # the confidence intervals to use for each part of the planner
-  # localization_position: 1
-  localization_position: 1
-  localization_orientation: 1
+  localization_position: 0  # 1
+  localization_orientation: 0  # 1
   trajectory_longitudinal_rate: 2
-  trajectory_lateral: 1
-  # trajectory_lateral: 0
+  trajectory_lateral: 0  # 1
   trajectory_orientation: 1
 
 
@@ -50,7 +48,7 @@ view_range : 20
 
 #OCCLUSION_TRACKER
 min_velocity : 0
-max_velocity : 0.3
+max_velocity : 0.45
 min_shadow_area : 0.01  # Change this
 prediction_horizon : 60
 prediction_step_size: 5 # no. of time steps to combine in the occupancy prediction

@@ -361,9 +361,8 @@ class ForeseeTheUnseen:
         if self.do_track_exec_time:
             execution_times["logging"] = time.time() - interm_time
             execution_times["total"] = time.time() - start_time
-            self.logger.info(str({key: (value * 1000) for key, value in execution_times.items()}))
+            self.logger.info(str({key: round(value * 1000) for key, value in execution_times.items()}))
         
-        # TODO: add real timestamps based on current time to the trajectory.
         if trajectory is not None:
             dt = 1 / self.frequency
             for state in trajectory.state_list:
