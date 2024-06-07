@@ -1,13 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import yaml
+from datetime import datetime
+from typing import List
 
 from shapely.geometry import Polygon as ShapelyPolygon
 from shapely.geometry import MultiPolygon as ShapelyMultiPolygon
-from shapely.geometry import GeometryCollection as ShapelyGeometryCollection
-from shapely.geometry import MultiPoint
-from shapely.geometry import LineString
-from shapely.geometry import Point
+from shapely.geometry import GeometryCollection as ShapelyGeometryCollection, MultiPoint, LineString, Point
 
+from commonroad.scenario.scenario import Scenario
 from commonroad.geometry.shape import Circle, Rectangle, Polygon as CommonRoadPolygon
 from commonroad.prediction.prediction import Occupancy, SetBasedPrediction
 from commonroad.scenario.state import InitialState
@@ -19,10 +20,6 @@ from commonroad.planning.planning_problem import (
 )
 from commonroad.common.util import Interval, AngleInterval
 from commonroad.scenario.scenario import Lanelet
-
-import yaml
-
-from datetime import datetime
 
 
 class Logger:
@@ -145,57 +142,19 @@ def add_building_DEU_Ffb(scenario):
             scenario.generate_object_id(),
             ObstacleType.BUILDING,
             Rectangle(10, 15),
-            InitialState(
-                position=np.array([83.6288, -11.5553]), orientation=0, time_step=0
-            ),
+            InitialState(position=np.array([83.6288, -11.5553]), orientation=0, time_step=0),
         )
     )
 
+def get_no_stop_shape(scenario: Scenario, lanelet_id: int, safety_margin: float) -> CommonRoadPolygon:
+    no_stop_lanelet = scenario.lanelet_network.find_lanelet_by_id(lanelet_id)
+    no_stop_shapely = no_stop_lanelet.convert_to_polygon().shapely_object
+    scenario.remove_lanelet(no_stop_lanelet)
+    return ShapelyPolygon2Polygon(no_stop_shapely.convex_hull.buffer(safety_margin))
 
-def add_no_stop_zone(scenario, planning_horizon, safety_margin=5):
 
-    if scenario.scenario_id.map_name == "MyIntersection":
-        no_stop_shapely = [
-            scenario.lanelet_network.find_lanelet_by_id(32)
-            .convert_to_polygon()
-            ._shapely_polygon
-        ]
-    elif scenario.scenario_id.map_name == "Ffb":
-        lanelet_1 = scenario.lanelet_network.find_lanelet_by_id(
-            49602
-        ).convert_to_polygon()
-        lanelet_2 = scenario.lanelet_network.find_lanelet_by_id(
-            49600
-        ).convert_to_polygon()
-        lanelet_3 = scenario.lanelet_network.find_lanelet_by_id(
-            49598
-        ).convert_to_polygon()
-        lanelet_4 = scenario.lanelet_network.find_lanelet_by_id(
-            49596
-        ).convert_to_polygon()
-        horizontal_lanes = polygon_union(
-            [lanelet_1._shapely_polygon, lanelet_2._shapely_polygon]
-        )
-        vertical_lanes = polygon_union(
-            [lanelet_3._shapely_polygon, lanelet_4._shapely_polygon]
-        )
-        no_stop_shapely = polygon_intersection(horizontal_lanes[0], vertical_lanes[0])
-
-        ### Remove lanelets
-        scenario.remove_lanelet(
-            scenario.lanelet_network.find_lanelet_by_id(49598), referenced_elements=True
-        )
-        scenario.remove_lanelet(
-            scenario.lanelet_network.find_lanelet_by_id(49596), referenced_elements=True
-        )
-
-    no_stop_polygon = ShapelyPolygon2Polygon(
-        no_stop_shapely[0].convex_hull.buffer(safety_margin)
-    )
-
-    dummy_state = InitialState(
-        position=np.array([0, 0]), orientation=0, velocity=0, time_step=planning_horizon
-    )
+def add_no_stop_zone(scenario: Scenario, planning_horizon: int, no_stop_polygon: CommonRoadPolygon) -> DynamicObstacle:
+    dummy_state = InitialState(position=np.array([0, 0]), orientation=0, velocity=0, time_step=planning_horizon)
     occupancy = Occupancy(planning_horizon, no_stop_polygon)
     prediction = SetBasedPrediction(planning_horizon, [occupancy])
 
@@ -214,9 +173,7 @@ def add_no_stop_zone(scenario, planning_horizon, safety_margin=5):
 
 def create_planning_problem_DEU_Ffb(configuration, planning_id=0):
     initial_state = InitialState(
-        position=np.array(
-            [configuration.get("initial_state_x"), configuration.get("initial_state_y")]
-        ),
+        position=np.array([configuration.get("initial_state_x"), configuration.get("initial_state_y")]),
         orientation=configuration.get("initial_state_orientation"),
         velocity=configuration.get("initial_state_velocity"),
         time_step=0,
@@ -227,9 +184,7 @@ def create_planning_problem_DEU_Ffb(configuration, planning_id=0):
     goal_state = InitialState(
         position=Circle(
             2,
-            np.array(
-                [configuration.get("goal_point_x"), configuration.get("goal_point_y")]
-            ),
+            np.array([configuration.get("goal_point_x"), configuration.get("goal_point_y")]),
         ),
         orientation=AngleInterval(-np.pi, np.pi - 0.0000000000001),
         velocity=Interval(0, 20),

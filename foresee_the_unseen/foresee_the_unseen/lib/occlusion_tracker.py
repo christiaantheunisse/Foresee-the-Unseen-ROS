@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from typing import List, Optional, Dict
 
 from shapely.geometry import Polygon as ShapelyPolygon
 from shapely.geometry import LineString as ShapelyLineString
@@ -21,6 +22,18 @@ from foresee_the_unseen.lib.utilities import (
     polygon_union,
     cut_line,
 )
+
+def recursive_merge(lanelets: List[Lanelet]) -> Lanelet:
+    assert len(lanelets) > 0
+    if len(lanelets) == 1:
+        return lanelets[0]
+    elif len(lanelets) == 2:
+        return Lanelet.merge_lanelets(*lanelets)
+    else:
+        lane = Lanelet.merge_lanelets(lanelets[0], lanelets[1])
+        for lanelet in lanelets[2:]:
+            lane = lanelet.merge_lanelets(lane, lanelet)
+        return lane
 
 
 class Shadow:
@@ -195,17 +208,7 @@ class Occlusion_tracker:
         initial_sensor_view=ShapelyPolygon(),
         initial_time_step=0,
         tracking_enabled=True,
-        # initial_time_step=0,
-        # min_vel=0,
-        # max_vel=1,
-        # # min_acc=-1,
-        # # max_acc=1,
-        # min_shadow_area=1,
-        # initial_sensor_view=ShapelyPolygon(),
-        # prediction_horizon=10,
-        # tracking_enabled=True,
-        # dt=0.1,
-        # steps_per_occ_pred=2,  # no. of time steps to combine in the occupancy prediction
+        lanes_to_merge: Optional[List[List[int]]] = None,
     ):
         self.time_step = initial_time_step
         self.dt = dt
@@ -219,22 +222,25 @@ class Occlusion_tracker:
         self.tracking_enabled = tracking_enabled
         self.steps_per_occ_pred = steps_per_occ_pred
 
-        # ========== Find only the 3 relevant lanes for the `parked_vehicle_scenario` ==========
         lanelets_dict = {}
         for lanelet in scenario.lanelet_network.lanelets:
             lanelets_dict[lanelet.lanelet_id] = lanelet
 
+        # self.lanes = []
+        # if scenario.scenario_id.map_name == "MyIntersection":
+        #     _lane = Lanelet.merge_lanelets(lanelets_dict[17], lanelets_dict[16])
+        #     self.lanes.append(Lanelet.merge_lanelets(_lane, lanelets_dict[15]))
+        #     self.lanes.append(Lanelet.merge_lanelets(lanelets_dict[17], lanelets_dict[30]))
+        #     self.lanes.append(Lanelet.merge_lanelets(lanelets_dict[12], lanelets_dict[13]))
+        # elif scenario.scenario_id.map_name == "Ffb":
+        #     _lane = Lanelet.merge_lanelets(lanelets_dict[49574], lanelets_dict[49600])
+        #     self.lanes.append(Lanelet.merge_lanelets(_lane, lanelets_dict[49566]))
+        #     self.lanes.append(Lanelet.merge_lanelets(lanelets_dict[49574], lanelets_dict[49590]))
+        #     self.lanes.append(Lanelet.merge_lanelets(lanelets_dict[49564], lanelets_dict[49602]))
+        
         self.lanes = []
-        if scenario.scenario_id.map_name == "MyIntersection":
-            _lane = Lanelet.merge_lanelets(lanelets_dict[17], lanelets_dict[16])
-            self.lanes.append(Lanelet.merge_lanelets(_lane, lanelets_dict[15]))
-            self.lanes.append(Lanelet.merge_lanelets(lanelets_dict[17], lanelets_dict[30]))
-            self.lanes.append(Lanelet.merge_lanelets(lanelets_dict[12], lanelets_dict[13]))
-        elif scenario.scenario_id.map_name == "Ffb":
-            _lane = Lanelet.merge_lanelets(lanelets_dict[49574], lanelets_dict[49600])
-            self.lanes.append(Lanelet.merge_lanelets(_lane, lanelets_dict[49566]))
-            self.lanes.append(Lanelet.merge_lanelets(lanelets_dict[49574], lanelets_dict[49590]))
-            self.lanes.append(Lanelet.merge_lanelets(lanelets_dict[49564], lanelets_dict[49602]))
+        if lanes_to_merge is not None:
+            self.lanes = [recursive_merge([lanelets_dict[l] for l in lanelets]) for lanelets in lanes_to_merge]
         else:
             ## Find the initial lanelets
             initial_lanelets = []
@@ -252,7 +258,6 @@ class Occlusion_tracker:
                     lanes.append(lane)
             self.lanes = lanes
 
-        # ==================== END ====================
 
         # Calculate the first "view"
         for lane in self.lanes:

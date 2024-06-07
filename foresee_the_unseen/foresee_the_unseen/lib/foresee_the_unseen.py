@@ -34,7 +34,7 @@ from foresee_the_unseen.lib.planner import (
 )
 from foresee_the_unseen.lib.sensor import Sensor
 from foresee_the_unseen.lib.occlusion_tracker import Occlusion_tracker
-from foresee_the_unseen.lib.utilities import add_no_stop_zone, Logger, PrintLogger
+from foresee_the_unseen.lib.utilities import add_no_stop_zone, Logger, PrintLogger, get_no_stop_shape
 from foresee_the_unseen.lib.helper_functions import (
     euler_from_quaternion,
     create_log_directory,
@@ -153,6 +153,13 @@ class ForeseeTheUnseen:
             ego_vehicle_initial_state,
         )
 
+        lanes_to_merge = recursive_getitem(
+            self.configuration,
+            ["lanes_to_track", self.scenario.scenario_id.map_name],
+            default=None,
+        )
+        if lanes_to_merge is None:
+            self.logger.warn("No specific lanes are selected for the occlusion tracker.")
         self.occ_track = Occlusion_tracker(
             scenario=self.scenario,
             min_vel=self.configuration["min_velocity"],
@@ -162,8 +169,13 @@ class ForeseeTheUnseen:
             steps_per_occ_pred=self.configuration["prediction_step_size"],
             dt=1 / self.frequency,
             tracking_enabled=self.configuration["tracking_enabled"],
+            lanes_to_merge=lanes_to_merge,
         )
 
+        no_stop_lanelet_id = recursive_getitem(
+            self.configuration, ["no_stop_lanelets", self.scenario.scenario_id.map_name]
+        )
+        self.no_stop_shape = get_no_stop_shape(self.scenario, no_stop_lanelet_id, self.configuration["safety_margin"])
         self.planner = Planner(
             lanelet_network=self.scenario.lanelet_network,
             initial_state=self.ego_vehicle.initial_state,
@@ -312,19 +324,20 @@ class ForeseeTheUnseen:
         shadow_obstacles = self.occ_track.get_dynamic_obstacles(percieved_scenario)
         percieved_scenario.add_objects(shadow_obstacles)
 
-        # Update the planner and plan a trajectory
+        # Assign an area where the vehicle cannot stop / is no safe state
         no_stop_zone_obstacle = add_no_stop_zone(
             percieved_scenario,
             self.planner_step + self.configuration.get("planning_horizon") - 1,
-            self.configuration.get("safety_margin"),
+            self.no_stop_shape,
         )
 
         if self.do_track_exec_time:
             execution_times["shadows + no_stop"] = time.time() - interm_time
             interm_time = time.time()
 
+        # Update the planner and plan a trajectory
         try:
-            time_left  = 1 / self.frequency - (time.time() - plan_start_time) - 30e-3  # 30 ms margin
+            time_left = 1 / self.frequency - (time.time() - plan_start_time) - 30e-3  # 30 ms margin
             self.planner.update(self.ego_vehicle.initial_state)  # type: ignore
             trajectory, prediction = self.planner.plan(percieved_scenario, time_left, self.trajectory)
             self.ego_vehicle.prediction = prediction

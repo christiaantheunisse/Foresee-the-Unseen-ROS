@@ -1,0 +1,447 @@
+<commonRoad timeStepSize="0.1" commonRoadVersion="2020a" author="" affiliation="Technical University of Munich" source="CommonRoad Scenario Designer" benchmarkID="DEU_roadwidth50cm3way-1_1_T-1" date="2024-06-05">
+  <location>
+    <geoNameId>-999</geoNameId>
+    <gpsLatitude>999</gpsLatitude>
+    <gpsLongitude>999</gpsLongitude>
+  </location>
+  <scenarioTags />
+  <lanelet id="17">
+    <leftBound>
+      <point>
+        <x>0.0</x>
+        <y>-1.25</y>
+      </point>
+      <point>
+        <x>0.0570</x>
+        <y>-0.9629</y>
+      </point>
+      <point>
+        <x>0.2196</x>
+        <y>-0.7196</y>
+      </point>
+      <point>
+        <x>0.4629</x>
+        <y>-0.5570</y>
+      </point>
+      <point>
+        <x>0.7499</x>
+        <y>-0.5</y>
+      </point>
+    </leftBound>
+    <rightBound>
+      <point>
+        <x>0.5</x>
+        <y>-1.25</y>
+      </point>
+      <point>
+        <x>0.5190</x>
+        <y>-1.1543</y>
+      </point>
+      <point>
+        <x>0.5732</x>
+        <y>-1.0732</y>
+      </point>
+      <point>
+        <x>0.6543</x>
+        <y>-1.0190</y>
+      </point>
+      <point>
+        <x>0.75</x>
+        <y>-0.9999</y>
+      </point>
+    </rightBound>
+    <predecessor ref="10" />
+    <successor ref="4" />
+    <adjacentLeft ref="14" drivingDir="opposite" />
+    <laneletType>unknown</laneletType>
+  </lanelet>
+  <lanelet id="1">
+    <leftBound>
+      <point>
+        <x>-10.75</x>
+        <y>-0.4999</y>
+      </point>
+      <point>
+        <x>-0.7500</x>
+        <y>-0.5000</y>
+      </point>
+    </leftBound>
+    <rightBound>
+      <point>
+        <x>-10.75</x>
+        <y>-0.9999</y>
+      </point>
+      <point>
+        <x>-0.7500</x>
+        <y>-1.0000</y>
+      </point>
+    </rightBound>
+    <successor ref="18" />
+    <successor ref="3" />
+    <adjacentLeft ref="9" drivingDir="same" />
+    <laneletType>unknown</laneletType>
+    <userOneWay>vehicle</userOneWay>
+  </lanelet>
+  <lanelet id="4">
+    <leftBound>
+      <point>
+        <x>0.7500</x>
+        <y>-0.5005</y>
+      </point>
+      <point>
+        <x>10.75</x>
+        <y>-0.5005</y>
+      </point>
+    </leftBound>
+    <rightBound>
+      <point>
+        <x>0.7500</x>
+        <y>-0.9994</y>
+      </point>
+      <point>
+        <x>10.75</x>
+        <y>-0.9995</y>
+      </point>
+    </rightBound>
+    <predecessor ref="17" />
+    <predecessor ref="3" />
+    <adjacentLeft ref="6" drivingDir="same" />
+    <laneletType>unknown</laneletType>
+    <userOneWay>vehicle</userOneWay>
+  </lanelet>
+  <lanelet id="18">
+    <leftBound>
+      <point>
+        <x>-0.7500</x>
+        <y>-0.5005</y>
+      </point>
+      <point>
+        <x>-0.4631</x>
+        <y>-0.5575</y>
+      </point>
+      <point>
+        <x>-0.2200</x>
+        <y>-0.7200</y>
+      </point>
+      <point>
+        <x>-0.0575</x>
+        <y>-0.9631</y>
+      </point>
+      <point>
+        <x>-0.0005</x>
+        <y>-1.2500</y>
+      </point>
+    </leftBound>
+    <rightBound>
+      <point>
+        <x>-0.7500</x>
+        <y>-0.9995</y>
+      </point>
+      <point>
+        <x>-0.6541</x>
+        <y>-1.0185</y>
+      </point>
+      <point>
+        <x>-0.5728</x>
+        <y>-1.0728</y>
+      </point>
+      <point>
+        <x>-0.5185</x>
+        <y>-1.1541</y>
+      </point>
+      <point>
+        <x>-0.4995</x>
+        <y>-1.2500</y>
+      </point>
+    </rightBound>
+    <predecessor ref="1" />
+    <successor ref="11" />
+    <adjacentLeft ref="16" drivingDir="opposite" />
+    <laneletType>unknown</laneletType>
+    <userOneWay>vehicle</userOneWay>
+  </lanelet>
+  <lanelet id="10">
+    <leftBound>
+      <point>
+        <x>0.0</x>
+        <y>-11.25</y>
+      </point>
+      <point>
+        <x>0.0</x>
+        <y>-1.25</y>
+      </point>
+    </leftBound>
+    <rightBound>
+      <point>
+        <x>0.5</x>
+        <y>-11.25</y>
+      </point>
+      <point>
+        <x>0.5</x>
+        <y>-1.25</y>
+      </point>
+    </rightBound>
+    <successor ref="16" />
+    <successor ref="17" />
+    <adjacentLeft ref="11" drivingDir="opposite" />
+    <laneletType>unknown</laneletType>
+  </lanelet>
+  <lanelet id="11">
+    <leftBound>
+      <point>
+        <x>0.0000</x>
+        <y>-1.25</y>
+      </point>
+      <point>
+        <x>-0.0000</x>
+        <y>-11.25</y>
+      </point>
+    </leftBound>
+    <rightBound>
+      <point>
+        <x>-0.5</x>
+        <y>-1.2499</y>
+      </point>
+      <point>
+        <x>-0.5000</x>
+        <y>-11.25</y>
+      </point>
+    </rightBound>
+    <predecessor ref="18" />
+    <predecessor ref="14" />
+    <adjacentLeft ref="10" drivingDir="same" />
+    <laneletType>unknown</laneletType>
+  </lanelet>
+  <lanelet id="9">
+    <leftBound>
+      <point>
+        <x>-0.7499</x>
+        <y>-0.4999</y>
+      </point>
+      <point>
+        <x>-10.75</x>
+        <y>-0.4999</y>
+      </point>
+    </leftBound>
+    <rightBound>
+      <point>
+        <x>-0.7499</x>
+        <y>0.0000</y>
+      </point>
+      <point>
+        <x>-10.75</x>
+        <y>0.0000</y>
+      </point>
+    </rightBound>
+    <predecessor ref="16" />
+    <predecessor ref="8" />
+    <adjacentLeft ref="1" drivingDir="same" />
+    <laneletType>unknown</laneletType>
+    <userOneWay>vehicle</userOneWay>
+  </lanelet>
+  <lanelet id="14">
+    <leftBound>
+      <point>
+        <x>0.75</x>
+        <y>-0.4994</y>
+      </point>
+      <point>
+        <x>0.4627</x>
+        <y>-0.5566</y>
+      </point>
+      <point>
+        <x>0.2193</x>
+        <y>-0.7193</y>
+      </point>
+      <point>
+        <x>0.0566</x>
+        <y>-0.9627</y>
+      </point>
+      <point>
+        <x>-0.0004</x>
+        <y>-1.2499</y>
+      </point>
+    </leftBound>
+    <rightBound>
+      <point>
+        <x>0.7500</x>
+        <y>-0.0004</y>
+      </point>
+      <point>
+        <x>0.2718</x>
+        <y>-0.0956</y>
+      </point>
+      <point>
+        <x>-0.1335</x>
+        <y>-0.3664</y>
+      </point>
+      <point>
+        <x>-0.4043</x>
+        <y>-0.7718</y>
+      </point>
+      <point>
+        <x>-0.4995</x>
+        <y>-1.2499</y>
+      </point>
+    </rightBound>
+    <predecessor ref="6" />
+    <successor ref="11" />
+    <adjacentLeft ref="17" drivingDir="opposite" />
+    <laneletType>unknown</laneletType>
+    <userOneWay>vehicle</userOneWay>
+  </lanelet>
+  <lanelet id="16">
+    <leftBound>
+      <point>
+        <x>0.0</x>
+        <y>-1.25</y>
+      </point>
+      <point>
+        <x>-0.0570</x>
+        <y>-0.9629</y>
+      </point>
+      <point>
+        <x>-0.2196</x>
+        <y>-0.7196</y>
+      </point>
+      <point>
+        <x>-0.4629</x>
+        <y>-0.5570</y>
+      </point>
+      <point>
+        <x>-0.75</x>
+        <y>-0.5000</y>
+      </point>
+    </leftBound>
+    <rightBound>
+      <point>
+        <x>0.5</x>
+        <y>-1.25</y>
+      </point>
+      <point>
+        <x>0.4048</x>
+        <y>-0.7716</y>
+      </point>
+      <point>
+        <x>0.1338</x>
+        <y>-0.3661</y>
+      </point>
+      <point>
+        <x>-0.2716</x>
+        <y>-0.0951</y>
+      </point>
+      <point>
+        <x>-0.7499</x>
+        <y>0.0</y>
+      </point>
+    </rightBound>
+    <predecessor ref="10" />
+    <successor ref="9" />
+    <adjacentLeft ref="18" drivingDir="opposite" />
+    <laneletType>unknown</laneletType>
+  </lanelet>
+  <lanelet id="6">
+    <leftBound>
+      <point>
+        <x>10.75</x>
+        <y>-0.4994</y>
+      </point>
+      <point>
+        <x>0.75</x>
+        <y>-0.4994</y>
+      </point>
+    </leftBound>
+    <rightBound>
+      <point>
+        <x>10.75</x>
+        <y>-0.0004</y>
+      </point>
+      <point>
+        <x>0.75</x>
+        <y>-0.0004</y>
+      </point>
+    </rightBound>
+    <successor ref="8" />
+    <successor ref="14" />
+    <adjacentLeft ref="4" drivingDir="same" />
+    <laneletType>unknown</laneletType>
+    <userOneWay>vehicle</userOneWay>
+  </lanelet>
+  <lanelet id="8">
+    <leftBound>
+      <point>
+        <x>0.7500</x>
+        <y>-0.4994</y>
+      </point>
+      <point>
+        <x>-0.7499</x>
+        <y>-0.4994</y>
+      </point>
+    </leftBound>
+    <rightBound>
+      <point>
+        <x>0.7500</x>
+        <y>-0.0004</y>
+      </point>
+      <point>
+        <x>-0.7499</x>
+        <y>-0.0004</y>
+      </point>
+    </rightBound>
+    <predecessor ref="6" />
+    <successor ref="9" />
+    <adjacentLeft ref="3" drivingDir="opposite" />
+    <laneletType>unknown</laneletType>
+    <userOneWay>vehicle</userOneWay>
+  </lanelet>
+  <lanelet id="3">
+    <leftBound>
+      <point>
+        <x>-0.7499</x>
+        <y>-0.5005</y>
+      </point>
+      <point>
+        <x>0.7500</x>
+        <y>-0.5005</y>
+      </point>
+    </leftBound>
+    <rightBound>
+      <point>
+        <x>-0.7499</x>
+        <y>-0.9994</y>
+      </point>
+      <point>
+        <x>0.75</x>
+        <y>-0.9995</y>
+      </point>
+    </rightBound>
+    <predecessor ref="1" />
+    <successor ref="4" />
+    <adjacentLeft ref="8" drivingDir="opposite" />
+    <laneletType>unknown</laneletType>
+    <userOneWay>vehicle</userOneWay>
+  </lanelet>
+  <lanelet id="23">
+    <leftBound>
+      <point>
+        <x>-0.7499</x>
+        <y>0.0000</y>
+      </point>
+      <point>
+        <x>0.75</x>
+        <y>0.0000</y>
+      </point>
+    </leftBound>
+    <rightBound>
+      <point>
+        <x>-0.7499</x>
+        <y>-1.25</y>
+      </point>
+      <point>
+        <x>0.75</x>
+        <y>-1.25</y>
+      </point>
+    </rightBound>
+    <laneletType>unknown</laneletType>
+  </lanelet>
+</commonRoad>

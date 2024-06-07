@@ -431,6 +431,9 @@ class Planner:
 
         # find waypoints beyond goal position.
         center_vertices = np.array(starting_lane.center_vertices)
+        # remove too closes points
+        dist_center_vertices = np.hypot(*np.diff(center_vertices, axis=0).T)
+        center_vertices = center_vertices[np.insert(dist_center_vertices > 0.01, 0, True)]
         center_line_shapely = LineString(center_vertices)
         goal_shapely = Point(self.goal_point)
         dist_along_line = center_line_shapely.project(goal_shapely)
@@ -813,6 +816,8 @@ class Planner:
 
         # Calculate the polygons representing the occupancies for the ranges of distance along the centerline of the
         #  path which represents the occupancy at each time step
+        dist_time_min = np.maximum(dist_time_min, 1e-4)
+        dist_time_max = np.maximum(dist_time_max, 1e-4)
         xy_ths_all_times = self.get_xy_ths_for_range(
             dist_time_min, dist_time_max, self.dist_along_points, self.orient_bw_points, self.waypoints_w_ego_pos
         )

@@ -11,6 +11,7 @@ from scipy.spatial.transform import Rotation as R
 from sensor_msgs.msg import LaserScan, Imu
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
+from racing_bot_interfaces.msg import Trajectory
 
 from foresee_the_unseen.lib.helper_functions import create_log_directory
 
@@ -35,11 +36,12 @@ class StoreTopicsNode(Node):
             [
                 # TopicToStore(topic_name="/scan", message_type=LaserScan),
                 # TopicToStore(topic_name="/scan/road_env", message_type=LaserScan),
-                TopicToStore(topic_name="/imu_data", message_type=Imu),
-                TopicToStore(topic_name="/odometry/filtered", message_type=Odometry),
-                TopicToStore(topic_name="/odometry/velocity_ekf", message_type=Odometry),
-                TopicToStore(topic_name="/odometry/wheel_encoders", message_type=Odometry),
-                TopicToStore(topic_name="/slam_pose", message_type=PoseWithCovarianceStamped),
+                # TopicToStore(topic_name="/imu_data", message_type=Imu),
+                # TopicToStore(topic_name="/odometry/filtered", message_type=Odometry),
+                # TopicToStore(topic_name="/odometry/velocity_ekf", message_type=Odometry),
+                # TopicToStore(topic_name="/odometry/wheel_encoders", message_type=Odometry),
+                # TopicToStore(topic_name="/slam_pose", message_type=PoseWithCovarianceStamped),
+                TopicToStore(topic_name="/trajectory", message_type=Trajectory),
             ]
         )
         assert self.unique_check(topics_to_store), "All topic names should be unique"
