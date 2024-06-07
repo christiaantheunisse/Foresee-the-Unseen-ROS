@@ -44,6 +44,7 @@ from foresee_the_unseen.lib.helper_functions import (
 # to load the pickled error models
 import foresee_the_unseen.lib.error_model as error_model
 import sys
+
 sys.modules["error_model"] = error_model
 
 
@@ -76,7 +77,7 @@ class ForeseeTheUnseen:
         self.logger = logger
         self.frequency = frequency
         self.throttle_duration = None  # set the throttle duration for the logging when used with ROS
-        self.do_track_exec_time = True
+        self.do_track_exec_time = False
 
         if self.logger is not None:
             assert hasattr(self.logger, "info") and hasattr(
@@ -266,7 +267,7 @@ class ForeseeTheUnseen:
             initial_state=state,
         )
 
-    def update_scenario(self, current_time: float) -> Tuple[
+    def update_scenario(self, plan_start_time: float) -> Tuple[
         List[DynamicObstacle],
         ShapelyPolygon,
         Optional[Trajectory],
@@ -281,8 +282,8 @@ class ForeseeTheUnseen:
             start_time = time.time()
             interm_time = time.time()
 
-        ego_vehicle_state = self.get_ego_vehicle_state(current_time)
-        if ego_vehicle_state is None or (self._ego_vehicle_state_stamp + 1 / self.frequency) < current_time:
+        ego_vehicle_state = self.get_ego_vehicle_state(plan_start_time)
+        if ego_vehicle_state is None or (self._ego_vehicle_state_stamp + 1 / self.frequency) < plan_start_time:
             self.logger_warn("No up-to-date ego vehicle state available")
             raise NoUpdatePossible()
         ego_vehicle_state.time_step = self.planner_step
@@ -296,7 +297,7 @@ class ForeseeTheUnseen:
             interm_time = time.time()
 
         # Update the sensor view:
-        field_of_view = self.get_field_of_view(current_time)  # Based on laser scan
+        field_of_view = self.get_field_of_view(plan_start_time)  # Based on laser scan
         if field_of_view is None:
             self.logger_warn("No FOV available")
             raise NoUpdatePossible()
@@ -306,7 +307,7 @@ class ForeseeTheUnseen:
             interm_time = time.time()
 
         # Update the tracker with the new sensor view and get the shadows and their prediction
-        scan_delay = current_time - self._field_of_view_stamp
+        scan_delay = plan_start_time - self._field_of_view_stamp
         self.occ_track.update(field_of_view, self.planner_step, scan_delay)
         shadow_obstacles = self.occ_track.get_dynamic_obstacles(percieved_scenario)
         percieved_scenario.add_objects(shadow_obstacles)
@@ -323,8 +324,9 @@ class ForeseeTheUnseen:
             interm_time = time.time()
 
         try:
+            time_left  = 1 / self.frequency - (time.time() - plan_start_time) - 30e-3  # 30 ms margin
             self.planner.update(self.ego_vehicle.initial_state)  # type: ignore
-            trajectory, prediction = self.planner.plan(percieved_scenario, self.trajectory)
+            trajectory, prediction = self.planner.plan(percieved_scenario, time_left, self.trajectory)
             self.ego_vehicle.prediction = prediction
             self.trajectory = copy.deepcopy(trajectory)
         except NoSafeTrajectoryFound:
@@ -362,12 +364,13 @@ class ForeseeTheUnseen:
             execution_times["logging"] = time.time() - interm_time
             execution_times["total"] = time.time() - start_time
             self.logger.info(str({key: round(value * 1000) for key, value in execution_times.items()}))
-        
+
         if trajectory is not None:
             dt = 1 / self.frequency
             for state in trajectory.state_list:
-                state.time_step = (state.time_step - self.planner_step) * dt + current_time
-        
+                state.time_step = (state.time_step - self.planner_step) * dt + plan_start_time
+            # self.logger.info(str([s.orientation for s in trajectory.state_list]) + "\n")
+
         return (
             shadow_obstacles,
             field_of_view,

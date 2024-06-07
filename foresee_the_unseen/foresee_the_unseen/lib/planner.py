@@ -2,7 +2,7 @@ import numpy as np
 import math
 from typing import Optional, List, Union, Tuple, Any, TypedDict, Type
 import nptyping as npt
-import multiprocessing
+import signal
 
 from commonroad.scenario.scenario import Scenario, LaneletNetwork
 from commonroad.scenario.trajectory import Trajectory
@@ -60,6 +60,9 @@ class NoSafeTrajectoryFound(Exception): ...
 class FlatOccupancy(Exception): ...
 
 
+class StopPlanning(Exception): ...
+
+
 class Planner:
     def __init__(
         self,
@@ -77,6 +80,7 @@ class Planner:
         apply_error_models: bool,
         logger: Type[Logger] = PrintLogger,
         max_dist_corner_smoothing: float = 0.1,
+        goal_margin: float = 0.5,
         waypoints: Optional[np.ndarray] = None,
         localization_position_std: Optional[float] = None,
         localization_orientation_std: Optional[float] = None,
@@ -105,6 +109,7 @@ class Planner:
             self._waypoints = None
             self._passed_waypoints = 0
         self.max_dist_corner_smoothing = max_dist_corner_smoothing
+        self.goal_margin = goal_margin
 
         self.goal_reached = False
 
@@ -132,6 +137,8 @@ class Planner:
                 ]
             ), "The z-value is not defined for all the errors."
             self.z_values = z_values_configuration
+
+        signal.signal(signal.SIGALRM, self.signal_handler)
 
     @property
     def waypoints(self) -> npt.NDArray[npt.Shape["N, 2"], npt.Float]:
@@ -179,6 +186,10 @@ class Planner:
         if self._orient_bw_points is None:
             self._set_waypoints_variables()
         return self._orient_bw_points  # type: ignore
+
+    @staticmethod
+    def signal_handler(signal, frame):
+        raise StopPlanning
 
     @staticmethod
     def get_vehicle_boundaries(
@@ -233,64 +244,111 @@ class Planner:
             self.find_waypoints()
         self._clear_waypoints_variables()
         self.update_passed_waypoints()
+        dist_to_goal = self.dist_along_points[self.goal_waypoint_idx + 1]
+        if dist_to_goal <= self.goal_margin:
+            self.goal_reached = True
+
+    def update_passed_waypoints(self) -> None:
+        for waypoint in self.waypoints[self.passed_waypoints :]:
+            direction_vector = waypoint - self.initial_state.position
+            angle_to_next_point = np.arctan2(*np.flip(direction_vector))
+            angle_diff_to_next_point = abs(
+                (np.pi + angle_to_next_point - self.initial_state.orientation) % (2 * np.pi) - np.pi
+            )
+            next_point_is_too_close = bool(np.hypot(*direction_vector) < self.min_dist_waypoint)
+            if next_point_is_too_close or (angle_diff_to_next_point > np.pi / 2):
+                self.passed_waypoints += 1
+            else:
+                return
 
     def plan(
-        self, scenario: Scenario, current_trajectory: Optional[Trajectory] = None
+        self,
+        scenario: Scenario,
+        time_available: float,
+        current_trajectory: Optional[Trajectory] = None,
     ) -> Tuple[Trajectory, SetBasedPrediction]:
         """Finds the fastest possible trajectory by iterative trying different velocity profiles."""
-        # TODO: make comp time dependant
-        if self.goal_reached:
-            raise NoSafeTrajectoryFound
-
         best_result_so_far: PlanningResult = {"trajectory": None, "prediction": None}
+        signal.setitimer(signal.ITIMER_REAL, max(time_available, 1e-3))
+        try:
+            if self.goal_reached:
+                signal.setitimer(signal.ITIMER_REAL, 0)  # reset timer
+                self.logger.info(f"Goal reached")
+                raise NoSafeTrajectoryFound
 
-        # planning takes 250 ms, so need to adjust with the first 250 ms of the current trajectory
-        next_velocity = None
-        current_velocity, next_t = self.initial_state.velocity, self.initial_state.time_step + 1
-        if current_trajectory is not None:
-            next_velocity = next((s.velocity for s in current_trajectory.state_list if s.time_step == next_t), None)
-        if next_velocity is None:
-            next_velocity = current_velocity.end if isinstance(current_velocity, Interval) else current_velocity
+            # planning takes 250 ms, so need to adjust with the first 250 ms of the current trajectory
+            next_velocity = None
+            current_velocity, next_t = self.initial_state.velocity, self.initial_state.time_step + 1
+            if current_trajectory is not None:
+                next_velocity = next((s.velocity for s in current_trajectory.state_list if s.time_step == next_t), None)
+            if next_velocity is None:
+                next_velocity = current_velocity.end if isinstance(current_velocity, Interval) else current_velocity
 
-        velocity_profiles = self.generate_velocity_profiles(next_velocity)
-        self.collision_checker = create_collision_checker(scenario)
+            no_of_trajectories = 20 if time_available > 0.1 else 10
+            velocity_profiles = self.generate_velocity_profiles(next_velocity, no_of_trajectories=no_of_trajectories)
+            self.collision_checker = create_collision_checker(scenario)
 
-        def check_velocity_profile(idx: int) -> bool:
-            velocity_profile = velocity_profiles[idx]
-            loc_pos_error, loc_orient_error, traj_long_error, traj_lat_error, traj_orient_error = (
-                self.calc_errors_for_velocity_profile(velocity_profile)
-            )
-            set_based_prediction = self.create_occupancy_set(
-                velocity_profile=velocity_profile,
-                loc_pos_error=loc_pos_error,
-                loc_orient_error=loc_orient_error,
-                traj_long_error=traj_long_error,
-                traj_lat_error=traj_lat_error,
-                traj_orient_error=traj_orient_error,
-            )
-            is_safe = self.is_safe_trajectory(set_based_prediction)
-            if is_safe:
-                best_result_so_far["trajectory"] = self.velocity_profile_to_state_list(velocity_profile)
-                best_result_so_far["prediction"] = set_based_prediction
+            def check_velocity_profile(idx: int) -> bool:
+                try:
+                    velocity_profile = velocity_profiles[idx]
+                    loc_pos_error, loc_orient_error, traj_long_error, traj_lat_error, traj_orient_error = (
+                        self.calc_errors_for_velocity_profile(velocity_profile)
+                    )
+                    set_based_prediction = self.create_occupancy_set(
+                        velocity_profile=velocity_profile,
+                        loc_pos_error=loc_pos_error,
+                        loc_orient_error=loc_orient_error,
+                        traj_long_error=traj_long_error,
+                        traj_lat_error=traj_lat_error,
+                        traj_orient_error=traj_orient_error,
+                    )
+                    is_safe = self.is_safe_trajectory(set_based_prediction)
+                    if is_safe:
+                        best_result_so_far["trajectory"] = self.velocity_profile_to_state_list(velocity_profile)
+                        best_result_so_far["prediction"] = set_based_prediction
 
-            return is_safe
+                    return is_safe
+                except FlatOccupancy:
+                    return False
 
-        # If not the fastest velocity profile -> try the others
-        if not check_velocity_profile(0):
-            # Try slowest velocity profile and subsequently the others by a branch-and-bound approach starting at the center
-            check_velocity_profile(-1)
+            # If not the fastest velocity profile -> try the others
+            if not check_velocity_profile(0):
+                # Try slowest velocity profile and subsequently the others by a branch-and-bound approach starting at the center
+                check_velocity_profile(-1)
 
-            N = len(velocity_profiles)
-            # TODO: implement some time limit here
-            step_N, current_N = N / 2, N / 2
-            while step_N >= 2 and -1e-6 < current_N < N + 1e-6:
-                step_N /= 2
-                current_N -= step_N if check_velocity_profile(round(current_N) - 1) else -step_N
+                N = len(velocity_profiles)
+                # TODO: implement some time limit here
+                step_N, current_N = N / 2, N / 2
+                while step_N >= 0.1 and -1e-6 < current_N < N + 1e-6:
+                    step_N /= 2
+                    current_N -= step_N if check_velocity_profile(round(current_N) - 1) else -step_N
 
-        if best_result_so_far["prediction"] is not None and best_result_so_far["trajectory"] is not None:
-            return best_result_so_far["trajectory"], best_result_so_far["prediction"]
+            # reset timer
+            signal.setitimer(signal.ITIMER_REAL, 0)
+        except StopPlanning:
+            pass  # end the planning
+
+        new_trajectory, new_prediction = best_result_so_far["trajectory"], best_result_so_far["prediction"]
+        # if new_trajectory is not None and new_prediction is not None and current_trajectory is not None:
+        #     d_new = np.linalg.norm(self.initial_state.position - new_trajectory.state_list[-1].position)  # type: ignore
+        #     d_current = np.linalg.norm(self.initial_state.position - current_trajectory.state_list[-1].position)  # type: ignore
+        #     if d_new >= d_current:
+        #         return new_trajectory, new_prediction
+        if new_trajectory is not None and new_prediction is not None:
+            return new_trajectory, new_prediction
         else:
             raise NoSafeTrajectoryFound
+
+    @staticmethod
+    def normalize_angles(angles: np.ndarray) -> np.ndarray:
+        """Normalize angles to a range of [-pi, pi]"""
+        return (angles + np.pi) % (2 * np.pi) - np.pi
+
+    @staticmethod
+    def unnormalize_angles(angles: np.ndarray) -> np.ndarray:
+        """Makes a ranges of angles continuous, so removes the jumps at -pi and +pi"""
+        normalized_diffs = Planner.normalize_angles(np.diff(angles))
+        return angles[0] + np.insert(np.cumsum(normalized_diffs), 0, 0)
 
     def velocity_profile_to_state_list(self, velocity_profile):
         if isinstance(self.initial_state.velocity, Scalar):
@@ -322,8 +380,11 @@ class Planner:
             self.max_dist_corner_smoothing,
         )
         dist_along_bef_aft_points = np.vstack((dist_along_bef_points, dist_along_aft_points)).T.flatten()
-        orientations_at_points = np.repeat(self.orient_bw_points[self.passed_waypoints :], 2)[1:-1]
-        orientations = np.interp(dist, dist_along_bef_aft_points, orientations_at_points)
+        # interpolating from e.g. -3.12 to 3.14 should not be [-3.12, 0.01, 3.14], but: [-3.12, -3.13, 3.14]
+        angles_unnorm = self.unnormalize_angles(self.orient_bw_points[self.passed_waypoints :])
+        orientations_at_points = np.repeat(angles_unnorm, 2)[1:-1]
+        orientations_unnorm = np.interp(dist, dist_along_bef_aft_points, orientations_at_points)
+        orientations = self.normalize_angles(orientations_unnorm)
 
         state_list = []
         for time_step, (
@@ -394,27 +455,19 @@ class Planner:
         )  # smallest distance to the corner
         radii = dists_to_corner * np.tan((np.pi - orient_diff) / 2)
         self.max_curvature_waypoints = 1 / np.min(radii)
-        self.logger.info(f"[planner] smallest radius = {np.min(radii)} and biggest curvature = {self.max_curvature_waypoints}")
-
-    def update_passed_waypoints(self) -> None:
-        for waypoint in self.waypoints[self.passed_waypoints :]:
-            direction_vector = waypoint - self.initial_state.position
-            angle_to_next_point = np.arctan2(*np.flip(direction_vector))
-            angle_diff_to_next_point = abs(
-                (np.pi + angle_to_next_point - self.initial_state.orientation) % (2 * np.pi) - np.pi
-            )
-            next_point_is_too_close = bool(np.hypot(*direction_vector) < self.min_dist_waypoint)
-            if next_point_is_too_close or (angle_diff_to_next_point > np.pi / 2):
-                self.passed_waypoints += 1
-            else:
-                return
+        self.logger.info(
+            f"[planner] smallest radius = {np.min(radii)} and biggest curvature = {self.max_curvature_waypoints}"
+        )
 
     def generate_velocity_profiles(
-        self, next_velocity: float, number_of_trajectories: int = 10
+        self, next_velocity: float, no_of_trajectories: int = 10
     ) -> Union[npt.NDArray[npt.Shape["N, M"], npt.Float], npt.NDArray[npt.Shape["N, M, 2"], npt.Float]]:
         dist_to_goal = self.dist_along_points[self.goal_waypoint_idx + 1]
         if isinstance(self.initial_state.velocity, Scalar):
             d_first_step = (self.initial_state.velocity + next_velocity) / 2 * self.dt
+            d_remaining = dist_to_goal - d_first_step
+            if d_remaining <= 0:
+                raise NoSafeTrajectoryFound
             velocity_profiles = self._generate_scalar_velocity_profiles(
                 velocity=next_velocity,
                 max_dec=self.max_dec,
@@ -422,14 +475,17 @@ class Planner:
                 dt=self.dt,
                 time_horizon=self.time_horizon - 1,
                 reference_speed=self.reference_speed,
-                number_of_trajectories=number_of_trajectories,
-                dist_to_goal=dist_to_goal - d_first_step,
+                number_of_trajectories=no_of_trajectories,
+                dist_to_goal=d_remaining,
             )
             velocity_profiles = np.array([np.insert(v, 0, next_velocity) for v in velocity_profiles])
         elif isinstance(self.initial_state.velocity, Interval):
             v_range = self.initial_state.velocity.end - self.initial_state.velocity.start
             next_velocity_inter = Interval(next_velocity - v_range / 2, next_velocity + v_range / 2)
             d_first_step = (self.initial_state.velocity.end + next_velocity_inter.end) / 2 * self.dt
+            d_remaining = dist_to_goal - d_first_step
+            if d_remaining <= 0:
+                raise NoSafeTrajectoryFound
             velocity_profiles_max = self._generate_scalar_velocity_profiles(
                 velocity=next_velocity_inter.end,
                 max_dec=self.max_dec,
@@ -437,8 +493,8 @@ class Planner:
                 dt=self.dt,
                 time_horizon=self.time_horizon - 1,
                 reference_speed=self.reference_speed,
-                number_of_trajectories=number_of_trajectories,
-                dist_to_goal=dist_to_goal - d_first_step,
+                number_of_trajectories=no_of_trajectories,
+                dist_to_goal=d_remaining,
             )
             velocity_profiles_max = np.array([np.insert(v, 0, next_velocity_inter.end) for v in velocity_profiles_max])
             velocity_profiles_max = velocity_profiles_max[..., np.newaxis]

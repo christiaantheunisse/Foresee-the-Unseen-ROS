@@ -26,7 +26,7 @@ apply_error_models: True
 reference_speed : 0.4 # trajectory planner limits norm_vel on 0.873 (r_min = 0.5)
 max_acceleration : 0.25
 max_deceleration : 0.25
-planning_horizon : 60
+planning_horizon : 40
 safety_margin : 0.65
 minimum_distance_waypoint: 0.1
 max_dist_corner_smoothing: 0.2
@@ -50,7 +50,7 @@ view_range : 20
 min_velocity : 0
 max_velocity : 0.45
 min_shadow_area : 0.01  # Change this
-prediction_horizon : 60
+prediction_horizon : 40
 prediction_step_size: 5 # no. of time steps to combine in the occupancy prediction
 tracking_enabled : True
 
