@@ -199,6 +199,7 @@ class FOVNode(Node):
         self.declare_parameter("do_filter_scan", False)
         self.declare_parameter("do_correct_state_uncertainty", False)
 
+        self.declare_parameter("max_inclination_angle", np.radians(70))  # [deg]
         self.declare_parameter("subsample_rate", 1)
         self.declare_parameter("rotating_direction", "CW")
         self.declare_parameter("view_range", 5.0)
@@ -230,6 +231,8 @@ class FOVNode(Node):
         self.do_filter_scan = self.get_parameter("do_filter_scan").get_parameter_value().bool_value
         self.do_correct_state_unc = self.get_parameter("do_correct_state_uncertainty").get_parameter_value().bool_value
 
+        self.max_incl_angle = self.get_parameter("max_inclination_angle").get_parameter_value().double_value
+        assert 0 < self.max_incl_angle <= np.pi / 2, "Maximum inclination angle should be in range [0, pi/2]"
         subsample_rate = self.get_parameter("subsample_rate").get_parameter_value().integer_value
         self.subsample_rate = None if subsample_rate <= 1 else int(subsample_rate)
         self.rotating_direction = self.get_parameter("rotating_direction").get_parameter_value().string_value
@@ -348,7 +351,7 @@ class FOVNode(Node):
                 ranges_corr, angles_corr = self.apply_error_model(ranges, angles, mask_invalid, odom_msg)
             else:
                 ranges_corr, angles_corr = ranges, angles
-            fov_points, time_order = self.make_fov(ranges_corr, angles_corr, mask_invalid)
+            fov_points, time_order = self.make_fov(ranges_corr, angles_corr, mask_invalid, self.max_incl_angle)
 
             # Deskew the points defining the FOV and publish the FOV
             fov_points_deskewed, start_time = self.deskew_laserscan_interpolate_tf(
@@ -553,14 +556,14 @@ class FOVNode(Node):
     def approx_max_step(distance: float, max_incl_angle: float, angle_incr: float) -> float:
         """Approximate the maximum increase in range based on the current range and the maximum inclination angle."""
         opposite = np.sin(angle_incr) * distance
-        return opposite / np.tan(np.pi / 2 - max_incl_angle)
+        return opposite / np.tan(np.pi / 2 - max_incl_angle) if max_incl_angle < np.pi else np.inf
 
     @staticmethod
     def make_fov(
         ranges: np.ndarray,
         angles: np.ndarray,
         mask_invalid: np.ndarray,
-        max_incl_angle: float = np.radians(70),
+        max_incl_angle: float,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Determine an underapproximating field of view from the LaserScan message."""
         start_idx = np.argmin(ranges)

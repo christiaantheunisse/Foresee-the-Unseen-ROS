@@ -49,6 +49,7 @@ def generate_launch_description():
         name="fov_node",
         parameters=[
             PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "fov_node.yaml"]),
+            PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "resource", "commonroad_scenario.yaml"]),
             {
                 "do_visualize": do_visualize,
                 "error_models_directory": PathJoinSubstitution(

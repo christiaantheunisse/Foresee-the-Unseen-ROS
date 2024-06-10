@@ -183,29 +183,6 @@ class ObstacleTrajectoriesNode(Node):
 
         return state_tf
     
-    # def setup_timer_w_delay(self, namespace: str, delay: float, msg: TrajectoryMsg) -> Callable[[], None]:
-    #     # create the publisher
-    #     publisher = self.create_publisher(TrajectoryMsg, f"/{namespace}/{self.trajectory_topic}", 1)
-
-    #     def timer_callback() -> None:
-    #         # publish the message only once
-    #         self.get_logger().info(
-    #             (
-    #                 f"[timer_callback {namespace} ({delay=})] "
-    #                 + time.strftime(
-    #                     "%Y-%m-%d %H:%M:%S", time.localtime(self.get_clock().now().seconds_nanoseconds()[0])
-    #                 )
-    #             )
-    #         )
-    #         publisher.publish(msg)
-    #         # self.get_logger().info(f"message published: {msg}")
-    #         timer = getattr(self, f"timer_{namespace}")
-    #         # timer.cancel()
-
-    #     setattr(self, f"timer_{namespace}", self.create_timer(delay, timer_callback))
-
-        return timer_callback
-
     def get_road_structure_marker(self) -> List[Marker]:
         """Get the markers that visualize the road boundaries."""
         markers = []

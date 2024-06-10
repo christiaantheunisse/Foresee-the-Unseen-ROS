@@ -16,9 +16,11 @@ fov_node:
     rotating_direction: CW
     view_range: 5.
 
-    apply_errors_models: True
+    # max_inclination_angle: 1.22173  # [rad]
+    # set these parameters in `commonroad_scenario.yaml`
+    # apply_errors_models: True
     # error_models_directory: some/path/to/the/error/model
-    range_stds_margin: 2.
-    angle_stds_margin: 2.
-    state_pos_stds_margin: 2.
-    state_orient_stds_margin: 2.
+    # range_stds_margin: 2.
+    # angle_stds_margin: 2.
+    # state_pos_stds_margin: 2.
+    # state_orient_stds_margin: 2.

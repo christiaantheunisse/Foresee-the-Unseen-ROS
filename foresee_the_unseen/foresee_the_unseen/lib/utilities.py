@@ -170,32 +170,6 @@ def add_no_stop_zone(scenario: Scenario, planning_horizon: int, no_stop_polygon:
 
     return no_stop_object
 
-
-def create_planning_problem_DEU_Ffb(configuration, planning_id=0):
-    initial_state = InitialState(
-        position=np.array([configuration.get("initial_state_x"), configuration.get("initial_state_y")]),
-        orientation=configuration.get("initial_state_orientation"),
-        velocity=configuration.get("initial_state_velocity"),
-        time_step=0,
-        yaw_rate=0,
-        slip_angle=0,
-    )
-
-    goal_state = InitialState(
-        position=Circle(
-            2,
-            np.array([configuration.get("goal_point_x"), configuration.get("goal_point_y")]),
-        ),
-        orientation=AngleInterval(-np.pi, np.pi - 0.0000000000001),
-        velocity=Interval(0, 20),
-        time_step=Interval(0, configuration.get("simulation_duration")),
-    )
-
-    goal_region = GoalRegion([goal_state])
-    planning_problem = PlanningProblem(planning_id, initial_state, goal_region)
-    return PlanningProblemSet([planning_problem])
-
-
 def clamp(x):
     return max(0, min(x, 255))
 
