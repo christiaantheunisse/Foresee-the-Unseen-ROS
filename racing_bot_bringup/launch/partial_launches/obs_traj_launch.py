@@ -24,11 +24,6 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 
 def generate_launch_description():
-    obstacles_file_launch_arg = DeclareLaunchArgument(
-        "obstacles_config_file",
-        default_value=TextSubstitution(text="obstacle_trajectories.yaml"),
-        description="the file that contains the configuration for the obstacle trajectories",
-    )
     slam_mode_launch_arg = DeclareLaunchArgument(
         "slam_mode_obs",
         default_value=TextSubstitution(text="elsewhere"),
@@ -52,7 +47,6 @@ def generate_launch_description():
         description="If true, the planner node ",
     )
 
-    obstacles_config_file = LaunchConfiguration("obstacles_config_file")
     slam_mode = LaunchConfiguration("slam_mode_obs")
     map_file = LaunchConfiguration("map_file")
     use_ekf = LaunchConfiguration("use_ekf_obs")
@@ -67,13 +61,6 @@ def generate_launch_description():
         )
     )
 
-    try:
-        map_files_dir = os.environ["ROS_MAP_FILES_DIR"]
-        log_messages.append(LogInfo(msg="The map is loaded from the path in `ROS_MAP_FILES_DIR`"))
-    except KeyError:
-        log_messages.append(LogInfo(msg="`ROS_MAP_FILES_DIR` is not set!"))
-        map_files_dir = ""
-
     obstacle_trajectories_node = Node(
         package="foresee_the_unseen",
         executable="obstacle_trajectories_node",
@@ -82,8 +69,8 @@ def generate_launch_description():
             PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "obstacle_trajectories_node.yaml"]),
             {
                 "obstacle_config_yaml": PathJoinSubstitution(
-                    # [FindPackageShare("foresee_the_unseen"), "resource", obstacles_config_file]
-                    ["/home/christiaan/thesis/robot_ws/src/foresee_the_unseen/resource", obstacles_config_file]
+                    [FindPackageShare("foresee_the_unseen"), "resource", "commonroad_scenario.yaml"]
+                    # ["/home/christiaan/thesis/robot_ws/src/foresee_the_unseen/resource", commonroad_config_file]
                 ),
                 "do_visualize": do_visualize,
             },
@@ -93,7 +80,7 @@ def generate_launch_description():
     def get_config_from_yaml(yaml_file: str) -> Tuple[List[str], List[List[float]]]:
         """Loads the content from the yaml file"""
         with open(yaml_file) as f:
-            obstacle_config = yaml.safe_load(f)
+            obstacle_config = yaml.safe_load(f)["obstacle_trajectories"]
         obstacle_namespaces = obstacle_config["obstacle_cars"].keys()
         start_poses = [obstacle_config["obstacle_cars"][n]["start_pose"] for n in obstacle_namespaces]
         for start_pose in start_poses:
@@ -105,10 +92,13 @@ def generate_launch_description():
         return obstacle_namespaces, start_poses
 
     def slam_based_on_yaml(
-        context: LaunchContext, yaml_file: LaunchConfiguration, use_ekf: LaunchConfiguration
+        context: LaunchContext, use_ekf: LaunchConfiguration
     ):
         """Calculate the start pose in the `map` frame, based on the `map` -> `planner` transform and the start
         pose in the planner frame. Initialize a slam node with the right topics and start pose."""
+        yaml_file = PathJoinSubstitution(
+            [FindPackageShare("foresee_the_unseen"), "resource", "commonroad_scenario.yaml"]
+        )
         yaml_filepath_str = PathJoinSubstitution(
             [FindPackageShare("foresee_the_unseen"), "resource", yaml_file]
         ).perform(context)
@@ -158,48 +148,14 @@ def generate_launch_description():
             )
             slam_launches.append(slam_launch)
 
-            # Publish the start pose in case the SLAM node is run on the robot
-            # position_variance = 0.2
-            # angle_variance = 0.1
-            # covariance_array = [0.0] * 36
-            # covariance_array[0] = covariance_array[7] = position_variance
-            # covariance_array[35] = angle_variance
-
-            # initialpose_msg = {
-            #     "pose": {
-            #         "pose": {
-            #             "position": {"x": start_pose_map[0], "y": start_pose_map[1]},
-            #             "orientation": {
-            #                 "z": str(math.sin(start_pose_map[2] / 2)),
-            #                 "w": str(math.cos(start_pose_map[2] / 2)),
-            #             },
-            #         }
-            #     },
-            # }
-            # initialpose_publisher = ExecuteProcess(
-            #     cmd=[
-            #         # *f"ros2 topic pub -t 1 /{namespace}/initialpose geometry_msgs/msg/PoseWithCovarianceStamped".split(
-            #         *f"ros2 topic pub -t 5 -w 1 /{namespace}/initialpose geometry_msgs/msg/PoseWithCovarianceStamped".split(
-            #             " "
-            #         ),
-            #         str(initialpose_msg),
-            #         *["--qos-reliability", "reliable"],
-            #         *["--qos-durability", "transient_local"],
-            #     ],
-            #     name="Publish /initialpose",
-            # )
-            # initialpose_publishers.append(initialpose_publisher)
-
         return [
             *slam_launches,
-            # *initialpose_publishers,
         ]
 
     return LaunchDescription(
         [
             # arguments
             slam_mode_launch_arg,
-            obstacles_file_launch_arg,
             use_ekf_launch_arg,
             map_file_launch_arg,
             do_visualize_launch_arg,
@@ -207,15 +163,9 @@ def generate_launch_description():
             *log_messages,
             # nodes
             obstacle_trajectories_node,
-            # transforms
-            # OpaqueFunction(
-            #     function=static_transforms_based_on_yaml,
-            #     args=[obstacles_config_file],
-            #     condition=IfCondition(EqualsSubstitution(slam_mode, "disabled")),
-            # ),
             OpaqueFunction(
                 function=slam_based_on_yaml,
-                args=[obstacles_config_file, use_ekf],
+                args=[use_ekf],
             ),
         ]
     )

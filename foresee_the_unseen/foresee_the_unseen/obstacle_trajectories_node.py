@@ -54,7 +54,7 @@ class ObstacleTrajectoriesNode(Node):
         self.planner_frame = self.get_parameter("planner_frame").get_parameter_value().string_value
         self.trajectory_topic = self.get_parameter("trajectory_topic").get_parameter_value().string_value
         self.yaml_file = self.get_parameter("obstacle_config_yaml").get_parameter_value().string_value
-        self.obstacle_config = read_obstacle_configuration_yaml(self.yaml_file)
+        self.obstacle_config = read_obstacle_configuration_yaml(self.yaml_file, namespace="obstacle_trajectories")
         self.do_visualize = self.get_parameter("do_visualize").get_parameter_value().bool_value
         self.visualization_topic = self.get_parameter("visualization_topic").get_parameter_value().string_value
         self.startup_topic = self.get_parameter("startup_topic").get_parameter_value().string_value

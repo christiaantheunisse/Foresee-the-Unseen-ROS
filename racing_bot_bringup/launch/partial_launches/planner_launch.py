@@ -49,7 +49,7 @@ def generate_launch_description():
         name="fov_node",
         parameters=[
             PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "fov_node.yaml"]),
-            PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "resource", "commonroad_scenario.yaml"]),
+            PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "resource", "ros_params_scenario.yaml"]),
             {
                 "do_visualize": do_visualize,
                 "error_models_directory": PathJoinSubstitution(
@@ -64,16 +64,17 @@ def generate_launch_description():
         output="screen",
         parameters=[
             PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "planner_node.yaml"]),
+            PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "resource", "ros_params_scenario.yaml"]),
             {
                 "use_triangulation": do_triangulate,
                 "do_visualize": do_visualize,
-                # "road_xml": PathJoinSubstitution(
-                #     [FindPackageShare("foresee_the_unseen"), "resource", "road_structure_15_reduced_points.xml"]
-                # ),
                 "error_models_directory": PathJoinSubstitution(
                     [FindPackageShare("foresee_the_unseen"), "resource", "error_models"]
                 ),
                 "log_directory": PathJoinSubstitution(log_files_dir),
+                "foresee_the_unseen_yaml": PathJoinSubstitution(
+                    [FindPackageShare("foresee_the_unseen"), "resource", "commonroad_scenario.yaml"]
+                ),
             },
         ],
     )
@@ -84,6 +85,7 @@ def generate_launch_description():
         ).perform(context)
         with open(commonroad_config_yamlpath) as f:
             obstacle_config = yaml.safe_load(f)
+        # pose = obstacle_config["pose_of_planner_in_map_frame"]
         pose = obstacle_config["pose_of_planner_in_map_frame"]
         assert len(pose) == 3, f"Pose should be [x, y, theta]; {pose=}"
 

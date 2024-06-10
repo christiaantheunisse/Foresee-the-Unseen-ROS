@@ -559,7 +559,7 @@ class PlannerNode(Node):
     def get_no_stop_zone_marker(self, zone: Obstacle) -> List[Marker]:
         """Visualize the no stop zone at an intersection"""
         polygon = zone.obstacle_shape.vertices
-        return self.polygons_to_ros_marker(polygons=[polygon], color=YELLOW, namespace="no stop zone", linewidth=0.05)
+        return self.polygons_to_ros_marker(polygons=[polygon], color=YELLOW, namespace="no stop zone", linewidth=0.05, z=0.1)
 
     def get_prediction_marker(self, prediction: SetBasedPrediction) -> List[Marker]:
         """Visualize the prediction of the future occupancies"""

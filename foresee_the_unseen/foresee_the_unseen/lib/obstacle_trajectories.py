@@ -1,7 +1,7 @@
 import yaml
 import os
 import numpy as np
-from typing import Tuple, Dict, List
+from typing import Tuple, Dict, List, Optional
 import nptyping as npt
 
 from commonroad.scenario.state import InitialState
@@ -301,9 +301,12 @@ def get_ros_pose_from_commonroad_state(state: InitialState) -> PoseWithCovarianc
 
     return msg
 
-def read_obstacle_configuration_yaml(yaml_file: str) -> Dict:
+def read_obstacle_configuration_yaml(yaml_file: str, namespace: Optional[str] = None) -> Dict:
     with open(yaml_file) as f:
-        obstacle_config = yaml.safe_load(f)
+        if namespace:
+            obstacle_config = yaml.safe_load(f)[namespace]
+        else:
+            obstacle_config = yaml.safe_load(f)
     assert os.path.isfile(
         obstacle_config["road_structure_xml"]
     ), f"`road_structure_xml` should be a file: {type(obstacle_config['road_structure_xml'])=}"

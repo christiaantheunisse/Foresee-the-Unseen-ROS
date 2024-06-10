@@ -1,89 +1,72 @@
-# Used as input to the fov_node, planner_node, obstacle_trajectories_node and commonroad
+# MAP TO PLANNER FRAME TRANSFORM
+# pose_of_planner_in_map_frame: [3.80, 0.13, -1.57079632679]  # when the start position is 0.0 in the map frame
+pose_of_planner_in_map_frame: [3.80, 0.25, -1.57079632679]  # when the start position is 0.0 in the map frame
 
-/**: # This will put all the parameters in every node
-  ros__parameters:
-    road_xml: /home/christiaan/thesis/robot_ws/install/foresee_the_unseen/share/foresee_the_unseen/resource/road_3way_50cm.xml
+#EGO_VEHICLE
+initial_state_x : 0.13
+initial_state_y : -3
+initial_state_orientation: 1.5708
 
-commonroad:
-  # MAP TO PLANNER FRAME TRANSFORM
-  # pose_of_planner_in_map_frame: [3.80, 0.13, -1.57079632679]  # when the start position is 0.0 in the map frame
-  pose_of_planner_in_map_frame: [3.80, 0.25, -1.57079632679]  # when the start position is 0.0 in the map frame
+vehicle_length : 0.25
+vehicle_width : 0.18
 
-  #EGO_VEHICLE
-  initial_state_x : 0.13
-  initial_state_y : -3
-  initial_state_orientation: 1.5708
+# Distance the rectangle shape has to move from the actual center point of the robot to fit the robot. 
+#  Positive values if the actual center point is more on the back and the left side of the robot.
+vehicle_length_offset : 0.015
+vehicle_width_offset : 0.0
+goal_point_x : -4
+goal_point_y : -0.25
 
-  vehicle_length : 0.25
-  vehicle_width : 0.18
+#PLANNER
+apply_error_models: True
+reference_speed : 0.4 # trajectory planner limits norm_vel on 0.873 (r_min = 0.5)
+max_acceleration : 0.25
+max_deceleration : 0.25
+planning_horizon : 40
+safety_margin : 0.0
+minimum_distance_waypoint: 0.1
+max_dist_corner_smoothing: 0.2
+localization_standard_deviations:  # worst case / average assumptions  used in the trajectory planner
+  position: 0.087  # [m]
+  orientation: 0.0054  # [rad]
+no_stop_lanelets:
+  MyIntersection: 32
+  roadwidth50cm3way: 23
 
-  # Distance the rectangle shape has to move from the actual center point of the robot to fit the robot. 
-  #  Positive values if the actual center point is more on the back and the left side of the robot.
-  vehicle_length_offset : 0.015
-  vehicle_width_offset : 0.0
-  goal_point_x : -4
-  goal_point_y : -0.25
+#OCCLUSION_TRACKER
+min_velocity : 0
+max_velocity : 0.48
+min_shadow_area : 0.01  # Change this
+prediction_horizon : 40
+prediction_step_size: 5 # no. of time steps to combine in the occupancy prediction
+tracking_enabled : True
+lanes_to_track:  # List with lanes, where a lane is a list of lanelet_ids [[2, 3, ...], ...]
+  # MyIntersection: [[17, 16, 15], [17, 30], [12, 13]]
+  MyIntersection: [[17, 16, 15], [17, 30, 21], [12, 13, 14]]
+  roadwidth50cm3way: [[6, 8, 9], [6, 14, 11], [1, 3, 4]]
 
-  #PLANNER
-  apply_error_models: True
-  reference_speed : 0.4 # trajectory planner limits norm_vel on 0.873 (r_min = 0.5)
-  max_acceleration : 0.25
-  max_deceleration : 0.25
-  planning_horizon : 40
-  safety_margin : 0.0
-  minimum_distance_waypoint: 0.1
-  max_dist_corner_smoothing: 0.2
-  localization_standard_deviations:  # worst case / average assumptions  used in the trajectory planner
-    position: 0.087  # [m]
-    orientation: 0.0054  # [rad]
-  no_stop_lanelets:
-    MyIntersection: 32
-    roadwidth50cm3way: 23
-  
-  # Planner
-  z_values_planner:  # the confidence intervals to use for each part of the planner
-    localization_position: 0.5  # 1
-    localization_orientation: 0.5  # 1
-    trajectory_longitudinal_rate: 2
-    trajectory_lateral: 1  # 1
-    trajectory_orientation: 1
-
-  #OCCLUSION_TRACKER
-  min_velocity : 0
-  max_velocity : 0.48
-  min_shadow_area : 0.01  # Change this
-  prediction_horizon : 40
-  prediction_step_size: 5 # no. of time steps to combine in the occupancy prediction
-  tracking_enabled : True
-  lanes_to_track:  # List with lanes, where a lane is a list of lanelet_ids [[2, 3, ...], ...]
-    # MyIntersection: [[17, 16, 15], [17, 30], [12, 13]]
-    MyIntersection: [[17, 16, 15], [17, 30, 21], [12, 13, 14]]
-    roadwidth50cm3way: [[6, 8, 9], [6, 14, 11], [1, 3, 4]]
-
-  # ACCOUNTING FOR UNCERTAINTY
-  # Lidar & Field of view
-  do_correct_scan_delay: True
-
-/fov_node:  # pass the parameters to the node
-  ros__parameters:
-    max_inclination_angle: 1.57 # 1.22173
-    apply_errors_models: True
-    range_stds_margin: 2.
-    angle_stds_margin: 2.
-    state_pos_stds_margin: 2.
-    state_orient_stds_margin: 2.
+# ACCOUNTING FOR UNCERTAINTY
+# Lidar & Field of view
+do_account_scan_delay: True  # Account for delay in fov processing
+# Planner
+z_values_planner:  # the confidence intervals to use in the trajectory planner
+  localization_position: 0.5  # 1
+  localization_orientation: 0.5  # 1
+  trajectory_longitudinal_rate: 2
+  trajectory_lateral: 1  # 1
+  trajectory_orientation: 1
 
 
-obstacle_cars:
+obstacle_trajectories:
   # All poses are in the frame defined by the xml-file, the `planner` frame
-  road_structure_xml: "/home/christiaan/thesis/robot_ws/src/foresee_the_unseen/resource/road_structure_15_reduced_points.xml"
+  road_structure_xml: /home/christiaan/thesis/robot_ws/install/foresee_the_unseen/share/foresee_the_unseen/resource/road_3way_50cm.xml
   waypoint_distance: 0.2 # the distance between waypoints
   dt: 0.25
   movements:
     # movement_name: List of goal positions
-    straight: [[-3.0, -0.133], [3.0, -0.4]]
-    turn: [[-0.133, -11.0]]
-    turn_from_foot_T: [[-3.0, -0.133]]
+    straight: [[-3.0, -0.25], [3.0, -0.75]]
+    turn: [[-0.25, -3.0]]
+    turn_from_foot_T: [[-3.0, -0.25]]
 
 
   obstacle_cars:
@@ -94,22 +77,15 @@ obstacle_cars:
     #   acceleration: maximum allowed acceleration [m/s^2]
     #   start_delay: time to wait before starting to move [s]
 
-    # obstacle_car1:
-    #   start_pose: [0.13, -3.80, 1.57079632679]
-    #   movement: "turn_from_foot_T"
-    #   velocity: 0.3
-    #   acceleration: 0.2
-    #   start_delay: 10.
-
     obstacle_car1:
-      start_pose: [3, -0.13, 3.14]
+      start_pose: [3, -0.25, 3.14]
       movement: "turn"
       velocity: 0.2
       acceleration: 0.2
       start_delay: 2.
 
     obstacle_car2:
-      start_pose: [2, -0.13, 3.14]
+      start_pose: [2, -0.25, 3.14]
       movement: "turn"
       velocity: 0.2
       acceleration: 0.2
