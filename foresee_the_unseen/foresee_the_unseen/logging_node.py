@@ -1,11 +1,12 @@
 import rclpy
 import os
-import re
 import pickle
+import yaml
 import numpy as np
 from typing import List, Callable, Union
 from rclpy.node import Node
 from dataclasses import dataclass
+from ament_index_python import get_package_share_directory
 
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped
@@ -25,9 +26,10 @@ class TopicToStore:
         self.topic_name_stripped = self.topic_name.replace('/', '__')
 
 
-class StoreTopicsNode(Node):
+class LoggingNode(Node):
+    """Logs the necessary topics for the experiments"""
     def __init__(self):
-        super().__init__("logging_exp_node")
+        super().__init__("logging_node")
         topics_to_store: List[TopicToStore] = []
 
         topics_to_store.extend(
@@ -43,12 +45,24 @@ class StoreTopicsNode(Node):
 
         self.topic_names_to_search_for = ["*/odometry/filtered"]
         # hardcoded directory
-        self.base_dir = "/home/christiaan/thesis/topic_store_files"
+        self.base_dir = "/home/christiaan/thesis/experiments_logging"
         self.log_dir = create_log_directory(self.base_dir)
 
         callbacks = [self.create_callback(topic) for topic in topics_to_store]
         for topic, callback in zip(topics_to_store, callbacks):
             self.create_subscription(topic.message_type, topic.topic_name, callback, topic.queue_size)
+
+        # store commonroad_scenarios.yaml and ros_params_scenario.yaml
+        configuration_dir = os.path.join(self.log_dir, "configuration")
+        os.mkdir(configuration_dir)
+        for file in ["commonroad_scenario.yaml", "ros_params_scenario.yaml"]:
+            loadpath = os.path.join(get_package_share_directory("foresee_the_unseen"), "resource", file)
+            with open(loadpath, "r") as f:
+                config = yaml.safe_load(f)
+            savepath = os.path.join(os.path.join(self.log_dir, "configuration", file))
+            with open(savepath, "w") as f:
+                print(f)
+                yaml.safe_dump(config, f)
     
     @staticmethod
     def unique_check(topics_to_store) -> bool:
@@ -79,10 +93,10 @@ class StoreTopicsNode(Node):
 def main(args=None):
     rclpy.init(args=args)
 
-    store_topics_node = StoreTopicsNode()
+    logging_node = LoggingNode()
 
-    rclpy.spin(store_topics_node)
-    store_topics_node.destroy_node()
+    rclpy.spin(logging_node)
+    logging_node.destroy_node()
     rclpy.shutdown()
 
 if __name__ == "__main__":

@@ -69,7 +69,10 @@ def generate_launch_description():
         description="If true, save certain topics to disk",
     )
     rviz_file_launch_arg = DeclareLaunchArgument(
-        "rviz_file", default_value="full_mode.rviz", description=".rviz file to use from the package directory rviz."
+        "rviz_file", default_value="medium_mode.rviz", description=".rviz file to use from the package directory rviz.",
+    )
+    logging_launch_arg = DeclareLaunchArgument(
+        "logging", default_value="true", description="log the necessary topics for the experiments",
     )
 
     try:
@@ -85,6 +88,7 @@ def generate_launch_description():
     rosbag_file = LaunchConfiguration("rosbag_file")
     store_topics = LaunchConfiguration("store_topics")
     rviz_file = LaunchConfiguration("rviz_file")
+    do_log = LaunchConfiguration("logging")
 
     do_use_sim_time = SetParameter(name="use_sim_time", value=play_rosbag)
 
@@ -165,6 +169,11 @@ def generate_launch_description():
         condition=IfCondition(store_topics),
     )
 
+    logging_node = Node(
+        package="foresee_the_unseen",
+        executable="logging_node",
+        condition=IfCondition(do_log),
+    )
     return LaunchDescription(
         [
             # arguments
@@ -176,6 +185,7 @@ def generate_launch_description():
             rosbag_file_launch_arg,
             store_topics_launch_arg,
             rviz_file_launch_arg,
+            logging_launch_arg,
             # parameters
             do_use_sim_time,
             # launch files
@@ -186,6 +196,7 @@ def generate_launch_description():
             # nodes
             rviz,
             store_topics_node,
+            logging_node,
             # commands
             rosbag_player,
         ]

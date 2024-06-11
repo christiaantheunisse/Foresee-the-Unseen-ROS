@@ -40,6 +40,7 @@ setup(
             "planner_node = foresee_the_unseen.planner_node:main",
             "fov_node = foresee_the_unseen.fov_node:main",
             "topics_to_disk_node = foresee_the_unseen.topics_to_disk_node:main",
+            "logging_node = foresee_the_unseen.logging_node:main",
             "obstacle_trajectories_node = foresee_the_unseen.obstacle_trajectories_node:main",
             "test_straight_trajectories_node = foresee_the_unseen.test_straight_trajectories_node:main",
         ],

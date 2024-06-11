@@ -4,9 +4,9 @@ waypoint_distance: 0.2 # the distance between waypoints
 dt: 0.25
 movements:
   # movement_name: List of goal positions
-  straight: [[-3.0, -0.133], [3.0, -0.4]]
-  turn: [[-0.133, -11.0]]
-  turn_from_foot_T: [[-3.0, -0.133]]
+  straight: [[-5.0, -0.25], [4.0, -0.25]]
+  turn: [[-0.25, -5.0]]
+  turn_from_foot_T: [[-5.0, -0.25]]
 
 
 obstacle_cars:
