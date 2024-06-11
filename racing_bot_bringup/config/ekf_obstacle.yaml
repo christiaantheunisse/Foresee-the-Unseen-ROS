@@ -1,7 +1,7 @@
 /**:
   ekf_node:
       ros__parameters:
-        frequency: 32.0
+        frequency: 20.0
         # sensor_timeout: 0.01 # min. frequency; defaults to 1/frequency
         publish_tf: true
         two_d_mode: true  # planar mode
