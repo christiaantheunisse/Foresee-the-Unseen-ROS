@@ -259,19 +259,19 @@ class FOVNode(Node):
 
         assert self.rotating_direction == "CW", "The node is specificially made for a clockwise rotating node."
 
-        self.create_subscription(LaserScan, self.scan_topic, self.scan_callback, 5)
+        self.create_subscription(LaserScan, self.scan_topic, self.scan_callback, 2)
         if self.do_correct_state_unc:
-            self.create_subscription(Odometry, self.odometry_topic, self.odometry_callback, 5)
-        self.deskewed_scan_pub = self.create_publisher(PointCloud, self.deskewed_scan_topic, 5)
-        self.environment_scan_pub = self.create_publisher(LaserScan, self.env_scan_topic, 5)
-        self.fov_polygon_pub = self.create_publisher(PolygonStamped, self.fov_topic, 5)
+            self.create_subscription(Odometry, self.odometry_topic, self.odometry_callback, 1)
+        self.deskewed_scan_pub = self.create_publisher(PointCloud, self.deskewed_scan_topic, 1)
+        self.environment_scan_pub = self.create_publisher(LaserScan, self.env_scan_topic, 1)
+        self.fov_polygon_pub = self.create_publisher(PolygonStamped, self.fov_topic, 1)
         if self.do_visualize:
-            self.filter_polygon_pub = self.create_publisher(Marker, self.env_polygon_topic, 5)
+            self.filter_polygon_pub = self.create_publisher(Marker, self.env_polygon_topic, 1)
             self.create_timer(5, self.visualize_filter_polygon_callback)
 
         # Running the laser process functions in a separate, single thread
         laser_scan_process = MutuallyExclusiveCallbackGroup()
-        self.create_timer(1 / 100, self.process_scan, callback_group=laser_scan_process)
+        self.create_timer(1 / 20, self.process_scan, callback_group=laser_scan_process)
 
         self.laser_filter_matrices = matrices_from_cw_cvx_polygon(self.env_polygon)
         self.tf_buffer = Buffer()
@@ -358,10 +358,10 @@ class FOVNode(Node):
                 filtered_scan, fov_points, time_order
             )
             # Remove self-intersections from the polygon
-            try:
-                fov_points_deskewed = make_valid_polygon(fov_points_deskewed)
-            except StopIteration:
-                self.get_logger().error("Making polygon valid failed")
+            # try:
+            #     fov_points_deskewed = make_valid_polygon(fov_points_deskewed)
+            # except StopIteration:
+            #     self.get_logger().error("Making polygon valid failed")
 
             shapely_polygon = ShapelyPolygon(fov_points_deskewed)
             if not shapely_polygon.is_valid:

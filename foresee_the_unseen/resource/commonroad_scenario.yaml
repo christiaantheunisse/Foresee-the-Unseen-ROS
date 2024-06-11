@@ -14,7 +14,7 @@ vehicle_width : 0.18
 #  Positive values if the actual center point is more on the back and the left side of the robot.
 vehicle_length_offset : 0.015
 vehicle_width_offset : 0.0
-goal_point_x : -4
+goal_point_x : -3
 goal_point_y : -0.25
 
 #PLANNER
@@ -36,7 +36,7 @@ no_stop_lanelets:
 #OCCLUSION_TRACKER
 min_velocity : 0
 max_velocity : 0.48
-min_shadow_area : 0.01  # Change this
+min_shadow_area : 0.001  # Change this
 prediction_horizon : 40
 prediction_step_size: 5 # no. of time steps to combine in the occupancy prediction
 tracking_enabled : True
@@ -65,7 +65,7 @@ obstacle_trajectories:
   movements:
     # movement_name: List of goal positions
     straight: [[-3.0, -0.25], [3.0, -0.75]]
-    turn: [[-0.25, -3.0]]
+    turn: [[-0.25, -2.0]]
     turn_from_foot_T: [[-3.0, -0.25]]
 
 
@@ -80,14 +80,14 @@ obstacle_trajectories:
     obstacle_car1:
       start_pose: [3, -0.25, 3.14]
       movement: "turn"
-      velocity: 0.2
+      velocity: 0.4
       acceleration: 0.2
       start_delay: 2.
 
     obstacle_car2:
       start_pose: [2, -0.25, 3.14]
-      movement: "turn"
-      velocity: 0.2
+      movement: "straight"
+      velocity: 0.4
       acceleration: 0.2
       start_delay: 2.
 

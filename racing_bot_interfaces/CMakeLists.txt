@@ -14,6 +14,7 @@ find_package(rosidl_default_generators REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Trajectory.msg"
   "msg/EncoderValues.msg"
+  "msg/ProjectedOccludedArea.msg"
   DEPENDENCIES
   nav_msgs
   geometry_msgs

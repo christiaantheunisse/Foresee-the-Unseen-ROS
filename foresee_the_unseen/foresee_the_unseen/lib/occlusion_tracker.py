@@ -2,10 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from typing import List, Optional, Dict
 
-from shapely.geometry import Polygon as ShapelyPolygon
-from shapely.geometry import LineString as ShapelyLineString
-from shapely.geometry import Point as ShapelyPoint
-from shapely.geometry import LinearRing
+from shapely.geometry import Polygon as ShapelyPolygon, LineString as ShapelyLineString, Point as ShapelyPoint, LinearRing
 from shapely.ops import substring
 from shapely.errors import GEOSException
 
@@ -37,7 +34,7 @@ def recursive_merge(lanelets: List[Lanelet]) -> Lanelet:
 
 
 class Shadow:
-    def __init__(self, polygon, lane):
+    def __init__(self, polygon: ShapelyPolygon, lane: Lanelet):
         self.polygon = polygon
         self.lane = lane
         self.center_line = ShapelyLineString(self.lane.center_vertices)
@@ -287,7 +284,7 @@ class Occlusion_tracker:
 
     def update_tracker(self, sensor_view, new_time_step: int, scan_delay: float):
         """
-        newnew_time_step_time: is the planner step
+        new_time_step: is the planner step
         scan_delay: is time in seconds ago the scan was made/started.
         """
         assert new_time_step >= self.time_step
@@ -313,7 +310,8 @@ class Occlusion_tracker:
                     assert not intersection.is_empty
                     if intersection.area >= self.min_shadow_area:
                         new_shadows.append(Shadow(intersection, shadow.lane))
-        self.shadows = new_shadows
+        self.shadows = self.prune_shadows(new_shadows)
+        # self.shadows = new_shadows
 
         # extend the shadows to account for the scan delay
         for shadow in self.shadows:
@@ -321,6 +319,18 @@ class Occlusion_tracker:
 
         # Update the accumulated occluded area
         self.accumulated_occluded_area = self.accumulated_occluded_area + self.get_currently_occluded_area()
+
+    def prune_shadows(self, shadows: List[Shadow]) -> List[Shadow]:
+        """Reduce the total number of obstacles by merging obstacles that overlap."""
+        shadows = np.array(shadows)
+        merged_shadows = []
+        lane_ids = np.array([shadow.lane.lanelet_id for shadow in shadows])
+        for lane_id in np.unique(lane_ids):
+            shadows_to_union = shadows[lane_ids == lane_id]
+            lane = shadows_to_union[0].lane
+            merged_polygons = polygon_union([shadow.polygon for shadow in shadows_to_union])
+            merged_shadows.extend([Shadow(polygon, lane) for polygon in merged_polygons])
+        return merged_shadows
 
     def reset(self, scan_delay: float, sensor_view=ShapelyPolygon(), new_time=0):
         # Update the time

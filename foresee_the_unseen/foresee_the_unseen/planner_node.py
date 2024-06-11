@@ -38,7 +38,7 @@ from geometry_msgs.msg import (
 )
 from sensor_msgs.msg import LaserScan
 from rcl_interfaces.msg import ParameterDescriptor
-from racing_bot_interfaces.msg import Trajectory as TrajectoryMsg
+from racing_bot_interfaces.msg import Trajectory as TrajectoryMsg, ProjectedOccludedArea
 
 from tf2_ros import TransformException  # type: ignore
 from tf2_ros.buffer import Buffer
@@ -87,6 +87,7 @@ class PlannerNode(Node):
         self.declare_parameter("visualization_topic", "visualization/planner")
         self.declare_parameter("trajectory_topic", "trajectory")
         self.declare_parameter("startup_topic", "/goal_pose")
+        self.declare_parameter("projected_area_topic", "/projected_occluded_area")
 
         self.declare_parameter(
             "road_xml",
@@ -126,6 +127,7 @@ class PlannerNode(Node):
         self.visualization_topic = self.get_parameter("visualization_topic").get_parameter_value().string_value
         self.trajectory_topic = self.get_parameter("trajectory_topic").get_parameter_value().string_value
         self.startup_topic = self.get_parameter("startup_topic").get_parameter_value().string_value
+        self.project_area_topic = self.get_parameter("projected_area_topic").get_parameter_value().string_value
 
         self.road_xml = self.get_parameter("road_xml").get_parameter_value().string_value
         self.config_yaml = self.get_parameter("foresee_the_unseen_yaml").get_parameter_value().string_value
@@ -157,12 +159,13 @@ class PlannerNode(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
         # Subscribers and publishers
-        self.create_subscription(PolygonStamped, self.fov_topic, self.fov_callback, 5)  # Laser scan
+        self.create_subscription(PolygonStamped, self.fov_topic, self.fov_callback, 1)  # Laser scan
         self.create_subscription(Odometry, self.odom_topic, self.odom_callback, 5)  # Ego vehicle pose
         # self.create_subscription(TrackArray, self.datmo_topic, self.datmo_callback, 5)
         self.create_subscription(PoseStamped, self.startup_topic, self.startup_callback, 1)
-        self.marker_array_publisher = self.create_publisher(MarkerArray, self.visualization_topic, 10)
-        self.trajectory_publisher = self.create_publisher(TrajectoryMsg, self.trajectory_topic, 5)
+        self.marker_array_publisher = self.create_publisher(MarkerArray, self.visualization_topic, 2)
+        self.trajectory_publisher = self.create_publisher(TrajectoryMsg, self.trajectory_topic, 1)
+        self.project_area_publisher = self.create_publisher(ProjectedOccludedArea, self.project_area_topic, 5)
 
         self.foresee_the_unseen_planner = ForeseeTheUnseen(
             config_yaml=self.config_yaml,
@@ -177,16 +180,23 @@ class PlannerNode(Node):
     def plan(self):
         """Calls the Foresee The Unseen Planner and updates the visualization"""
         start_time = time.time()
+        planning_time = self.get_clock().now()
         try:
-            shadow_obstacles, sensor_view, trajectory, no_stop_zone, prediction = (
-                self.foresee_the_unseen_planner.update_scenario(self.get_clock().now().nanoseconds * 1e-9)
+            shadow_obstacles, sensor_view, trajectory, no_stop_zone, prediction, projected_area = (
+                self.foresee_the_unseen_planner.update_scenario(planning_time.nanoseconds * 1e-9)
             )
         except NoUpdatePossible:
             self.get_logger().warn("No planner update step possible", throttle_duration_sec=self.throttle_duration)
-            shadow_obstacles, sensor_view, trajectory, no_stop_zone, prediction = None, None, None, None, None
+            shadow_obstacles, sensor_view, trajectory, no_stop_zone, prediction, projected_area = (None,)*6
 
         if trajectory is not None:
             self.publish_trajectory(trajectory)
+
+        if projected_area is not None:
+            area_msg = ProjectedOccludedArea()
+            area_msg.header.stamp = self.get_clock().now().to_msg()
+            area_msg.area.data = float(projected_area)
+            self.project_area_publisher.publish(area_msg)
 
         start_viz_time = time.time()
         if self.do_visualize:
@@ -264,7 +274,7 @@ class PlannerNode(Node):
 
     def visualization_callback(
         self,
-        shadow_obstacles: Optional[List[Obstacle]] = None,
+        shadow_obstacles: Optional[List[DynamicObstacle]] = None,
         sensor_view: Optional[ShapelyPolygon] = None,
         trajectory: Optional[TrajectoryCR] = None,
         no_stop_zone: Optional[DynamicObstacle] = None,
@@ -514,7 +524,7 @@ class PlannerNode(Node):
                 markers.append(marker)
         return markers
 
-    def get_shadow_marker(self, shadow_obstacles: List[Obstacle]) -> List[Marker]:
+    def get_shadow_marker(self, shadow_obstacles: List[DynamicObstacle]) -> List[Marker]:
         """Makes a marker for the shadow obstacles and their prediction."""
         markers = []
 
@@ -559,7 +569,9 @@ class PlannerNode(Node):
     def get_no_stop_zone_marker(self, zone: Obstacle) -> List[Marker]:
         """Visualize the no stop zone at an intersection"""
         polygon = zone.obstacle_shape.vertices
-        return self.polygons_to_ros_marker(polygons=[polygon], color=YELLOW, namespace="no stop zone", linewidth=0.05, z=0.1)
+        return self.polygons_to_ros_marker(
+            polygons=[polygon], color=YELLOW, namespace="no stop zone", linewidth=0.05, z=0.1
+        )
 
     def get_prediction_marker(self, prediction: SetBasedPrediction) -> List[Marker]:
         """Visualize the prediction of the future occupancies"""

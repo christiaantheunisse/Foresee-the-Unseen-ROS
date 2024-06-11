@@ -285,6 +285,7 @@ class ForeseeTheUnseen:
         Optional[Trajectory],
         DynamicObstacle,
         Optional[SetBasedPrediction],
+        float,
     ]:
         """Gets called at a certain rate"""
         self.planner_step += 1
@@ -296,7 +297,10 @@ class ForeseeTheUnseen:
 
         ego_vehicle_state = self.get_ego_vehicle_state(plan_start_time)
         if ego_vehicle_state is None or (self._ego_vehicle_state_stamp + 1 / self.frequency) < plan_start_time:
-            self.logger_warn("No up-to-date ego vehicle state available")
+            self.logger_warn(
+                "No up-to-date ego vehicle state available. "
+                # + f"stamp = {self._ego_vehicle_state_stamp}, {plan_start_time=}"
+            )
             raise NoUpdatePossible()
         ego_vehicle_state.time_step = self.planner_step
 
@@ -319,10 +323,13 @@ class ForeseeTheUnseen:
             interm_time = time.time()
 
         # Update the tracker with the new sensor view and get the shadows and their prediction
-        scan_delay = plan_start_time - self._field_of_view_stamp if self.configuration["do_account_scan_delay"] else 0.
+        scan_delay = plan_start_time - self._field_of_view_stamp if self.configuration["do_account_scan_delay"] else 0.0
+        self.logger.info(f"scan delay = {scan_delay * 1000:.0f} ms")
         self.occ_track.update(field_of_view, self.planner_step, scan_delay)
         shadow_obstacles = self.occ_track.get_dynamic_obstacles(percieved_scenario)
         percieved_scenario.add_objects(shadow_obstacles)
+
+        projected_occluded_area = self.occ_track.get_currently_occluded_area()
 
         # Assign an area where the vehicle cannot stop / is no safe state
         no_stop_zone_obstacle = add_no_stop_zone(
@@ -390,4 +397,5 @@ class ForeseeTheUnseen:
             trajectory,
             no_stop_zone_obstacle,
             prediction,
+            projected_occluded_area,
         )  # type: ignore
