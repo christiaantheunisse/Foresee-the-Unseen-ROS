@@ -121,7 +121,7 @@ def generate_launch_description():
         )
         trajectory_node = Node(
             package="racing_bot_trajectory_follower",
-            executable="trajectory_follower_node",
+            executable="trajectory_follower_node_obstacle",
             parameters=[
                 PathJoinSubstitution(
                     [FindPackageShare("racing_bot_trajectory_follower"), "config", "trajectory_follower_node.yaml"]

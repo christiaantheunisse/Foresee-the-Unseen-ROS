@@ -19,7 +19,7 @@
     # Lidar view range
     view_range: 5.
     # Lidar subsample rate
-    subsample_rate: 2
+    subsample_rate: 5
     # Filter the pointcloud measurements
     do_filter_scan: True
     # environment_boundary: [0., 2.5, 5., 2.5, 5., -3., 0., -3.]
