@@ -25,7 +25,6 @@ setup(
         "console_scripts": [
             "trajectory_follower_node = racing_bot_trajectory_follower.trajectory_follower_node:main",
             "trajectory_follower_node2 = racing_bot_trajectory_follower.trajectory_follower_node2:main",
-            "trajectory_follower_node_obstacle = racing_bot_trajectory_follower.trajectory_follower_node_obstacle:main",
         ],
     },
 )

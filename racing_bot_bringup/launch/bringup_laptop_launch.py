@@ -69,7 +69,7 @@ def generate_launch_description():
         description="If true, save certain topics to disk",
     )
     rviz_file_launch_arg = DeclareLaunchArgument(
-        "rviz_file", default_value="full_mode.rviz", description=".rviz file to use from the package directory rviz.",
+        "rviz_file", default_value="medium_mode.rviz", description=".rviz file to use from the package directory rviz.",
     )
     logging_launch_arg = DeclareLaunchArgument(
         "logging", default_value="true", description="log the necessary topics for the experiments",
