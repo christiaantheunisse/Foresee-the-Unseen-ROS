@@ -124,11 +124,7 @@ def generate_launch_description():
             executable="trajectory_follower_node_obstacle",
             parameters=[
                 PathJoinSubstitution(
-                    [
-                        FindPackageShare("racing_bot_trajectory_follower"),
-                        "config",
-                        "trajectory_follower_node_obstacle.yaml",
-                    ]
+                    [FindPackageShare("racing_bot_trajectory_follower"), "config", "trajectory_follower_node.yaml"]
                 ),
                 {
                     "follow_mode": "time",

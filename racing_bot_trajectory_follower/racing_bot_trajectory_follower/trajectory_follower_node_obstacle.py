@@ -686,13 +686,13 @@ class TrajectoryFollowerNode(Node):
         motor_command = Int16MultiArray(data=[v_left, v_right, 0, 0])  # the hat_node expects an array of length 4
         self.motor_publisher.publish(motor_command)
 
-        debug_string = (
-            f"v_target = {self.trajectory.vs[target_idx_v]:.3f}, v_current = {self.state.v:.3f},"
-            + f" v_norm = {self.output_vel:.3f},\n a_target = {self.trajectory.accs[target_idx_v]:.3f}"
-            + f" acc_current = {acceleration}"
-        )
+        # debug_string = (
+        #     f"v_target = {self.trajectory.vs[target_idx]:.3f}, v_current = {self.state.v:.3f},"
+        #     + f" v_norm = {self.output_vel:.3f},\n a_target = {self.trajectory.accs[target_idx]:.3f}"
+        #     + f" acc_current = {acceleration}"
+        # )
         # debug_string = f"goal_orient = {self.trajectory.yaws[target_idx]}, actual_orient = {self.state.yaw}"
-        self.visualize_trajectory(target_idx_p=target_idx_p, target_idx_v=target_idx_v, debug_string=debug_string)
+        self.visualize_trajectory(target_idx_p=target_idx_p, target_idx_v=target_idx_v)
 
         if self.do_store_data:
             self.store_data_on_disk(target_idx_p, target_idx_v)
