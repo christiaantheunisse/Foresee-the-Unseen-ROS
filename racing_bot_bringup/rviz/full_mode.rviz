@@ -41,7 +41,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: LaserScan Lidar
+    SyncSource: ""
 Visualization Manager:
   Class: ""
   Displays:
@@ -90,7 +90,9 @@ Visualization Manager:
       Enabled: true
       Name: Foresee The Unseen
       Namespaces:
-        {}
+        ego_vehicle: true
+        goal: true
+        road structure: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -429,7 +431,7 @@ Visualization Manager:
         Value: /obstacle_car1/odometry/filtered
       Value: true
     - Class: rviz_default_plugins/MarkerArray
-      Enabled: false
+      Enabled: true
       Name: Obstacle Car 1 Trajectory
       Namespaces:
         {}
@@ -439,7 +441,7 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /obstacle_car1/visualization/trajectory
-      Value: false
+      Value: true
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -514,17 +516,19 @@ Visualization Manager:
         Value: /obstacle_car2/odometry/filtered
       Value: true
     - Class: rviz_default_plugins/MarkerArray
-      Enabled: false
+      Enabled: true
       Name: Obstacle Car 2 Trajectory
       Namespaces:
-        {}
+        closest point: true
+        positions: true
+        state: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /obstacle_car2/visualization/trajectory
-      Value: false
+      Value: true
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -648,11 +652,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: -80.01409912109375
+      Scale: -150.87586975097656
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz_default_plugins)
-      X: 1.9635499715805054
-      Y: 0.3687649369239807
+      X: 1.8407191038131714
+      Y: -0.3168579936027527
     Saved: ~
 Window Geometry:
   Displays:

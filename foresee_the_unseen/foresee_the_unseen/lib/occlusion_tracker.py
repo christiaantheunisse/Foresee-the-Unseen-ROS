@@ -136,6 +136,7 @@ class Shadow:
     #  same problem, but provides a faster solution.
     def __get_next_occ(self, poly, dist):
         smallest_projection = 999999
+        # print(list(poly.exterior.coords))
         for edge in poly.exterior.coords:
             projection = self.center_line.project(
                 ShapelyPoint(edge)

@@ -44,9 +44,13 @@ class StoreTopicsNode(Node):
                 # TopicToStore(topic_name="/trajectory", message_type=Trajectory),
 
                 # Logging for the experiments
-                TopicToStore(topic_name="/odometry/filtered", message_type=Odometry),
-                TopicToStore(topic_name="/projected_occluded_area", message_type=ProjectedOccludedArea),
+                # TopicToStore(topic_name="/odometry/filtered", message_type=Odometry),
+                # TopicToStore(topic_name="/projected_occluded_area", message_type=ProjectedOccludedArea),
                 TopicToStore(topic_name="/goal_pose", message_type=PoseStamped),
+                TopicToStore(topic_name="/obstacle_car1/trajectory", message_type=Trajectory),
+                TopicToStore(topic_name="/obstacle_car2/trajectory", message_type=Trajectory),
+                TopicToStore(topic_name="/obstacle_car1/odometry/filtered", message_type=Odometry),
+                # TopicToStore(topic_name="/odometry/filtered", message_type=Odometry),
             ]
         )
         assert self.unique_check(topics_to_store), "All topic names should be unique"

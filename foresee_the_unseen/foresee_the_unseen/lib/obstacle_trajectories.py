@@ -183,6 +183,14 @@ def generate_velocity_profile(
 
     return np.append(v_profile[: np.argmax(v_profile < 0)], 0)
 
+def normalize_angles(angles: np.ndarray) -> np.ndarray:
+    """Normalize angles to a range of [-pi, pi]"""
+    return (angles + np.pi) % (2 * np.pi) - np.pi
+
+def unnormalize_angles(angles: np.ndarray) -> np.ndarray:
+    """Makes a ranges of angles continuous, so removes the jumps at -pi and +pi"""
+    normalized_diffs = normalize_angles(np.diff(angles))
+    return angles[0] + np.insert(np.cumsum(normalized_diffs), 0, 0)
 
 def velocity_profile_to_state_list(
     velocity_profile: np.ndarray,
@@ -217,10 +225,21 @@ def velocity_profile_to_state_list(
         np.diff(dist_along_points[1:]) / 2, max_dist_corner_smoothing
     )
     dist_along_bef_aft_points = np.vstack((dist_along_bef_points, dist_along_aft_points)).T.flatten()
-    orientations_at_points = np.repeat(orient_bw_points, 2)[1:-1]
-    orientations = np.interp(dist, dist_along_bef_aft_points, orientations_at_points)
 
-    state_list = []
+    angles_unnorm = unnormalize_angles(orient_bw_points)
+    orientations_at_points = np.repeat(angles_unnorm, 2)[1:-1]
+    orientations_unnorm = np.interp(dist, dist_along_bef_aft_points, orientations_at_points)
+    orientations = normalize_angles(orientations_unnorm)
+
+    initial_state = InitialState(
+        position=waypoints[0],
+        orientation=orientations_at_points[0],
+        velocity=0,
+        acceleration=0,
+        time_step=0
+    )
+
+    state_list = [initial_state]
     for time_step, (x_coord, y_coord, orientation, velocity, acceleration) in enumerate(
         zip(x_coords, y_coords, orientations, velocity_profile, accelerations, strict=True)
     ):
@@ -233,7 +252,7 @@ def velocity_profile_to_state_list(
         )
         state_list.append(state)
 
-    return TrajectoryCR(1, state_list)  # type: ignore
+    return TrajectoryCR(0, state_list)  # type: ignore
 
 
 def quaternion_from_yaw(yaw):
@@ -246,11 +265,10 @@ def get_ros_trajectory_from_commonroad_trajectory(
     """Publishes the Commonroad trajectory on a topic for the trajectory follower node."""
     header_path = Header(stamp=start_stamp.to_msg(), frame_id="planner")
     pose_stamped_list = []
-    init_time_step = trajectory.state_list[0].time_step - 1
     for state in trajectory.state_list:
         quaternion = Quaternion(**{k: v for k, v in zip(["x", "y", "z", "w"], quaternion_from_yaw(state.orientation))})
         position = PointMsg(x=float(state.position[0]), y=float(state.position[1]))
-        time_diff = (state.time_step - init_time_step) * dt
+        time_diff: float = state.time_step * dt
         header_pose = Header(
             stamp=(start_stamp + Duration(seconds=int(time_diff), nanoseconds=int((time_diff % 1) * 1e9))).to_msg()
         )

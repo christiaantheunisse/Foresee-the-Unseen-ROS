@@ -62,6 +62,7 @@ def generate_launch_description():
         package="foresee_the_unseen",
         executable="planner_node",
         output="screen",
+        emulate_tty=True,
         parameters=[
             PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "planner_node.yaml"]),
             PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "resource", "ros_params_scenario.yaml"]),

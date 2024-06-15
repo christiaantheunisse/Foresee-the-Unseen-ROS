@@ -3,7 +3,7 @@
 pose_of_planner_in_map_frame: [3.80, 0.25, -1.57079632679]  # when the start position is 0.0 in the map frame
 
 #EGO_VEHICLE
-initial_state_x : 0.13
+initial_state_x : 0.25
 initial_state_y : -3
 initial_state_orientation: 1.5708
 
@@ -32,6 +32,7 @@ localization_standard_deviations:  # worst case / average assumptions  used in t
 no_stop_lanelets:
   MyIntersection: 32
   roadwidth50cm3way: 23
+  roadwidth50cm4way: 23
 
 #OCCLUSION_TRACKER
 min_velocity : 0
@@ -43,7 +44,11 @@ tracking_enabled : True
 lanes_to_track:  # List with lanes, where a lane is a list of lanelet_ids [[2, 3, ...], ...]
   # MyIntersection: [[17, 16, 15], [17, 30], [12, 13]]
   MyIntersection: [[17, 16, 15], [17, 30, 21], [12, 13, 14]]
-  roadwidth50cm3way: [[6, 8, 9], [6, 14, 11], [1, 3, 4]]
+  #### ADD OWN LANE
+  roadwidth50cm3way: [[6, 8, 9], [6, 14, 11], [1, 3, 4], [10]]
+  roadwidth50cm4way: [[6, 8, 9], [6, 14, 11], [1, 3, 4], [25, 26, 9], [25, 34, 11], [25, 30, 4], [1, 27,24]]
+  # roadwidth50cm4way: [[6, 8, 9], [6, 14, 11], [1, 3], [25, 26, 9], [25, 34, 11], [25, 30, 4], [1, 27]]
+  # roadwidth50cm4way: [[6, 8, 9], [6, 14, 11]]
 
 # ACCOUNTING FOR UNCERTAINTY
 # Lidar & Field of view
@@ -59,7 +64,7 @@ z_values_planner:  # the confidence intervals to use in the trajectory planner
 
 obstacle_trajectories:
   # All poses are in the frame defined by the xml-file, the `planner` frame
-  road_structure_xml: /home/christiaan/thesis/robot_ws/install/foresee_the_unseen/share/foresee_the_unseen/resource/road_3way_50cm.xml
+  road_structure_xml: /home/christiaan/thesis/robot_ws/install/foresee_the_unseen/share/foresee_the_unseen/resource/road_4way_50cm.xml
   waypoint_distance: 0.2 # the distance between waypoints
   dt: 0.25
   movements:
@@ -82,7 +87,7 @@ obstacle_trajectories:
       movement: "turn"
       velocity: 0.4
       acceleration: 0.2
-      start_delay: 2.
+      start_delay: 5.
 
     obstacle_car2:
       start_pose: [2, -0.25, 3.14]
