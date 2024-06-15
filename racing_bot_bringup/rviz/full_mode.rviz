@@ -42,6 +42,7 @@ Panels:
     Name: Time
     SyncMode: 0
     SyncSource: ""
+    SyncSource: ""
 Visualization Manager:
   Class: ""
   Displays:
@@ -408,7 +409,7 @@ Visualization Manager:
           Scale: 1
           Value: true
         Value: false
-      Enabled: true
+      Enabled: false
       Keep: 1
       Name: Obstacle Car 1 Odom
       Position Tolerance: 0
@@ -429,7 +430,7 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /obstacle_car1/odometry/filtered
-      Value: true
+      Value: false
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true
       Name: Obstacle Car 1 Trajectory
@@ -493,7 +494,7 @@ Visualization Manager:
           Scale: 1
           Value: true
         Value: false
-      Enabled: true
+      Enabled: false
       Keep: 1
       Name: Obstacle Car 2 Odom
       Position Tolerance: 0
@@ -514,7 +515,7 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /obstacle_car2/odometry/filtered
-      Value: true
+      Value: false
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true
       Name: Obstacle Car 2 Trajectory
@@ -675,4 +676,4 @@ Window Geometry:
     collapsed: true
   Width: 1920
   X: 0
-  Y: 240
+  Y: 27
