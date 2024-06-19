@@ -63,80 +63,13 @@ z_values_planner:  # the confidence intervals to use in the trajectory planner
 
 
 obstacle_trajectories:
-  # All poses are in the frame defined by the xml-file, the `planner` frame
-  road_structure_xml: /home/christiaan/thesis/robot_ws/install/foresee_the_unseen/share/foresee_the_unseen/resource/road_4way_50cm.xml
+  # The data in the fcd (float car data) file from SUMO is in the planner frame
+  fcd_xml: /home/christiaan/thesis/robot_ws/install/foresee_the_unseen/share/foresee_the_unseen/resource/fcd_xmls/scenario_1.xml
   waypoint_distance: 0.2 # the distance between waypoints
   dt: 0.25
-  movements:
-    # movement_name: List of goal positions
-    straight: [[-3.0, -0.25], [3.0, -0.75]]
-    turn: [[-0.25, -2.0]]
-    turn_from_foot_T: [[-3.0, -0.25]]
-
 
   obstacle_cars:
-    # namespace_obstacle_car:
-    #   start_pose: 3D List with the initial x-coordinate [m], y-coordinate [m] and yaw [rad] in the planner frame (= commonroad road map)
-    #   movement: name from the above list of movements
-    #   velocity: goal velocity for the obstacle car [m/s]
-    #   acceleration: maximum allowed acceleration [m/s^2]
-    #   start_delay: time to wait before starting to move [s]
-
-    obstacle_car1:
-      start_pose: [3, -0.25, 3.14]
-      movement: "turn"
-      velocity: 0.4
-      acceleration: 0.2
-      start_delay: 5.
-
-    obstacle_car2:
-      start_pose: [2, -0.25, 3.14]
-      movement: "straight"
-      velocity: 0.4
-      acceleration: 0.2
-      start_delay: 2.
-
-    # obstacle1:
-    #   start_pose: [5.0, -0.133, -3.14]
-    #   movement: "straight"
-    #   velocity: 0.3
-    #   acceleration: 0.2
-    #   start_delay: 2.
-
-    # obstacle2:
-    #   start_pose: [-5., -0.4, 0.]
-    #   movement: "straight"
-    #   velocity: 0.3
-    #   acceleration: 0.2
-    #   start_delay: 2.
-
-    # obstacle3:
-    #   start_pose: [5.0, -0.133, -3.14]
-    #   movement: "turn"
-    #   velocity: 0.3
-    #   acceleration: 0.2
-    #   start_delay: 2.
-
-    # obstacle4:
-    #   start_pose: [-5., -0.4, 0.]
-    #   movement: "turn"
-    #   velocity: 0.3
-    #   acceleration: 0.2
-    #   start_delay: 2.
-
-    # obstacle_car1:
-    #   start_pose: [3., -0.133, 3.1415927]
-    #   # start_pose: [0., 0., 0.]
-    #   movement: "turn"
-    #   velocity: 0.5
-    #   acceleration: 0.2
-    #   start_delay: 2.
-
-    # obstacle_car2:
-    #   start_pose: [4., -0.133, 3.1415927]
-    #   movement: "turn"
-    #   velocity: 0.5
-    #   acceleration: 0.2
-    #   start_delay: 2.
-
+    # namespace: vehicle id in the .xml file
+    obstacle_car1: "201"
+    obstacle_car2: "205"
 

@@ -25,12 +25,12 @@ from tf2_ros.transform_listener import TransformListener
 
 from foresee_the_unseen.lib.obstacle_trajectories import (
     read_obstacle_configuration_yaml,
-    generate_waypoints,
-    to_ros_trajectory_msg,
-    generate_velocity_profile,
     velocity_profile_to_state_list,
     get_ros_trajectory_from_commonroad_trajectory,
     get_ros_pose_from_commonroad_state,
+    load_fcd_xml,
+    get_waypoints_from_vehicle_dict,
+    get_velocity_profile_from_vehicle_dict,
 )
 from foresee_the_unseen.lib.helper_functions import polygons_from_road_xml, matrix_from_transform
 
@@ -47,6 +47,7 @@ class ObstacleTrajectoriesNode(Node):
             "/home/christiaan/thesis/robot_ws/src/foresee_the_unseen/resource/obstacle_trajectories.yaml",
         )
         self.declare_parameter("do_visualize", False)
+        self.declare_parameter("road_xml", "path/to/commonroad_lanelets.xml")
         self.declare_parameter("visualization_topic", "visualization/obstacle_trajectories")
         self.declare_parameter("startup_topic", "/goal_pose")
 
@@ -56,6 +57,7 @@ class ObstacleTrajectoriesNode(Node):
         self.yaml_file = self.get_parameter("obstacle_config_yaml").get_parameter_value().string_value
         self.obstacle_config = read_obstacle_configuration_yaml(self.yaml_file, namespace="obstacle_trajectories")
         self.do_visualize = self.get_parameter("do_visualize").get_parameter_value().bool_value
+        self.road_xml = self.get_parameter("road_xml").get_parameter_value().string_value
         self.visualization_topic = self.get_parameter("visualization_topic").get_parameter_value().string_value
         self.startup_topic = self.get_parameter("startup_topic").get_parameter_value().string_value
 
@@ -63,8 +65,8 @@ class ObstacleTrajectoriesNode(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
-        scenario, _ = CommonRoadFileReader(self.obstacle_config["road_structure_xml"]).open()
-        self.road_polygons = polygons_from_road_xml(self.obstacle_config["road_structure_xml"])
+        scenario, _ = CommonRoadFileReader(self.road_xml).open()
+        self.road_polygons = polygons_from_road_xml(self.road_xml)
         lanelet_network = scenario.lanelet_network
 
         if self.do_visualize:
@@ -72,33 +74,34 @@ class ObstacleTrajectoriesNode(Node):
             markers = self.get_road_structure_marker()
             colors = itertools.cycle(mcolors.TABLEAU_COLORS.values())
 
+        fcd_dict = load_fcd_xml(self.obstacle_config["fcd_xml"])
+
         self.trajectory_publishers: List[Publisher] = []
-        self.trajectories_cr_delay: List[Tuple[TrajectoryCR, float]] = []
+        self.trajectories_cr: List[TrajectoryCR] = []
         self.trajectories_msg: Optional[List[TrajectoryMsg]] = None
         self.initialpose_publishers: List[Publisher] = []
         self.initialstates_commonroad: List[InitialState] = []
-        for namespace, car_dict in self.obstacle_config["obstacle_cars"].items():
-            waypoints, _, _ = generate_waypoints(
-                lanelet_network=lanelet_network,
-                initial_position=car_dict["start_pose"][:2],
-                movement=car_dict["movement"],
-                waypoint_distance=self.obstacle_config["waypoint_distance"],
-                reference_velocity=car_dict["velocity"],
-                acceleration_limit=car_dict["acceleration"],
-                goal_positions_per_movement=self.obstacle_config["movements"],
+        for namespace, vehicle_id in self.obstacle_config["obstacle_cars"].items():
+            try:
+                vehicle_dict = fcd_dict[vehicle_id]
+            except KeyError:
+                self.get_logger().error(
+                    f"Id: '{vehicle_id}' not found in the fcd.xml ({self.obstacle_config['fcd_xml']})"
+                )
+                assert False
+            # get the waypoints
+            waypoints = get_waypoints_from_vehicle_dict(
+                vehicle_dict, self.obstacle_config.get("waypoint_distance", 0.2)
             )
-            velocity_profile = generate_velocity_profile(
-                waypoints,
-                car_dict["velocity"],
-                car_dict["acceleration"],
-                car_dict["acceleration"],
-                self.obstacle_config["dt"],
+            # get the velocity profile
+            velocity_profile = get_velocity_profile_from_vehicle_dict(
+                vehicle_dict, dt=self.obstacle_config.get("dt", 0.25)
             )
             trajectory_commonroad = velocity_profile_to_state_list(
                 velocity_profile, waypoints, self.obstacle_config["dt"]
             )
-            self.trajectories_cr_delay.append((trajectory_commonroad, car_dict["start_delay"]))
-            
+            self.trajectories_cr.append(trajectory_commonroad)
+
             publisher_traj = self.create_publisher(TrajectoryMsg, f"/{namespace}/{self.trajectory_topic}", 1)
             self.trajectory_publishers.append(publisher_traj)
 
@@ -116,7 +119,9 @@ class ObstacleTrajectoriesNode(Node):
         # self.setup_timer_w_delay(namespace=namespace, delay=car_dict["start_delay"], msg=trajectory_msg)
 
         if self.do_visualize:
-            self.create_timer(0.5, lambda: self.marker_array_publisher.publish(MarkerArray(markers=markers)))
+            self.visualize_publish_timer = self.create_timer(
+                2, lambda: self.marker_array_publisher.publish(MarkerArray(markers=markers))
+            )
             self.get_logger().info("trajectories visualized")
 
         self.create_subscription(PoseStamped, self.startup_topic, self.startup_callback, 1)
@@ -131,15 +136,17 @@ class ObstacleTrajectoriesNode(Node):
             self.initialpose_publish_timer.cancel()
 
             self.trajectories_msg = []
-            for trajectory_cr, delay in self.trajectories_cr_delay:
+            for trajectory_cr in self.trajectories_cr:
                 trajectory_msg = get_ros_trajectory_from_commonroad_trajectory(
                     trajectory_cr,
-                    self.get_clock().now() + Duration(seconds=delay),
-                    self.obstacle_config["dt"],
+                    self.get_clock().now(),
+                    self.obstacle_config.get("dt", 0.25),
                 )
                 self.trajectories_msg.append(trajectory_msg)
 
             self.trajectory_publish_timer.reset()
+            if hasattr(self, "visualize_publish_timer"):
+                self.visualize_publish_timer.cancel()
 
     def publish_trajectory_callback(self) -> None:
         """Publish the trajectories"""
@@ -182,7 +189,7 @@ class ObstacleTrajectoriesNode(Node):
         )
 
         return state_tf
-    
+
     def get_road_structure_marker(self) -> List[Marker]:
         """Get the markers that visualize the road boundaries."""
         markers = []

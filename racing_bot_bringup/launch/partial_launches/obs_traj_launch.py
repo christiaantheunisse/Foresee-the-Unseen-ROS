@@ -67,6 +67,7 @@ def generate_launch_description():
         name="obstacle_trajectories_node",
         parameters=[
             PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "config", "obstacle_trajectories_node.yaml"]),
+            PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "resource", "ros_params_scenario.yaml"]),
             {
                 "obstacle_config_yaml": PathJoinSubstitution(
                     [FindPackageShare("foresee_the_unseen"), "resource", "commonroad_scenario.yaml"]
@@ -166,6 +167,7 @@ def generate_launch_description():
             OpaqueFunction(
                 function=slam_based_on_yaml,
                 args=[use_ekf],
+                condition=IfCondition(NotSubstitution(EqualsSubstitution(slam_mode, "elsewhere"))),
             ),
         ]
     )
