@@ -140,6 +140,8 @@ class Planner:
 
         signal.signal(signal.SIGALRM, self.signal_handler)
 
+        self.fastest_prediction = None
+
     @property
     def waypoints(self) -> npt.NDArray[npt.Shape["N, 2"], npt.Float]:
         return self._waypoints  # type: ignore
@@ -302,6 +304,8 @@ class Planner:
                         traj_lat_error=traj_lat_error,
                         traj_orient_error=traj_orient_error,
                     )
+                    if idx == 0:
+                        self.fastest_prediction = set_based_prediction
                     is_safe = self.is_safe_trajectory(set_based_prediction)
                     if is_safe:
                         best_result_so_far["trajectory"] = self.velocity_profile_to_state_list(velocity_profile)

@@ -61,6 +61,7 @@ BLUE: Color = {"r": 0.0, "g": 0.0, "b": 1.0, "a": 1.0}
 YELLOW: Color = {"r": 1.0, "g": 1.0, "b": 0.0, "a": 1.0}
 BLACK: Color = {"r": 0.0, "g": 0.0, "b": 0.0, "a": 1.0}
 TRANSPARENT_BLACK: Color = {"r": 0.0, "g": 0.0, "b": 0.0, "a": 0.3}
+TRANSPARENT_ORANGE: Color = {"r": 0.93, "g": 0.54, "b": 0.15, "a": 0.7}
 TRANSPARENT_BLUE: Color = {"r": 0.0, "g": 0.0, "b": 1.0, "a": 0.6}
 TRANSPARENT_GREY: Color = {"r": 0.5, "g": 0.5, "b": 0.5, "a": 0.8}
 
@@ -297,6 +298,10 @@ class PlannerNode(Node):
             markers += self.get_no_stop_zone_marker(no_stop_zone)
         if prediction is not None:
             markers += self.get_prediction_marker(prediction)
+        else:
+            prediction = self.foresee_the_unseen_planner.planner.fastest_prediction
+            if prediction is not None:
+                markers += self.get_prediction_marker(prediction, color=TRANSPARENT_ORANGE)
 
         self.marker_array_publisher.publish(MarkerArray(markers=markers))
 
@@ -573,12 +578,12 @@ class PlannerNode(Node):
             polygons=[polygon], color=YELLOW, namespace="no stop zone", linewidth=0.05, z=0.1
         )
 
-    def get_prediction_marker(self, prediction: SetBasedPrediction) -> List[Marker]:
+    def get_prediction_marker(self, prediction: SetBasedPrediction, color: Color = TRANSPARENT_BLACK) -> List[Marker]:
         """Visualize the prediction of the future occupancies"""
         polygons = [o.shape.vertices for o in prediction.occupancy_set]
         markers_lines = self.polygons_to_ros_marker(
             polygons=polygons,
-            color=TRANSPARENT_BLACK,
+            color=color,
             namespace="set based prediction",
             use_triangulation=False,
             linewidth=0.01,
@@ -587,7 +592,7 @@ class PlannerNode(Node):
         if self.use_triangulation:
             markers_filled = self.polygons_to_ros_marker(
                 polygons=polygons,
-                color=TRANSPARENT_BLACK,
+                color=color,
                 namespace="set based prediction",
                 use_triangulation=True,
                 z=0.01,

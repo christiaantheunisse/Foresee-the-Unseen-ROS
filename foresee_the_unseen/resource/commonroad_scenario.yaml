@@ -20,9 +20,9 @@ goal_point_y : -0.25
 #PLANNER
 apply_error_models: True
 reference_speed : 0.4 # trajectory planner limits norm_vel on 0.873 (r_min = 0.5)
-max_acceleration : 0.25
+max_acceleration : 0.2
 max_deceleration : 0.25
-planning_horizon : 40
+planning_horizon : 22
 safety_margin : 0.0
 minimum_distance_waypoint: 0.1
 max_dist_corner_smoothing: 0.2
@@ -33,33 +33,32 @@ no_stop_lanelets:
   MyIntersection: 32
   roadwidth50cm3way: 23
   roadwidth50cm4way: 23
+  roadwidth40cm4way: 23
 
 #OCCLUSION_TRACKER
 min_velocity : 0
 max_velocity : 0.48
 min_shadow_area : 0.001  # Change this
-prediction_horizon : 40
-prediction_step_size: 5 # no. of time steps to combine in the occupancy prediction
+prediction_horizon : 22
+prediction_step_size: 2 # no. of time steps to combine in the occupancy prediction
 tracking_enabled : True
 lanes_to_track:  # List with lanes, where a lane is a list of lanelet_ids [[2, 3, ...], ...]
-  # MyIntersection: [[17, 16, 15], [17, 30], [12, 13]]
   MyIntersection: [[17, 16, 15], [17, 30, 21], [12, 13, 14]]
   #### ADD OWN LANE
   roadwidth50cm3way: [[6, 8, 9], [6, 14, 11], [1, 3, 4], [10]]
   roadwidth50cm4way: [[6, 8, 9], [6, 14, 11], [1, 3, 4], [25, 26, 9], [25, 34, 11], [25, 30, 4], [1, 27,24]]
-  # roadwidth50cm4way: [[6, 8, 9], [6, 14, 11], [1, 3], [25, 26, 9], [25, 34, 11], [25, 30, 4], [1, 27]]
-  # roadwidth50cm4way: [[6, 8, 9], [6, 14, 11]]
+  roadwidth40cm4way: [[6, 8, 9], [6, 14, 11], [1, 3, 4], [25, 26, 9], [25, 34, 11], [25, 30, 4], [1, 27,24]]
 
 # ACCOUNTING FOR UNCERTAINTY
 # Lidar & Field of view
 do_account_scan_delay: True  # Account for delay in fov processing
 # Planner
 z_values_planner:  # the confidence intervals to use in the trajectory planner
-  localization_position: 0.5  # 1
-  localization_orientation: 0.5  # 1
+  localization_position: 0.8  # 1
+  localization_orientation: 0.8  # 1
   trajectory_longitudinal_rate: 2
-  trajectory_lateral: 1  # 1
-  trajectory_orientation: 1
+  trajectory_lateral: 0.8  # 1
+  trajectory_orientation: 0.8
 
 
 obstacle_trajectories:

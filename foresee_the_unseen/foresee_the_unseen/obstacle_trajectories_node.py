@@ -107,7 +107,14 @@ class ObstacleTrajectoriesNode(Node):
 
             publisher_pose = self.create_publisher(PoseWithCovarianceStamped, f"/{namespace}/initialpose", 1)
             self.initialpose_publishers.append(publisher_pose)
-            self.initialstates_commonroad.append(trajectory_commonroad.state_list[0])
+
+            init_state = trajectory_commonroad.state_list[0]
+            self.initialstates_commonroad.append(init_state)  # type: ignore
+            initpose_log = (
+                f"The initial pose of `{namespace}` (id={vehicle_id}) is:\n\t"
+                + f"start_pose:=\"{np.round([*init_state.position, init_state.orientation], 2).tolist()}\""
+            )
+            self.get_logger().warn(initpose_log)
 
             if self.do_visualize:
                 markers += self.get_trajectory_marker(waypoints, namespace, next(colors))

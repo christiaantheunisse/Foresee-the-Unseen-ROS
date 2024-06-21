@@ -1,6 +1,6 @@
 /**:
   ros__parameters:
-    road_xml: /home/christiaan/thesis/robot_ws/install/foresee_the_unseen/share/foresee_the_unseen/resource/road_4way_50cm.xml
+    road_xml: /home/christiaan/thesis/robot_ws/install/foresee_the_unseen/share/foresee_the_unseen/resource/road_xmls/road_4way_50cm_medianstrip.xml
 
 /fov_node:
   ros__parameters:
@@ -23,4 +23,5 @@
     # Filter the pointcloud measurements
     do_filter_scan: True
     # environment_boundary: [0., 2.5, 5., 2.5, 5., -3., 0., -3.]
-    environment_boundary: [-9., 9., 9., 9., 9., -9., -9., -9.]
+    # environment_boundary: [-9., 9., 9., 9., 9., -9., -9., -9.]
+    environment_boundary: [-9., 9., 4., 9., 4., -9., -9., -9.]

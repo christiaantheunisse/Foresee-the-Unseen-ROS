@@ -293,6 +293,14 @@ class ForeseeTheUnseen:
             initial_state=state,
         )
 
+    # def save_scenario_and_prediction(self, scenario: Scenario, prediction: SetBasedPrediction, success: bool) -> None:
+    #     with open(f"/home/christiaan/thesis/thesis_code/debug_planner/data/run1/scenario_{self.planner_step}", "wb") as f:
+    #         pickle.dump(scenario, f)
+    #     with open(f"/home/christiaan/thesis/thesis_code/debug_planner/data/run1/prediction_{self.planner_step}", "wb") as f:
+    #         pickle.dump(prediction, f)
+    #     with open(f"/home/christiaan/thesis/thesis_code/debug_planner/data/run1/success_{self.planner_step}", "wb") as f:
+    #         pickle.dump(success, f)
+
     def update_scenario(self, plan_start_time: float) -> Tuple[
         List[DynamicObstacle],
         ShapelyPolygon,
@@ -338,7 +346,7 @@ class ForeseeTheUnseen:
 
         # Update the tracker with the new sensor view and get the shadows and their prediction
         scan_delay = plan_start_time - self._field_of_view_stamp if self.configuration["do_account_scan_delay"] else 0.0
-        self.logger.info(f"scan delay = {scan_delay * 1000:.0f} ms")
+        # self.logger.info(f"scan delay = {scan_delay * 1000:.0f} ms")
         self.occ_track.update(field_of_view, self.planner_step, scan_delay)
         shadow_obstacles = self.occ_track.get_dynamic_obstacles(percieved_scenario)
         percieved_scenario.add_objects(shadow_obstacles)
@@ -358,7 +366,7 @@ class ForeseeTheUnseen:
 
         # Update the planner and plan a trajectory
         try:
-            time_left = 1 / self.frequency - (time.time() - plan_start_time) - 30e-3  # 30 ms margin
+            time_left = 1 / self.frequency - (time.time() - plan_start_time) - 40e-3  # 40 ms margin
             self.planner.update(self.ego_vehicle.initial_state)  # type: ignore
             trajectory, prediction = self.planner.plan(percieved_scenario, time_left, self.trajectory)
             self.ego_vehicle.prediction = prediction

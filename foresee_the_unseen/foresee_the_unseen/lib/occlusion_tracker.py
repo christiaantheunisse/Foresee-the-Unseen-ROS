@@ -47,7 +47,7 @@ class Shadow:
             new_polygon = self.__get_next_occ(self.polygon, dist)
             self.polygon = new_polygon if new_polygon is not None else self.polygon
 
-    def get_occupancy_set(self, time_step, dt, max_vel, prediction_horizon, steps_per_occ_pred, planning_horizon=100):
+    def get_occupancy_set(self, time_step, dt, max_vel, prediction_horizon, steps_per_occ_pred):
         dist = dt * max_vel
         occupancy_set = []
         # pred_polygon_shapely = self.polygon
@@ -80,31 +80,6 @@ class Shadow:
         )
         dist *= steps_per_occ_pred
 
-        # for i in range(prediction_horizon):
-        #     # Extend the top edges without overpasing the length of the lane
-        #     #   the front and rear of the prediction sets are always made perpendicular to the path / flat.
-        #     if i % steps_per_occ_pred == 0:
-        #         new_top_right = max(
-        #             top_right + dist, self.right_line.project(self.left_line.interpolate(top_left + dist))
-        #         )
-        #         new_top_left = max(
-        #             top_left + dist, self.left_line.project(self.right_line.interpolate(top_right + dist))
-        #         )
-        #         top_right = new_top_right
-        #         top_left = new_top_left
-        #         top_right = min(top_right, self.right_line.length)
-        #         top_left = min(top_left, self.left_line.length)
-
-        #         # print(f"top_right: {top_right}")
-        #         # print(f"top_left: {top_left}")
-
-        #         pred_polygon_shapely = self.__build_polygon(bottom_right, bottom_left, top_right, top_left)
-        #         pred_polygon = ShapelyPolygon2Polygon(pred_polygon_shapely)
-
-        #     occupancy = Occupancy(time_step + i + 1, pred_polygon)
-        #     # occupancy_set.extend([occupancy for _ in range(red_factor)])
-        #     occupancy_set.append(occupancy)
-
         for pred_step in range(int(prediction_horizon / steps_per_occ_pred)):
             # Extend the top edges without overpasing the length of the lane
             #   the front and rear of the prediction sets are always made perpendicular to the path / flat.
@@ -125,18 +100,10 @@ class Shadow:
                 ]
             )
 
-        # Populate the rest of the planning horizon with the last prediction
-        # for i in range(prediction_horizon, planning_horizon):
-        #     occupancy = Occupancy(time_step + i + 1, pred_polygon)
-        #     occupancy_set.append(occupancy)
-
         return occupancy_set
 
-    # TODO:Use the same approach as for the future occupancy prediction (in `self.get_occupancy_set`). Is basically the
-    #  same problem, but provides a faster solution.
     def __get_next_occ(self, poly, dist):
         smallest_projection = 999999
-        # print(list(poly.exterior.coords))
         for edge in poly.exterior.coords:
             projection = self.center_line.project(
                 ShapelyPoint(edge)
@@ -159,13 +126,6 @@ class Shadow:
                 np.concatenate((np.array(left_side.coords), np.flip(np.array(right_side.coords), axis=0)))
             )
             diff = polygon_diff(poly, Area_to_substract)
-            # try:
-            #     diff = polygon_diff(poly, Area_to_substract)
-            # except GEOSException as e:
-            #     raise Exception(
-            #         f"{smallest_projection=} {type(poly)=} {projections=} {dist=} {poly.is_valid=} {Area_to_substract.is_valid=} {np.concatenate((np.array(left_side.coords), np.flip(np.array(right_side.coords), axis=0)))=}"
-            #     ) from e
-            # poly = diff[0] #This has to be fixed
             poly = diff[0] if diff else None  # This has to be fixed
 
         return poly
@@ -224,18 +184,6 @@ class Occlusion_tracker:
         for lanelet in scenario.lanelet_network.lanelets:
             lanelets_dict[lanelet.lanelet_id] = lanelet
 
-        # self.lanes = []
-        # if scenario.scenario_id.map_name == "MyIntersection":
-        #     _lane = Lanelet.merge_lanelets(lanelets_dict[17], lanelets_dict[16])
-        #     self.lanes.append(Lanelet.merge_lanelets(_lane, lanelets_dict[15]))
-        #     self.lanes.append(Lanelet.merge_lanelets(lanelets_dict[17], lanelets_dict[30]))
-        #     self.lanes.append(Lanelet.merge_lanelets(lanelets_dict[12], lanelets_dict[13]))
-        # elif scenario.scenario_id.map_name == "Ffb":
-        #     _lane = Lanelet.merge_lanelets(lanelets_dict[49574], lanelets_dict[49600])
-        #     self.lanes.append(Lanelet.merge_lanelets(_lane, lanelets_dict[49566]))
-        #     self.lanes.append(Lanelet.merge_lanelets(lanelets_dict[49574], lanelets_dict[49590]))
-        #     self.lanes.append(Lanelet.merge_lanelets(lanelets_dict[49564], lanelets_dict[49602]))
-        
         self.lanes = []
         if lanes_to_merge is not None:
             self.lanes = [recursive_merge([lanelets_dict[l] for l in lanelets]) for lanelets in lanes_to_merge]
@@ -269,9 +217,6 @@ class Occlusion_tracker:
         # Calculate the first occluded area
         self.accumulated_occluded_area = 0
 
-        # plt.figure()
-        # plot(scenario, shadows=self.shadows)
-        # plt.show()
 
     def update(self, sensor_view, new_time_step: int, scan_delay: float):
         """
@@ -312,7 +257,6 @@ class Occlusion_tracker:
                     if intersection.area >= self.min_shadow_area:
                         new_shadows.append(Shadow(intersection, shadow.lane))
         self.shadows = self.prune_shadows(new_shadows)
-        # self.shadows = new_shadows
 
         # extend the shadows to account for the scan delay
         for shadow in self.shadows:
@@ -361,57 +305,21 @@ class Occlusion_tracker:
     def get_dynamic_obstacles(self, scenario):
         dynamic_obstacles = []
 
-        # print(f"There are {len(self.shadows)} shadows")
-        # print(f"Timestep: {self.time_step}, dt: {self.dt}")
-        # import matplotlib.pyplot as plt
-        # import matplotlib.cm as cm
-        # # cmap = cm.get_cmap('hot')
-        # # color = cmap((self.time_step / 3) % 1)
-        # fig, axs = plt.subplots(int(len(self.shadows) / 3) + 1, 3)
-        # for idx, shadow in enumerate(self.shadows):
-        #     # plt.plot(*shadow.polygon.exterior.xy, color=color)
-        #     ax = axs.flatten()[idx]
-        #     ax.plot(*shadow.polygon.exterior.xy)
-        #     ax.set_xlim(60, 200)
-        #     ax.set_ylim(-13, 13)
-        #     ax.set_aspect('equal')
-        #     # ax.set_xlim(0, 100)
-        #     # ax.set_ylim(-40, 40)
-        # plt.show()
-
-        import time
-
-        time_steps = []
         for shadow in self.shadows:
-            t_steps = [time.time()]  # LOG RUNTIME
-            occupancies = []
             occupancy_set = shadow.get_occupancy_set(
                 self.time_step, self.dt, self.max_vel, self.prediction_horizon, self.steps_per_occ_pred
             )
-            t_steps.append(time.time())  # LOG RUNTIME
             obstacle_id = scenario.generate_object_id()
             obstacle_type = ObstacleType.UNKNOWN
-            t_steps.append(time.time())  # LOG RUNTIME
             obstacle_shape = ShapelyPolygon2Polygon(shadow.polygon)
             obstacle_initial_state = InitialState(
                 position=np.array([0, 0]), velocity=self.max_vel, orientation=0, time_step=self.time_step
             )
-            t_steps.append(time.time())  # LOG RUNTIME
             obstacle_prediction = SetBasedPrediction(self.time_step + 1, occupancy_set)
-            t_steps.append(time.time())  # LOG RUNTIME
             dynamic_obstacle = DynamicObstacle(
                 obstacle_id, obstacle_type, obstacle_shape, obstacle_initial_state, obstacle_prediction
             )
             dynamic_obstacles.append(dynamic_obstacle)
-            t_steps.append(time.time())  # LOG RUNTIME
-            t_steps = np.array(t_steps)
-            t_steps = t_steps[1:] - t_steps[:-1]
-            time_steps.append(t_steps)
-
-        time_steps = np.array(time_steps)
-        # print(f"[shadows] Time per step:\n{time_steps.mean(axis=0).tolist()}")
-        # print(f"[shadows] Percentage of time per step:\n{(time_steps.mean(axis=0) / (time_steps.sum() / time_steps.shape[0]) * 100).tolist()}")
-        # print("")
 
         return dynamic_obstacles
 

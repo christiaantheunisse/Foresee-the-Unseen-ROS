@@ -23,7 +23,14 @@ setup(
         (os.path.join("share", package_name, "config"), glob(os.path.join("config/*.yaml"))),
         (os.path.join("share", package_name, "resource"), glob(os.path.join("resource", "*.yaml"))),
         (os.path.join("share", package_name, "resource"), glob(os.path.join("resource", "*.xml"))),
-        (os.path.join("share", package_name, "resource/fcd_xmls"), glob(os.path.join("resource", "fcd_xmls/*.xml"))),
+        (
+            os.path.join("share", package_name, "resource", "road_xmls"),
+            glob(os.path.join("resource", "road_xmls", "*.xml")),
+        ),
+        (
+            os.path.join("share", package_name, "resource", "fcd_xmls"),
+            glob(os.path.join("resource", "fcd_xmls", "*.xml")),
+        ),
         (
             os.path.join("share", package_name, "resource", "error_models"),
             glob(os.path.join("resource", "error_models", "*.pickle")),
