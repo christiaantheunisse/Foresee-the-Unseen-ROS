@@ -13,7 +13,7 @@
 
       control_mode: velocity # `velocity` or `acceleration`
 
-      do_visualize_trajectory: True
+      # do_visualize_trajectory: True
       do_store_data: False
       log_directory: /home/ubuntu/trajectory_log_files
 

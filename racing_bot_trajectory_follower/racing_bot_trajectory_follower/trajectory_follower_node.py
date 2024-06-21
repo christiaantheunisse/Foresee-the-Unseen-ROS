@@ -566,7 +566,7 @@ class TrajectoryFollowerNode(Node):
         par_vec = -np.array([np.cos(self.state.yaw), np.sin(self.state.yaw)])
         par_error = dist_vec @ par_vec
         goal_vel = self.trajectory.vs[target_idx_v] if self.trajectory.vs[target_idx_v] != 0.0 else 1e-6
-        t_behind = min(par_error / goal_vel, 1.5)
+        t_behind = min(par_error / goal_vel, 5.0)
         current_vel = self.state.v_lin if self.state.v_lin != 0.0 else 1e-6
         t_lag = min(self.goal_distance_lead / current_vel, 0.6)  # [s]
         mask = self.trajectory.stamps > (current - t_behind + t_lag)  # type: ignore

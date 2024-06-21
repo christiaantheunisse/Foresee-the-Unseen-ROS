@@ -1,4 +1,5 @@
 import os
+import json
 from launch import LaunchDescription, LaunchContext
 from launch_ros.substitutions import FindPackageShare
 from launch_ros.actions import Node, PushRosNamespace, SetRemap
@@ -69,6 +70,12 @@ def generate_launch_description():
         ],
         namespace=namespace,
     )
+
+    try:
+        encoder_pins = [int(pin) for pin in json.loads(os.environ['ENCODER_PINS'])]
+    except KeyError:
+        encoder_pins = [21, 19, 13, 12]
+
     encoder_node = Node(
         package="racing_bot_encoder",
         executable="encoder_node",
@@ -77,10 +84,11 @@ def generate_launch_description():
             {
                 # Encoder pins: a == blue, b == green; however, this can be flipped
                 #  to change the sign of the measured revolutions
-                "left_pin_a": 21,
-                "left_pin_b": 19,
-                "right_pin_a": 13,
-                "right_pin_b": 12,
+                "left_pin_a": encoder_pins[0],
+                "left_pin_b": encoder_pins[1],
+                "right_pin_a": encoder_pins[2],
+                "right_pin_b": encoder_pins[3],
+
             },
         ],
         namespace=namespace,
@@ -113,7 +121,7 @@ def generate_launch_description():
                     "do_broadcast_transform": True,
                     "odom_frame": f"{namespace_str}/odom",
                     "base_frame": f"{namespace_str}/base_link",
-                    "wheel_radius": 0.030,
+                    "wheel_radius": 0.0315,
                     "wheel_base": 0.103,
                 },
             ],
@@ -131,6 +139,7 @@ def generate_launch_description():
                     "odom_frame": f"{namespace_str}/odom",
                     "wheel_base_width": 0.103,
                     "do_visualize_trajectory": do_visualize,
+                    "min_corner_radius": 0.5,
                 },
             ],
             namespace=namespace,
