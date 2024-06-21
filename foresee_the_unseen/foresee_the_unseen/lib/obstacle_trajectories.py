@@ -340,7 +340,7 @@ def try_float(value: Any) -> Union[float, Any]:
         return value
     
 
-def load_fcd_xml(fcd_xml: str, translation: Union[list, np.ndarray] = [0.0, -0.5]) -> dict[str, dict[str, np.ndarray]]:
+def load_fcd_xml(fcd_xml: str, translation: Union[list, np.ndarray] = [0.0, 0.0]) -> dict[str, dict[str, np.ndarray]]:
     """Load the data in an fcd.xml in a dictionary"""
     tree = ET.parse(fcd_xml)
     old_vehicles_xml = tree.getroot()

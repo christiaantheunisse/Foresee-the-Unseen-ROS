@@ -18,7 +18,7 @@ goal_point_x : -3
 goal_point_y : -0.25
 
 #PLANNER
-apply_error_models: True
+apply_error_models: False
 reference_speed : 0.4 # trajectory planner limits norm_vel on 0.873 (r_min = 0.5)
 max_acceleration : 0.2
 max_deceleration : 0.25
@@ -63,12 +63,25 @@ z_values_planner:  # the confidence intervals to use in the trajectory planner
 
 obstacle_trajectories:
   # The data in the fcd (float car data) file from SUMO is in the planner frame
-  fcd_xml: /home/christiaan/thesis/robot_ws/install/foresee_the_unseen/share/foresee_the_unseen/resource/fcd_xmls/scenario_1.xml
+  fcd_xml: /home/christiaan/thesis/robot_ws/install/foresee_the_unseen/share/foresee_the_unseen/resource/fcd.xml
   waypoint_distance: 0.2 # the distance between waypoints
   dt: 0.25
 
   obstacle_cars:
     # namespace: vehicle id in the .xml file
-    obstacle_car1: "201"
-    obstacle_car2: "205"
+    obstacle_car1: 
+      id: "201"
+      simulated: False
+    obstacle_car2: 
+      id: "202"
+      simulated: False
+    obstacle_car3: 
+      id: "203"
+      simulated: False
+    obstacle_car4: 
+      id: "204"
+      simulated: False
+    obstacle_car5: 
+      id: "205"
+      simulated: False
 

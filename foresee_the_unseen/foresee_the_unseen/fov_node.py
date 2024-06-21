@@ -556,7 +556,7 @@ class FOVNode(Node):
     def approx_max_step(distance: float, max_incl_angle: float, angle_incr: float) -> float:
         """Approximate the maximum increase in range based on the current range and the maximum inclination angle."""
         opposite = np.sin(angle_incr) * distance
-        return opposite / np.tan(np.pi / 2 - max_incl_angle) if max_incl_angle < np.pi else np.inf
+        return opposite / np.tan(np.pi / 2 - max_incl_angle)
 
     @staticmethod
     def make_fov(

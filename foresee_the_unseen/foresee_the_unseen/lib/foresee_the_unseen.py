@@ -4,11 +4,13 @@ import traceback
 import warnings
 import sys
 
+
 def warn_with_traceback(message, category, filename, lineno, file=None, line=None):
 
-    log = file if hasattr(file,'write') else sys.stderr
+    log = file if hasattr(file, "write") else sys.stderr
     traceback.print_stack(file=log)
     log.write(warnings.formatwarning(message, category, filename, lineno, line))
+
 
 # warnings.showwarning = warn_with_traceback
 
@@ -240,19 +242,13 @@ class ForeseeTheUnseen:
         self._field_of_view: Optional[ShapelyPolygon] = None
         self._field_of_view_stamp: float = 0.0
 
-    def logger_warn(self, message: str):
+    def logger_warn(self, message: str, **kwargs):
         if self.logger is not None:
-            self.logger.warn(
-                ("[foresee-the-unseen] " + message),
-                throttle_duration_sec=self.throttle_duration,
-            )
+            self.logger.warn(("[foresee-the-unseen] " + message), **kwargs)
 
-    def logger_info(self, message: str):
+    def logger_info(self, message: str, **kwargs):
         if self.logger is not None:
-            self.logger.info(
-                ("[foresee-the-unseen] " + message),
-                throttle_duration_sec=self.throttle_duration,
-            )
+            self.logger.info(("[foresee-the-unseen] " + message), **kwargs)
 
     def position_on_road_check(self, x: float, y: float):
         """Check if a certain position is on the road"""
@@ -320,7 +316,7 @@ class ForeseeTheUnseen:
         ego_vehicle_state = self.get_ego_vehicle_state(plan_start_time)
         if ego_vehicle_state is None or (self._ego_vehicle_state_stamp + 1 / self.frequency) < plan_start_time:
             self.logger_warn(
-                "No up-to-date ego vehicle state available. ", 
+                "No up-to-date ego vehicle state available. ", throttle_duration_sec=self.throttle_duration
             )
             raise NoUpdatePossible()
         ego_vehicle_state.time_step = self.planner_step
