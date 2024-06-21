@@ -1,7 +1,8 @@
 import yaml
 import os
+import xml.etree.ElementTree as ET
 import numpy as np
-from typing import Tuple, Dict, List, Optional
+from typing import Tuple, Dict, List, Optional, Union, Any
 import nptyping as npt
 
 from commonroad.scenario.state import InitialState
@@ -183,14 +184,17 @@ def generate_velocity_profile(
 
     return np.append(v_profile[: np.argmax(v_profile < 0)], 0)
 
+
 def normalize_angles(angles: np.ndarray) -> np.ndarray:
     """Normalize angles to a range of [-pi, pi]"""
     return (angles + np.pi) % (2 * np.pi) - np.pi
+
 
 def unnormalize_angles(angles: np.ndarray) -> np.ndarray:
     """Makes a ranges of angles continuous, so removes the jumps at -pi and +pi"""
     normalized_diffs = normalize_angles(np.diff(angles))
     return angles[0] + np.insert(np.cumsum(normalized_diffs), 0, 0)
+
 
 def velocity_profile_to_state_list(
     velocity_profile: np.ndarray,
@@ -232,11 +236,7 @@ def velocity_profile_to_state_list(
     orientations = normalize_angles(orientations_unnorm)
 
     initial_state = InitialState(
-        position=waypoints[0],
-        orientation=orientations_at_points[0],
-        velocity=0,
-        acceleration=0,
-        time_step=0
+        position=waypoints[0], orientation=orientations_at_points[0], velocity=0, acceleration=0, time_step=0
     )
 
     state_list = [initial_state]
@@ -319,6 +319,7 @@ def get_ros_pose_from_commonroad_state(state: InitialState) -> PoseWithCovarianc
 
     return msg
 
+
 def read_obstacle_configuration_yaml(yaml_file: str, namespace: Optional[str] = None) -> Dict:
     with open(yaml_file) as f:
         if namespace:
@@ -326,45 +327,75 @@ def read_obstacle_configuration_yaml(yaml_file: str, namespace: Optional[str] = 
         else:
             obstacle_config = yaml.safe_load(f)
     assert os.path.isfile(
-        obstacle_config["road_structure_xml"]
-    ), f"`road_structure_xml` should be a file: {type(obstacle_config['road_structure_xml'])=}"
-
-    goal_positions_per_movement = {k: np.array(v) for k, v in obstacle_config["movements"].items()}
-    assert np.all(
-        [v.ndim == 2 and v.shape[1] == 2 for v in goal_positions_per_movement.values()]
-    ), "shape of the goal positions for each movement should be [N, 2]"
-    waypoint_distance = obstacle_config["waypoint_distance"]
-    assert isinstance(
-        waypoint_distance, (float, int)
-    ), f"`waypoint_distance` should be a scalar number {type(waypoint_distance)=}"
-
-    for value in obstacle_config["obstacle_cars"].values():
-        assert np.array(value["start_pose"]).shape == (
-            3,
-        ), f"The start position should be a 3D array: {value['start_pose']=}"
-        assert (
-            value["movement"] in goal_positions_per_movement.keys()
-        ), f"Movement ({value['movement']=}) should be one of {goal_positions_per_movement.keys()}"
-        assert isinstance(
-            value["velocity"], (float, int)
-        ), f"`velocity` should be a scalar number: {type(value['velocity'])=}"
-        assert isinstance(
-            value["acceleration"], (float, int)
-        ), f"`acceleration` should be a scalar number {type(value['acceleration'])=}"
-        assert isinstance(
-            value["start_delay"], (float, int)
-        ), f"`start_delay` should be a scalar number {type(value['start_delay'])=}"
+        obstacle_config["fcd_xml"]
+    ), f"`fcd_xml` should be a file: {obstacle_config['fcd_xml']=}"
 
     return obstacle_config
 
 
-if __name__ == "__main__":
-    waypoints = np.arange(10).reshape(-1, 2)
-    dist_to_goal = np.sum(np.hypot(*np.diff(waypoints, axis=0).T))
-    velocity_profile = generate_velocity_profile(
-        dist_to_goal=dist_to_goal,
-        velocity=0.5,
-        max_acc=0.2,
-        max_dec=0.2,
-        dt=0.25,
-    )
+def try_float(value: Any) -> Union[float, Any]:
+    try:
+        return float(value)
+    except ValueError:
+        return value
+    
+
+def load_fcd_xml(fcd_xml: str, translation: Union[list, np.ndarray] = [0.0, -0.5]) -> dict[str, dict[str, np.ndarray]]:
+    """Load the data in an fcd.xml in a dictionary"""
+    tree = ET.parse(fcd_xml)
+    old_vehicles_xml = tree.getroot()
+
+    ts_elems = old_vehicles_xml.findall("timestep")
+    ts = [float(t.get("time")) for t in ts_elems]  # type: ignore
+
+    # Load the data into a dict of lists for each state parameter for each vehicle id
+    vehicles_dict: dict[str, dict[str, np.ndarray]] = {}
+    for time_ele in old_vehicles_xml.findall("timestep"):
+        vehicles = time_ele.findall("vehicle")
+        timestep = time_ele.get("time")
+        for veh_ele in vehicles:
+            veh_id = veh_ele.get("id")
+            attrib = veh_ele.attrib
+            assert "t" not in attrib
+            attrib["t"] = timestep  # type: ignore
+            if veh_id in vehicles_dict:
+                for k, v in attrib.items():
+                    vehicles_dict[veh_id][k].append(try_float(v))  # type: ignore
+            else:
+                vehicles_dict[veh_id] = {k: [try_float(v)] for k, v in attrib.items()}  # type: ignore
+
+    # Convert the lists to numpy arrays
+    for vehicle_dict in vehicles_dict.values():
+        for state_key in vehicle_dict.keys():
+            vehicle_dict[state_key] = np.array(vehicle_dict[state_key])
+
+    # move the output since the network is a little transformed
+    trans_x, trans_y = translation
+    for vehicle_dict in vehicles_dict.values():
+        vehicle_dict["x"] = vehicle_dict["x"] + trans_x
+        vehicle_dict["y"] = vehicle_dict["y"] + trans_y
+
+    # sort by key
+    vehicles_dict = {k: vehicles_dict[k] for k in sorted(list(vehicles_dict.keys()))}
+
+    # smooth the velocities
+    # window_length = 10
+    # window = np.ones(window_length) / window_length
+    # for vehicle_dict in vehicles_dict.values():
+    #     vehicle_dict['speed'] = np.convolve(vehicle_dict['speed'], window, "same")
+
+    return vehicles_dict
+
+
+def get_waypoints_from_vehicle_dict(vehicle_dict: dict[str, np.ndarray], min_dist_waypoints: float = 0.2) -> np.ndarray:
+    waypoints_all = np.vstack((vehicle_dict['x'], vehicle_dict['y'])).T
+    dist_waypoints = np.linalg.norm(np.diff(waypoints_all, axis=0), axis=1)
+    quotients = np.cumsum(dist_waypoints) // min_dist_waypoints
+    idcs_to_keep = np.insert(np.where(np.diff(quotients) > 0), 0, 0)
+    return waypoints_all[idcs_to_keep]
+
+def get_velocity_profile_from_vehicle_dict(vehicle_dict: dict[str, np.ndarray], dt: float = 0.25) -> np.ndarray:
+    velocities = vehicle_dict["speed"]
+    timesteps = vehicle_dict["t"]
+    new_timesteps = (np.arange(int(timesteps[-1] / dt)) + 1) * dt
+    return np.interp(new_timesteps, timesteps, velocities)

@@ -90,7 +90,7 @@ class ForeseeTheUnseen:
         self.road_xml = road_xml
         self.logger = logger
         self.frequency = frequency
-        self.throttle_duration = None  # set the throttle duration for the logging when used with ROS
+        self.throttle_duration = 3  # set the throttle duration for the logging when used with ROS
         self.do_track_exec_time = False
 
         if self.logger is not None:
@@ -320,8 +320,7 @@ class ForeseeTheUnseen:
         ego_vehicle_state = self.get_ego_vehicle_state(plan_start_time)
         if ego_vehicle_state is None or (self._ego_vehicle_state_stamp + 1 / self.frequency) < plan_start_time:
             self.logger_warn(
-                "No up-to-date ego vehicle state available. "
-                # + f"stamp = {self._ego_vehicle_state_stamp}, {plan_start_time=}"
+                "No up-to-date ego vehicle state available. ", 
             )
             raise NoUpdatePossible()
         ego_vehicle_state.time_step = self.planner_step

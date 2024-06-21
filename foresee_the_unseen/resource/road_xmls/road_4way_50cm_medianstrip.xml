@@ -26,10 +26,10 @@
         <y>-0.5495</y>
       </point>
     </rightBound>
-    <successor ref="19" />
-    <successor ref="4" />
-    <successor ref="15" />
-    <adjacentLeft ref="1" drivingDir="opposite" />
+    <successor ref="18" />
+    <successor ref="3" />
+    <successor ref="27" />
+    <adjacentLeft ref="9" drivingDir="opposite" />
     <laneletType>unknown</laneletType>
   </lanelet>
   <lanelet id="11">
@@ -53,10 +53,10 @@
         <y>-10.6999</y>
       </point>
     </rightBound>
-    <predecessor ref="10" />
-    <predecessor ref="19" />
+    <predecessor ref="34" />
+    <predecessor ref="18" />
     <predecessor ref="14" />
-    <adjacentLeft ref="11" drivingDir="opposite" />
+    <adjacentLeft ref="10" drivingDir="opposite" />
     <laneletType>unknown</laneletType>
   </lanelet>
   <lanelet id="17">
@@ -104,8 +104,8 @@
         <y>-0.55</y>
       </point>
     </rightBound>
-    <predecessor ref="11" />
-    <successor ref="6" />
+    <predecessor ref="10" />
+    <successor ref="4" />
     <adjacentLeft ref="14" drivingDir="opposite" />
     <laneletType>unknown</laneletType>
   </lanelet>
@@ -130,9 +130,9 @@
         <y>-0.6999</y>
       </point>
     </rightBound>
-    <predecessor ref="8" />
-    <successor ref="12" />
-    <adjacentLeft ref="9" drivingDir="opposite" />
+    <predecessor ref="25" />
+    <successor ref="11" />
+    <adjacentLeft ref="33" drivingDir="opposite" />
     <laneletType>unknown</laneletType>
   </lanelet>
   <lanelet id="9">
@@ -156,10 +156,10 @@
         <y>0.5500</y>
       </point>
     </rightBound>
-    <predecessor ref="3" />
-    <predecessor ref="20" />
-    <predecessor ref="13" />
-    <adjacentLeft ref="2" drivingDir="opposite" />
+    <predecessor ref="8" />
+    <predecessor ref="26" />
+    <predecessor ref="16" />
+    <adjacentLeft ref="1" drivingDir="opposite" />
     <laneletType>unknown</laneletType>
   </lanelet>
   <lanelet id="10">
@@ -183,10 +183,10 @@
         <y>-0.7</y>
       </point>
     </rightBound>
-    <successor ref="9" />
-    <successor ref="13" />
+    <successor ref="33" />
+    <successor ref="16" />
     <successor ref="17" />
-    <adjacentLeft ref="12" drivingDir="opposite" />
+    <adjacentLeft ref="11" drivingDir="opposite" />
     <laneletType>unknown</laneletType>
   </lanelet>
   <lanelet id="30">
@@ -234,9 +234,9 @@
         <y>-0.5499</y>
       </point>
     </rightBound>
-    <predecessor ref="8" />
-    <successor ref="6" />
-    <adjacentLeft ref="18" drivingDir="opposite" />
+    <predecessor ref="25" />
+    <successor ref="4" />
+    <adjacentLeft ref="29" drivingDir="opposite" />
     <laneletType>unknown</laneletType>
   </lanelet>
   <lanelet id="29">
@@ -284,9 +284,9 @@
         <y>0.7</y>
       </point>
     </rightBound>
-    <predecessor ref="5" />
-    <successor ref="7" />
-    <adjacentLeft ref="16" drivingDir="opposite" />
+    <predecessor ref="6" />
+    <successor ref="24" />
+    <adjacentLeft ref="30" drivingDir="opposite" />
     <laneletType>unknown</laneletType>
   </lanelet>
   <lanelet id="24">
@@ -310,10 +310,10 @@
         <y>10.7000</y>
       </point>
     </rightBound>
-    <predecessor ref="9" />
-    <predecessor ref="18" />
-    <predecessor ref="15" />
-    <adjacentLeft ref="8" drivingDir="opposite" />
+    <predecessor ref="33" />
+    <predecessor ref="29" />
+    <predecessor ref="27" />
+    <adjacentLeft ref="25" drivingDir="opposite" />
     <laneletType>unknown</laneletType>
   </lanelet>
   <lanelet id="16">
@@ -361,9 +361,9 @@
         <y>0.5500</y>
       </point>
     </rightBound>
-    <predecessor ref="11" />
-    <successor ref="1" />
-    <adjacentLeft ref="19" drivingDir="opposite" />
+    <predecessor ref="10" />
+    <successor ref="9" />
+    <adjacentLeft ref="18" drivingDir="opposite" />
     <laneletType>unknown</laneletType>
   </lanelet>
   <lanelet id="26">
@@ -411,9 +411,9 @@
         <y>0.5500</y>
       </point>
     </rightBound>
-    <predecessor ref="8" />
-    <successor ref="1" />
-    <adjacentLeft ref="15" drivingDir="opposite" />
+    <predecessor ref="25" />
+    <successor ref="9" />
+    <adjacentLeft ref="27" drivingDir="opposite" />
     <laneletType>unknown</laneletType>
   </lanelet>
   <lanelet id="25">
@@ -437,10 +437,10 @@
         <y>0.7010</y>
       </point>
     </rightBound>
-    <successor ref="16" />
-    <successor ref="10" />
-    <successor ref="20" />
-    <adjacentLeft ref="7" drivingDir="opposite" />
+    <successor ref="30" />
+    <successor ref="34" />
+    <successor ref="26" />
+    <adjacentLeft ref="24" drivingDir="opposite" />
     <laneletType>unknown</laneletType>
   </lanelet>
   <lanelet id="4">
@@ -464,10 +464,10 @@
         <y>-0.5495</y>
       </point>
     </rightBound>
-    <predecessor ref="16" />
+    <predecessor ref="30" />
     <predecessor ref="17" />
-    <predecessor ref="4" />
-    <adjacentLeft ref="5" drivingDir="opposite" />
+    <predecessor ref="3" />
+    <adjacentLeft ref="6" drivingDir="opposite" />
     <laneletType>unknown</laneletType>
   </lanelet>
   <lanelet id="33">
@@ -491,9 +491,9 @@
         <y>0.7</y>
       </point>
     </rightBound>
-    <predecessor ref="11" />
-    <successor ref="7" />
-    <adjacentLeft ref="10" drivingDir="opposite" />
+    <predecessor ref="10" />
+    <successor ref="24" />
+    <adjacentLeft ref="34" drivingDir="opposite" />
     <laneletType>unknown</laneletType>
   </lanelet>
   <lanelet id="6">
@@ -517,10 +517,10 @@
         <y>0.5499</y>
       </point>
     </rightBound>
-    <successor ref="18" />
-    <successor ref="3" />
+    <successor ref="29" />
+    <successor ref="8" />
     <successor ref="14" />
-    <adjacentLeft ref="6" drivingDir="opposite" />
+    <adjacentLeft ref="4" drivingDir="opposite" />
     <laneletType>unknown</laneletType>
   </lanelet>
   <lanelet id="8">
@@ -544,9 +544,9 @@
         <y>0.5500</y>
       </point>
     </rightBound>
-    <predecessor ref="5" />
-    <successor ref="1" />
-    <adjacentLeft ref="4" drivingDir="opposite" />
+    <predecessor ref="6" />
+    <successor ref="9" />
+    <adjacentLeft ref="3" drivingDir="opposite" />
     <laneletType>unknown</laneletType>
   </lanelet>
   <lanelet id="3">
@@ -570,9 +570,9 @@
         <y>-0.5495</y>
       </point>
     </rightBound>
-    <predecessor ref="2" />
-    <successor ref="6" />
-    <adjacentLeft ref="3" drivingDir="opposite" />
+    <predecessor ref="1" />
+    <successor ref="4" />
+    <adjacentLeft ref="8" drivingDir="opposite" />
     <laneletType>unknown</laneletType>
   </lanelet>
   <lanelet id="27">
@@ -620,9 +620,9 @@
         <y>0.6999</y>
       </point>
     </rightBound>
-    <predecessor ref="2" />
-    <successor ref="7" />
-    <adjacentLeft ref="20" drivingDir="opposite" />
+    <predecessor ref="1" />
+    <successor ref="24" />
+    <adjacentLeft ref="26" drivingDir="opposite" />
     <laneletType>unknown</laneletType>
   </lanelet>
   <lanelet id="14">
@@ -670,8 +670,8 @@
         <y>-0.6999</y>
       </point>
     </rightBound>
-    <predecessor ref="5" />
-    <successor ref="12" />
+    <predecessor ref="6" />
+    <successor ref="11" />
     <adjacentLeft ref="17" drivingDir="opposite" />
     <laneletType>unknown</laneletType>
   </lanelet>
@@ -720,9 +720,9 @@
         <y>-0.7000</y>
       </point>
     </rightBound>
-    <predecessor ref="2" />
-    <successor ref="12" />
-    <adjacentLeft ref="13" drivingDir="opposite" />
+    <predecessor ref="1" />
+    <successor ref="11" />
+    <adjacentLeft ref="16" drivingDir="opposite" />
     <laneletType>unknown</laneletType>
   </lanelet>
   <lanelet id="23">
