@@ -1,6 +1,7 @@
 /**:
   ros__parameters:
-    road_xml: /home/christiaan/thesis/robot_ws/install/foresee_the_unseen/share/foresee_the_unseen/resource/road_xmls/road_4way_50cm_medianstrip.xml
+    road_xml: 
+      /home/christiaan/thesis/robot_ws/install/foresee_the_unseen/share/foresee_the_unseen/resource/road_xmls/road_4way_40cm.xml
 
 /fov_node:
   ros__parameters:
@@ -8,20 +9,20 @@
     max_inclination_angle: 1.2173 # 1.2173 rad == 70 deg
 
     # lidar error models z-values
-    apply_errors_models: True
-    range_stds_margin: 2.
-    angle_stds_margin: 2.
+    apply_errors_models: true
+    range_stds_margin: 2.0
+    angle_stds_margin: 2.0
     # fov state uncertainty z-values
-    do_correct_state_uncertainty: True
-    state_pos_stds_margin: 2.
-    state_orient_stds_margin: 2.
+    do_correct_state_uncertainty: true
+    state_pos_stds_margin: 2.0
+    state_orient_stds_margin: 2.0
 
     # Lidar view range
-    view_range: 5.
+    view_range: 5.0
     # Lidar subsample rate
     subsample_rate: 2
     # Filter the pointcloud measurements
-    do_filter_scan: True
+    do_filter_scan: true
     # environment_boundary: [0., 2.5, 5., 2.5, 5., -3., 0., -3.]
     # environment_boundary: [-9., 9., 9., 9., 9., -9., -9., -9.]
     environment_boundary: [-9., 9., 4., 9., 4., -9., -9., -9.]

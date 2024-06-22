@@ -1,32 +1,32 @@
 # MAP TO PLANNER FRAME TRANSFORM
 # pose_of_planner_in_map_frame: [3.80, 0.13, -1.57079632679]  # when the start position is 0.0 in the map frame
-pose_of_planner_in_map_frame: [3.80, 0.25, -1.57079632679]  # when the start position is 0.0 in the map frame
+pose_of_planner_in_map_frame: [1.4, 0.3, -1.57079632679]  # when the start position is 0.0 in the map frame
 
 #EGO_VEHICLE
-initial_state_x : 0.25
-initial_state_y : -3
+initial_state_x: 0.25
+initial_state_y: -3
 initial_state_orientation: 1.5708
 
-vehicle_length : 0.25
-vehicle_width : 0.18
+vehicle_length: 0.25
+vehicle_width: 0.18
 
 # Distance the rectangle shape has to move from the actual center point of the robot to fit the robot. 
 #  Positive values if the actual center point is more on the back and the left side of the robot.
-vehicle_length_offset : 0.015
-vehicle_width_offset : 0.0
-goal_point_x : -3
-goal_point_y : -0.25
+vehicle_length_offset: 0.015
+vehicle_width_offset: 0.0
+goal_point_x: -3
+goal_point_y: 0.25
 
 #PLANNER
-apply_error_models: False
-reference_speed : 0.4 # trajectory planner limits norm_vel on 0.873 (r_min = 0.5)
-max_acceleration : 0.2
-max_deceleration : 0.25
-planning_horizon : 22
-safety_margin : 0.0
+apply_error_models: true  # in the planner
+reference_speed: 0.4  # trajectory planner limits norm_vel on 0.873 (r_min = 0.5)
+max_acceleration: 0.2
+max_deceleration: 0.25
+planning_horizon: 22
+safety_margin: 0.0
 minimum_distance_waypoint: 0.1
 max_dist_corner_smoothing: 0.2
-localization_standard_deviations:  # worst case / average assumptions  used in the trajectory planner
+localization_standard_deviations:  # worst case / average assumptions of the std used in the trajectory planner
   position: 0.087  # [m]
   orientation: 0.0054  # [rad]
 no_stop_lanelets:
@@ -36,52 +36,43 @@ no_stop_lanelets:
   roadwidth40cm4way: 23
 
 #OCCLUSION_TRACKER
-min_velocity : 0
-max_velocity : 0.48
-min_shadow_area : 0.001  # Change this
-prediction_horizon : 22
+min_velocity: 0
+max_velocity: 0.48
+min_shadow_area: 0.001   # Change this
+prediction_horizon: 22
 prediction_step_size: 2 # no. of time steps to combine in the occupancy prediction
-tracking_enabled : True
+tracking_enabled: true
 lanes_to_track:  # List with lanes, where a lane is a list of lanelet_ids [[2, 3, ...], ...]
   MyIntersection: [[17, 16, 15], [17, 30, 21], [12, 13, 14]]
   #### ADD OWN LANE
   roadwidth50cm3way: [[6, 8, 9], [6, 14, 11], [1, 3, 4], [10]]
-  roadwidth50cm4way: [[6, 8, 9], [6, 14, 11], [1, 3, 4], [25, 26, 9], [25, 34, 11], [25, 30, 4], [1, 27,24]]
-  roadwidth40cm4way: [[6, 8, 9], [6, 14, 11], [1, 3, 4], [25, 26, 9], [25, 34, 11], [25, 30, 4], [1, 27,24]]
+  roadwidth50cm4way: [[6, 8, 9], [6, 14, 11], [1, 3, 4], [25, 26, 9], [25, 34, 11],
+    [25, 30, 4], [1, 27, 24]]
+  roadwidth40cm4way: [[6, 8, 9], [6, 14, 11], [1, 3, 4], [25, 26, 9], [25, 34, 11],
+    [25, 30, 4], [1, 27, 24]]
 
 # ACCOUNTING FOR UNCERTAINTY
 # Lidar & Field of view
-do_account_scan_delay: True  # Account for delay in fov processing
+do_account_scan_delay: true  # Account for delay in fov processing
 # Planner
 z_values_planner:  # the confidence intervals to use in the trajectory planner
-  localization_position: 0.8  # 1
-  localization_orientation: 0.8  # 1
-  trajectory_longitudinal_rate: 2
-  trajectory_lateral: 0.8  # 1
+  localization_position: 0.8
+  localization_orientation: 0.8
+  trajectory_longitudinal_rate: 2.0
+  trajectory_lateral: 0.8
   trajectory_orientation: 0.8
-
-
 obstacle_trajectories:
   # The data in the fcd (float car data) file from SUMO is in the planner frame
-  fcd_xml: /home/christiaan/thesis/robot_ws/install/foresee_the_unseen/share/foresee_the_unseen/resource/fcd.xml
+  fcd_xml: 
+    /home/christiaan/thesis/robot_ws/install/foresee_the_unseen/share/foresee_the_unseen/resource/fcd.xml
   waypoint_distance: 0.2 # the distance between waypoints
   dt: 0.25
 
   obstacle_cars:
     # namespace: vehicle id in the .xml file
-    obstacle_car1: 
-      id: "201"
-      simulated: False
-    obstacle_car2: 
-      id: "202"
-      simulated: False
-    obstacle_car3: 
-      id: "203"
-      simulated: False
-    obstacle_car4: 
-      id: "204"
-      simulated: False
-    obstacle_car5: 
-      id: "205"
-      simulated: False
-
+    obstacle_car1:
+      id: '201'
+      simulated: false
+    obstacle_car2:
+      id: '202'
+      simulated: false

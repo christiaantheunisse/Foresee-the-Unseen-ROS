@@ -78,19 +78,21 @@ def generate_launch_description():
         ],
     )
 
-    def get_config_from_yaml(yaml_file: str) -> Tuple[List[str], List[List[float]]]:
+    # def get_config_from_yaml(yaml_file: str) -> Tuple[List[str], List[List[float]]]:
+    def get_config_from_yaml(yaml_file: str) -> List[str]:
         """Loads the content from the yaml file"""
         with open(yaml_file) as f:
             obstacle_config = yaml.safe_load(f)["obstacle_trajectories"]
         obstacle_namespaces = obstacle_config["obstacle_cars"].keys()
-        start_poses = [obstacle_config["obstacle_cars"][n]["start_pose"] for n in obstacle_namespaces]
-        for start_pose in start_poses:
-            assert len(start_pose) == 3 and all(
-                [isinstance(s, (int, float)) for s in start_pose]
-            ), "start_pose should be 3D array describing the initial [x, y, yaw]"
-        assert len(obstacle_namespaces) == len(start_poses), "Should be the same no. of namespaces and start poses"
+        # start_poses = [obstacle_config["obstacle_cars"][n]["start_pose"] for n in obstacle_namespaces]
+        # for start_pose in start_poses:
+        #     assert len(start_pose) == 3 and all(
+        #         [isinstance(s, (int, float)) for s in start_pose]
+        #     ), "start_pose should be 3D array describing the initial [x, y, yaw]"
+        # assert len(obstacle_namespaces) == len(start_poses), "Should be the same no. of namespaces and start poses"
 
-        return obstacle_namespaces, start_poses
+        # return obstacle_namespaces, start_poses
+        return obstacle_namespaces
 
     def slam_based_on_yaml(
         context: LaunchContext, use_ekf: LaunchConfiguration
@@ -105,7 +107,8 @@ def generate_launch_description():
         ).perform(context)
         use_ekf_bool = IfCondition(use_ekf).evaluate(context)
 
-        obstacle_namespaces, start_poses = get_config_from_yaml(yaml_filepath_str)
+        # obstacle_namespaces, start_poses = get_config_from_yaml(yaml_filepath_str)
+        obstacle_namespaces = get_config_from_yaml(yaml_filepath_str)
 
         # Get the `planner` to `map` frame transform
         commonroad_config_yamlpath = PathJoinSubstitution(
@@ -124,14 +127,15 @@ def generate_launch_description():
 
         # launch the slam node for each robot and publish the start position
         slam_launches, initialpose_publishers = [], []
-        for namespace, start_pose_planner in zip(obstacle_namespaces, start_poses):
+        # for namespace, start_pose_planner in zip(obstacle_namespaces, start_poses):
+        for namespace in obstacle_namespaces:
             # convert start pose in `planner` frame to `map` frame
-            start_xy = np.array([start_pose_planner[0], start_pose_planner[1], 1])
-            start_theta = start_pose_planner[2]
-            start_xy_tf = t_matrix @ start_xy
-            start_theta_tf = start_theta + th_transf
-            start_pose_map = [float(start_xy_tf[0]), float(start_xy_tf[1]), float(start_theta_tf)]
-
+            # start_xy = np.array([start_pose_planner[0], start_pose_planner[1], 1])
+            # start_theta = start_pose_planner[2]
+            # start_xy_tf = t_matrix @ start_xy
+            # start_theta_tf = start_theta + th_transf
+            # start_pose_map = [float(start_xy_tf[0]), float(start_xy_tf[1]), float(start_theta_tf)]
+            # print(str(start_pose_map))
             slam_launch = IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     PathJoinSubstitution(
@@ -143,7 +147,7 @@ def generate_launch_description():
                     "map_file": map_file,
                     "publish_tf": NotSubstitution(use_ekf),
                     "namespace": namespace,
-                    "start_pose": str(start_pose_map),
+                    # "start_pose": str(start_pose_map),
                     "minimum_time_interval": "2.0",
                 }.items(),
             )

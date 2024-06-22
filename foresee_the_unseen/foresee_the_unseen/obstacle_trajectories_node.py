@@ -101,6 +101,7 @@ class ObstacleTrajectoriesNode(Node):
             velocity_profile = get_velocity_profile_from_vehicle_dict(
                 vehicle_dict, dt=self.obstacle_config.get("dt", 0.25)
             )
+            velocity_profile = np.append(velocity_profile, 0)
             trajectory_commonroad = velocity_profile_to_state_list(
                 velocity_profile, waypoints, self.obstacle_config["dt"]
             )
