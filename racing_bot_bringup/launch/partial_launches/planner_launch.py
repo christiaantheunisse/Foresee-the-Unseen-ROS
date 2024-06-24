@@ -57,6 +57,7 @@ def generate_launch_description():
                 ),
             },
         ],
+        # remappings=[("scan", "scan/simulated")],
     )
     planner_node = Node(
         package="foresee_the_unseen",

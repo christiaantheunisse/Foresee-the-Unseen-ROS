@@ -78,6 +78,16 @@ def generate_launch_description():
         ],
     )
 
+    # TODO: make optional with a launch argument
+    scan_simulate_node = Node(
+        package="racing_bot_scan_sim",
+        executable="scan_simulate_node",
+        name="scan_simulate_node",
+        parameters=[
+            PathJoinSubstitution([FindPackageShare("racing_bot_scan_sim"), "config", "scan_simulate_node.yaml"]),
+        ]
+    )
+
     # def get_config_from_yaml(yaml_file: str) -> Tuple[List[str], List[List[float]]]:
     def get_config_from_yaml(yaml_file: str) -> List[str]:
         """Loads the content from the yaml file"""
@@ -168,6 +178,7 @@ def generate_launch_description():
             *log_messages,
             # nodes
             obstacle_trajectories_node,
+            scan_simulate_node,
             OpaqueFunction(
                 function=slam_based_on_yaml,
                 args=[use_ekf],

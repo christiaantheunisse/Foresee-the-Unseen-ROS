@@ -1,8 +1,15 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import List, Optional, Dict
+from typing import Optional
+import copy
 
-from shapely.geometry import Polygon as ShapelyPolygon, LineString as ShapelyLineString, Point as ShapelyPoint, LinearRing
+from shapely import BufferJoinStyle
+from shapely.geometry import (
+    Polygon as ShapelyPolygon,
+    LineString as ShapelyLineString,
+    Point as ShapelyPoint,
+    LinearRing,
+)
 from shapely.ops import substring
 from shapely.errors import GEOSException
 
@@ -20,7 +27,8 @@ from foresee_the_unseen.lib.utilities import (
     cut_line,
 )
 
-def recursive_merge(lanelets: List[Lanelet]) -> Lanelet:
+
+def recursive_merge(lanelets: list[Lanelet]) -> Lanelet:
     assert len(lanelets) > 0
     if len(lanelets) == 1:
         return lanelets[0]
@@ -42,12 +50,14 @@ class Shadow:
         self.left_line = ShapelyLineString(self.lane.left_vertices)
         self.lane_shapely = Lanelet2ShapelyPolygon(lane)
 
-    def expand(self, dist):
+    def expand(self, dist: float):
         if abs(dist) > 1e-10:
             new_polygon = self.__get_next_occ(self.polygon, dist)
             self.polygon = new_polygon if new_polygon is not None else self.polygon
 
-    def get_occupancy_set(self, time_step, dt, max_vel, prediction_horizon, steps_per_occ_pred):
+    def get_occupancy_set(
+        self, time_step: int, dt: float, max_vel: float, prediction_horizon: int, steps_per_occ_pred: int
+    ):
         dist = dt * max_vel
         occupancy_set = []
         # pred_polygon_shapely = self.polygon
@@ -102,7 +112,7 @@ class Shadow:
 
         return occupancy_set
 
-    def __get_next_occ(self, poly, dist):
+    def __get_next_occ(self, poly: ShapelyPolygon, dist: float):
         smallest_projection = 999999
         for edge in poly.exterior.coords:
             projection = self.center_line.project(
@@ -112,7 +122,7 @@ class Shadow:
                 smallest_projection = projection
             if smallest_projection <= 0:
                 break
-        poly = poly.buffer(dist, join_style=1)
+        poly = poly.buffer(dist, join_style=BufferJoinStyle.mitre)
         intersection = polygon_intersection(poly, self.lane_shapely)
         poly = intersection[0]  # This has to be fixed
 
@@ -154,19 +164,19 @@ class Shadow:
 class Occlusion_tracker:
     def __init__(
         self,
-        scenario,
-        min_vel,
-        max_vel,
+        scenario: Scenario,
+        min_vel: float,
+        max_vel: float,
         # min_acc=-1,
         # max_acc=1,
-        min_shadow_area,
-        prediction_horizon,
-        steps_per_occ_pred,  # no. of time steps to combine in the occupancy prediction
-        dt,
-        initial_sensor_view=ShapelyPolygon(),
-        initial_time_step=0,
-        tracking_enabled=True,
-        lanes_to_merge: Optional[List[List[int]]] = None,
+        min_shadow_area: float,
+        prediction_horizon: int,
+        steps_per_occ_pred: int,  # no. of time steps to combine in the occupancy prediction
+        dt: float,
+        initial_sensor_view: ShapelyPolygon = ShapelyPolygon(),
+        initial_time_step: int = 0,
+        tracking_enabled: bool = True,
+        lanes_to_merge: Optional[list[list[int]]] = None,
     ):
         self.time_step = initial_time_step
         self.dt = dt
@@ -175,7 +185,7 @@ class Occlusion_tracker:
         # self.min_acc = min_acc
         # self.max_acc = max_acc
         self.min_shadow_area = min_shadow_area
-        self.shadows = []
+        self.shadows: list[Shadow] = []
         self.prediction_horizon = prediction_horizon
         self.tracking_enabled = tracking_enabled
         self.steps_per_occ_pred = steps_per_occ_pred
@@ -204,7 +214,6 @@ class Occlusion_tracker:
                     lanes.append(lane)
             self.lanes = lanes
 
-
         # Calculate the first "view"
         for lane in self.lanes:
             lanelet_shapely = Lanelet2ShapelyPolygon(lane)
@@ -217,8 +226,7 @@ class Occlusion_tracker:
         # Calculate the first occluded area
         self.accumulated_occluded_area = 0
 
-
-    def update(self, sensor_view, new_time_step: int, scan_delay: float):
+    def update(self, sensor_view: ShapelyPolygon, new_time_step: int, scan_delay: float) -> None:
         """
         new_time: is the planner step
         scan_delay: is time in seconds ago the scan was made/started.
@@ -228,7 +236,7 @@ class Occlusion_tracker:
         else:
             self.reset(sensor_view, new_time_step)
 
-    def update_tracker(self, sensor_view, new_time_step: int, scan_delay: float):
+    def update_tracker(self, sensor_view: ShapelyPolygon, new_time_step: int, scan_delay: float) -> None:
         """
         new_time_step: is the planner step
         scan_delay: is time in seconds ago the scan was made/started.
@@ -238,18 +246,25 @@ class Occlusion_tracker:
         # Update the time
         self.time_step = new_time_step
 
-        time_before_scan = max(time_diff - scan_delay, 0)
-        time_after_scan = time_diff - time_before_scan
+        # This option is over conservative, because: if the scan delay is bigger than the time difference with the
+        #  previous step, the shadows increasing more than the time passed since the previous step. This is necessary
+        #  since the scan is older.
+        # time_before_scan = max(time_diff - scan_delay, 0)
+        # time_after_scan = max(scan_delay, 0)
+
         # Expand all the shadows
         for shadow in self.shadows:
-            shadow.expand(time_before_scan * self.max_vel)
+            # shadow.expand(time_before_scan * self.max_vel)
+            shadow.expand(time_diff * self.max_vel)
+        # Negatively buffer the FOV to account for delay
+        sensor_view_formal = sensor_view.buffer(-scan_delay * self.max_vel)
 
         # Intersect them with the current sensorview
         new_shadows = []
         for shadow in self.shadows:
-            intersections = polygon_diff(shadow.polygon, sensor_view)
+            intersections = polygon_diff(shadow.polygon, sensor_view_formal)
             if not intersections:
-                pass
+                new_shadows.append(shadow)
             else:
                 for intersection in intersections:
                     assert intersection.is_valid
@@ -259,13 +274,13 @@ class Occlusion_tracker:
         self.shadows = self.prune_shadows(new_shadows)
 
         # extend the shadows to account for the scan delay
-        for shadow in self.shadows:
-            shadow.expand(self.max_vel * time_after_scan)
+        # for shadow in self.shadows:
+        #     shadow.expand(self.max_vel * time_after_scan)
 
         # Update the accumulated occluded area
         self.accumulated_occluded_area = self.accumulated_occluded_area + self.get_currently_occluded_area()
 
-    def prune_shadows(self, shadows: List[Shadow]) -> List[Shadow]:
+    def prune_shadows(self, shadows: list[Shadow]) -> list[Shadow]:
         """Reduce the total number of obstacles by merging obstacles that overlap."""
         shadows = np.array(shadows)
         merged_shadows = []
@@ -302,7 +317,7 @@ class Occlusion_tracker:
         # Update the accumulated occluded area
         self.accumulated_occluded_area = self.accumulated_occluded_area + self.get_currently_occluded_area()
 
-    def get_dynamic_obstacles(self, scenario):
+    def get_dynamic_obstacles(self, scenario) -> list[DynamicObstacle]:
         dynamic_obstacles = []
 
         for shadow in self.shadows:

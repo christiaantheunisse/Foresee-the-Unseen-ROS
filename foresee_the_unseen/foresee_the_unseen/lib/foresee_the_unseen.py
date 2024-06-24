@@ -93,7 +93,7 @@ class ForeseeTheUnseen:
         self.logger = logger
         self.frequency = frequency
         self.throttle_duration = 3  # set the throttle duration for the logging when used with ROS
-        self.do_track_exec_time = False
+        self.do_track_exec_time = True
 
         if self.logger is not None:
             assert hasattr(self.logger, "info") and hasattr(
@@ -341,7 +341,7 @@ class ForeseeTheUnseen:
 
         # Update the tracker with the new sensor view and get the shadows and their prediction
         scan_delay = plan_start_time - self._field_of_view_stamp if self.configuration["do_account_scan_delay"] else 0.0
-        # self.logger.info(f"scan delay = {scan_delay * 1000:.0f} ms")
+        self.logger.info(f"scan delay = {scan_delay * 1000:.0f} ms")
         self.occ_track.update(field_of_view, self.planner_step, scan_delay)
         shadow_obstacles = self.occ_track.get_dynamic_obstacles(percieved_scenario)
         percieved_scenario.add_objects(shadow_obstacles)

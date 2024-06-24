@@ -69,10 +69,14 @@ def generate_launch_description():
         description="If true, save certain topics to disk",
     )
     rviz_file_launch_arg = DeclareLaunchArgument(
-        "rviz_file", default_value="medium_mode.rviz", description=".rviz file to use from the package directory rviz.",
+        "rviz_file",
+        default_value="medium_mode.rviz",
+        description=".rviz file to use from the package directory rviz.",
     )
     logging_launch_arg = DeclareLaunchArgument(
-        "logging", default_value="true", description="log the necessary topics for the experiments",
+        "logging",
+        default_value="true",
+        description="log the necessary topics for the experiments",
     )
 
     try:
@@ -117,12 +121,17 @@ def generate_launch_description():
         condition=IfCondition(NotSubstitution(EqualsSubstitution(slam_mode_robot, "disabled"))),
     )
 
-    planner_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathJoinSubstitution(
-                [FindPackageShare("racing_bot_bringup"), "launch", "partial_launches", "planner_launch.py"]
-            )
-        ),
+    planner_launch = GroupAction(
+        actions=[
+            SetRemap(src="/scan", dst="/scan/simulated", condition=IfCondition(use_obstacles)),  # FIXME: not working
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    PathJoinSubstitution(
+                        [FindPackageShare("racing_bot_bringup"), "launch", "partial_launches", "planner_launch.py"]
+                    )
+                ),
+            ),
+        ],
         condition=IfCondition(use_foresee),
     )
 

@@ -1,0 +1,15 @@
+/scan_simulate_node:
+  ros__parameters:
+    obstacle_frame: planner
+    scan_in_topic: scan
+    scan_out_topic: scan/simulated
+
+    do_filter_scan: true
+    environment_boundary: [-0.01, 0.01, 0.01, 0.01, 0.01, -0.01, -0.01, -0.01]
+    do_simulate_obstacles: true
+    namespaces: [obstacle_car1, obstacle_car2]
+    do_visualize: true
+    publish_odometry: true
+
+    obstacle_width: 0.1
+

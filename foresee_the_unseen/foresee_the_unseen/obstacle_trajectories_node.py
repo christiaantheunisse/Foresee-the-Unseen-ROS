@@ -118,7 +118,7 @@ class ObstacleTrajectoriesNode(Node):
             if not is_simulated:
                 initpose_log = (
                     f"The initial pose of `{namespace}` (id={vehicle_id}) is:\n\t"
-                    + f"start_pose:=\"{np.round([*init_state.position, init_state.orientation], 2).tolist()}\""
+                    + f'start_pose:="{np.round([*init_state.position, init_state.orientation], 2).tolist()}"'
                 )
                 self.get_logger().warn(initpose_log)
 
@@ -174,6 +174,16 @@ class ObstacleTrajectoriesNode(Node):
 
     def publish_initialpose_callback(self) -> None:
         """Publish the initialpose for the other robots until the execution starts."""
+        # Send a trajectory with only the initial position for the scan simulation node
+        for publisher, trajectory_cr in zip(self.trajectory_publishers, self.trajectories_cr, strict=True):
+            print(trajectory_cr)
+            trajectory_cr0 = TrajectoryCR(
+                initial_time_step=trajectory_cr.initial_time_step, state_list=trajectory_cr.state_list[0:1]
+            )
+            trajectory_msg = get_ros_trajectory_from_commonroad_trajectory(trajectory_cr0, self.get_clock().now(), 0)
+            publisher.publish(trajectory_msg)
+
+        # Send the intial pose for the SLAM node
         for publisher, state_planner in zip(self.initialpose_publishers, self.initialstates_commonroad):
             try:
                 # self.get_logger().info(str(state_planner))
