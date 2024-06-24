@@ -13,7 +13,7 @@
     range_stds_margin: 2.0
     angle_stds_margin: 2.0
     # fov state uncertainty z-values
-    do_correct_state_uncertainty: false
+    do_correct_state_uncertainty: true
     state_pos_stds_margin: 2.0
     state_orient_stds_margin: 2.0
 
@@ -22,7 +22,7 @@
     # Lidar subsample rate
     subsample_rate: 5
     # Filter the pointcloud measurements
-    do_filter_scan: false
+    do_filter_scan: true
     # environment_boundary: [0., 2.5, 5., 2.5, 5., -3., 0., -3.]
     # environment_boundary: [-9., 9., 9., 9., 9., -9., -9., -9.]
     environment_boundary: [-9., 9., 4., 9., 4., -9., -9., -9.]

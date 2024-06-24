@@ -826,6 +826,10 @@ class Planner:
             dist_time_min, dist_time_max, self.dist_along_points, self.orient_bw_points, self.waypoints_w_ego_pos
         )
         occupancies = []
+        if isinstance(width_offset_left, Scalar):
+            width_offset_left = np.full_like(dist_time_max, width_offset_left)
+        if isinstance(width_offset_right, Scalar):
+            width_offset_right = np.full_like(dist_time_max, width_offset_right)
         for idx, (xy_ths, left_width, right_width) in enumerate(
             zip(xy_ths_all_times, width_offset_left, width_offset_right)
         ):

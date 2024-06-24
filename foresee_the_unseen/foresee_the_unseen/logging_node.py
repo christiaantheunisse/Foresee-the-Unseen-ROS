@@ -37,6 +37,11 @@ class LoggingNode(Node):
                 TopicToStore(topic_name="/odometry/filtered", message_type=Odometry),
                 TopicToStore(topic_name="/obstacle_car1/odometry/filtered", message_type=Odometry),
                 TopicToStore(topic_name="/obstacle_car2/odometry/filtered", message_type=Odometry),
+                TopicToStore(topic_name="/obstacle_car3/odometry/filtered", message_type=Odometry),
+                TopicToStore(topic_name="/obstacle_car4/odometry/filtered", message_type=Odometry),
+                TopicToStore(topic_name="/obstacle_car5/odometry/filtered", message_type=Odometry),
+                TopicToStore(topic_name="/obstacle_car6/odometry/filtered", message_type=Odometry),
+                TopicToStore(topic_name="/obstacle_car7/odometry/filtered", message_type=Odometry),
                 TopicToStore(topic_name="/projected_occluded_area", message_type=ProjectedOccludedArea),
                 TopicToStore(topic_name="/goal_pose", message_type=PoseStamped),
             ]
@@ -46,7 +51,16 @@ class LoggingNode(Node):
         self.topic_names_to_search_for = ["*/odometry/filtered"]
         # hardcoded directory
         self.base_dir = "/home/christiaan/thesis/experiments_logging"
-        self.log_dir = create_log_directory(self.base_dir)
+        try:
+            loadpath = os.path.join(get_package_share_directory("foresee_the_unseen"), "resource", "commonroad_scenario.yaml")
+            with open(loadpath, "r") as f:
+                config = yaml.safe_load(f)
+            experiment_name = config["experiment_name"]
+        except (FileNotFoundError, KeyError) as ex:
+            self.get_logger().error("Could not obtain experiment name: " + str(ex))
+            experiment_name = None
+            
+        self.log_dir = create_log_directory(self.base_dir, experiment_name)
 
         callbacks = [self.create_callback(topic) for topic in topics_to_store]
         for topic, callback in zip(topics_to_store, callbacks):

@@ -541,7 +541,7 @@ class FOVNode(Node):
             orient_var = odometry_msg.pose.covariance[35]
             angle_errors += orient_var * self.st_orient_stds_margin
 
-        ranges = np.maximum(ranges - range_errors, 0)
+        ranges = np.maximum(ranges - range_errors, 0.1)
         angle_increment = np.abs(angles[1] - angles[0])
         angle_error_steps = np.ceil(angle_errors / angle_increment).astype(np.int_)
         angle_error_steps[mask_invalid] = 0

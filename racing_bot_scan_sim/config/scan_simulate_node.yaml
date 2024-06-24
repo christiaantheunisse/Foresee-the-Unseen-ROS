@@ -7,7 +7,7 @@
     do_filter_scan: true
     environment_boundary: [-0.01, 0.01, 0.01, 0.01, 0.01, -0.01, -0.01, -0.01]
     do_simulate_obstacles: true
-    namespaces: [obstacle_car1, obstacle_car2]
+    namespaces: [obstacle_car1, obstacle_car2, obstacle_car3, obstacle_car4, obstacle_car5, obstacle_car6, obstacle_car7]
     do_visualize: true
     publish_odometry: true
 

@@ -6,7 +6,7 @@ import math
 from collections import namedtuple
 import os
 import time
-from typing import Dict, Iterable, Any
+from typing import Dict, Iterable, Any, Optional
 from functools import reduce
 from operator import getitem
 
@@ -131,10 +131,10 @@ def make_unique_name(directory, counter: int = 0):
         return new_directory
 
 
-def create_log_directory(base_dir: str):
+def create_log_directory(base_dir: str, base_name: Optional[str] = None):
     if os.path.exists(base_dir):
         t = time.localtime()
-        current_time = time.strftime("%Y-%m-%d %A at %H.%Mu", t)
+        current_time = time.strftime("%Y-%m-%d %A at %H.%Mu", t) + (" " + base_name) if base_name is not None else ""
         log_dir = os.path.join(base_dir, current_time)
         log_dir = make_unique_name(log_dir)
         os.mkdir(log_dir)

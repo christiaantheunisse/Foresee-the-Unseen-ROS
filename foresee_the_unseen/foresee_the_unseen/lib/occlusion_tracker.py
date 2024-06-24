@@ -234,7 +234,7 @@ class Occlusion_tracker:
         if self.tracking_enabled == True:
             self.update_tracker(sensor_view, new_time_step, scan_delay)
         else:
-            self.reset(sensor_view, new_time_step)
+            self.reset(sensor_view, new_time_step, scan_delay)
 
     def update_tracker(self, sensor_view: ShapelyPolygon, new_time_step: int, scan_delay: float) -> None:
         """
@@ -252,19 +252,23 @@ class Occlusion_tracker:
         # time_before_scan = max(time_diff - scan_delay, 0)
         # time_after_scan = max(scan_delay, 0)
 
-        # Expand all the shadows
+        # for shadow in self.shadows:
+        #     shadow.expand(self.max_vel * time_before_scan)
+
+        # # Expand all the shadows
         for shadow in self.shadows:
-            # shadow.expand(time_before_scan * self.max_vel)
             shadow.expand(time_diff * self.max_vel)
-        # Negatively buffer the FOV to account for delay
+        # # Negatively buffer the FOV to account for delay
         sensor_view_formal = sensor_view.buffer(-scan_delay * self.max_vel)
+        # sensor_view_formal = sensor_view
 
         # Intersect them with the current sensorview
         new_shadows = []
         for shadow in self.shadows:
             intersections = polygon_diff(shadow.polygon, sensor_view_formal)
             if not intersections:
-                new_shadows.append(shadow)
+                # new_shadows.append(shadow)
+                continue
             else:
                 for intersection in intersections:
                     assert intersection.is_valid
@@ -274,8 +278,9 @@ class Occlusion_tracker:
         self.shadows = self.prune_shadows(new_shadows)
 
         # extend the shadows to account for the scan delay
-        # for shadow in self.shadows:
-        #     shadow.expand(self.max_vel * time_after_scan)
+        # if time_after_scan > 0.:
+        #     for shadow in self.shadows:
+        #         shadow.expand(self.max_vel * time_after_scan)
 
         # Update the accumulated occluded area
         self.accumulated_occluded_area = self.accumulated_occluded_area + self.get_currently_occluded_area()
@@ -292,14 +297,17 @@ class Occlusion_tracker:
             merged_shadows.extend([Shadow(polygon, lane) for polygon in merged_polygons])
         return merged_shadows
 
-    def reset(self, scan_delay: float, sensor_view=ShapelyPolygon(), new_time=0):
+    def reset(self, sensor_view: ShapelyPolygon, new_time_step: int, scan_delay: float):
         # Update the time
-        self.time_step = new_time
+        self.time_step = new_time_step
+
+        sensor_view_formal = sensor_view.buffer(-scan_delay * self.max_vel)
+
         # Reset all the shadows
         new_shadows = []
         for lane in self.lanes:
             lanelet_shapely = Lanelet2ShapelyPolygon(lane)
-            shadow_polygons = polygon_diff(lanelet_shapely, sensor_view)
+            shadow_polygons = polygon_diff(lanelet_shapely, sensor_view_formal)
             for shadow_polygon in shadow_polygons:
                 if shadow_polygon.area >= self.min_shadow_area:
                     # print(shadow_polygon.area)
@@ -311,8 +319,9 @@ class Occlusion_tracker:
         self.shadows = new_shadows
 
         # extend the shadows to account for the scan delay
-        for shadow in self.shadows:
-            shadow.expand(self.max_vel * scan_delay)
+        # if scan_delay > 0.:
+        #     for shadow in self.shadows:
+        #         shadow.expand(self.max_vel * scan_delay)
 
         # Update the accumulated occluded area
         self.accumulated_occluded_area = self.accumulated_occluded_area + self.get_currently_occluded_area()

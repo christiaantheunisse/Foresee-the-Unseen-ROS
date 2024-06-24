@@ -341,7 +341,8 @@ class ForeseeTheUnseen:
 
         # Update the tracker with the new sensor view and get the shadows and their prediction
         scan_delay = plan_start_time - self._field_of_view_stamp if self.configuration["do_account_scan_delay"] else 0.0
-        self.logger.info(f"scan delay = {scan_delay * 1000:.0f} ms")
+        # self.logger.info(f"plan_start_time = {plan_start_time - self._field_of_view_stamp * 1000:.0f} ms")
+        self.logger.info(f"scan delay = {(plan_start_time - self._field_of_view_stamp) * 1000:.0f} ms")
         self.occ_track.update(field_of_view, self.planner_step, scan_delay)
         shadow_obstacles = self.occ_track.get_dynamic_obstacles(percieved_scenario)
         percieved_scenario.add_objects(shadow_obstacles)
