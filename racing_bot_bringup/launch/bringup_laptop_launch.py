@@ -78,6 +78,11 @@ def generate_launch_description():
         default_value="true",
         description="log the necessary topics for the experiments",
     )
+    do_simulate_launch_arg = DeclareLaunchArgument(
+        "do_simulate",
+        default_value="false",
+        description="Simulate the odometry and lidar from the robot vehicle"
+    )
 
     try:
         bag_files_dir = os.environ["ROS_BAG_FILES_DIR"]
@@ -93,6 +98,7 @@ def generate_launch_description():
     store_topics = LaunchConfiguration("store_topics")
     rviz_file = LaunchConfiguration("rviz_file")
     do_log = LaunchConfiguration("logging")
+    do_simulate = LaunchConfiguration("do_simulate")
 
     do_use_sim_time = SetParameter(name="use_sim_time", value=play_rosbag)
 
@@ -183,6 +189,18 @@ def generate_launch_description():
         executable="logging_node",
         condition=IfCondition(do_log),
     )
+
+    scan_sensor_node = Node(
+        package="racing_bot_simulation",
+        executable="scan_sensor_node",
+        condition=IfCondition(do_simulate),
+    )
+    odom_sensor_node = Node(
+        package="racing_bot_simulation",
+        executable="odometry_sensor_node",
+        condition=IfCondition(do_simulate),
+    )
+
     return LaunchDescription(
         [
             # arguments
@@ -195,6 +213,7 @@ def generate_launch_description():
             store_topics_launch_arg,
             rviz_file_launch_arg,
             logging_launch_arg,
+            do_simulate_launch_arg,
             # parameters
             do_use_sim_time,
             # launch files
@@ -206,6 +225,8 @@ def generate_launch_description():
             rviz,
             store_topics_node,
             logging_node,
+            scan_sensor_node,
+            odom_sensor_node,
             # commands
             rosbag_player,
         ]

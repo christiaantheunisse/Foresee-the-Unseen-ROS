@@ -11,6 +11,7 @@ from ament_index_python import get_package_share_directory
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped
 from racing_bot_interfaces.msg import ProjectedOccludedArea
+from visualization_msgs.msg import MarkerArray
 
 from foresee_the_unseen.lib.helper_functions import create_log_directory
 
@@ -44,6 +45,7 @@ class LoggingNode(Node):
                 TopicToStore(topic_name="/obstacle_car7/odometry/filtered", message_type=Odometry),
                 TopicToStore(topic_name="/projected_occluded_area", message_type=ProjectedOccludedArea),
                 TopicToStore(topic_name="/goal_pose", message_type=PoseStamped),
+                TopicToStore(topic_name="/visualization/planner", message_type=MarkerArray),
             ]
         )
         assert self.unique_check(topics_to_store), "All topic names should be unique"

@@ -323,7 +323,7 @@ class FOVNode(Node):
         # Check if a new scan is available
         if self.scan_processed or self.current_scan is None or self.last_scan is None:
             return
-
+        
         # check if the transform for the last lidar point is already available, if not, wait for the next iteration
         msg = self.current_scan
         start_time = Time(seconds=msg.header.stamp.sec, nanoseconds=msg.header.stamp.nanosec)
