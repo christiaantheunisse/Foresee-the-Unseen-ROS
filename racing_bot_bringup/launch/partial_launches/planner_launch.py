@@ -73,7 +73,7 @@ def generate_launch_description():
                 "error_models_directory": PathJoinSubstitution(
                     [FindPackageShare("foresee_the_unseen"), "resource", "error_models"]
                 ),
-                "log_directory": PathJoinSubstitution(log_files_dir),
+                # "log_directory": PathJoinSubstitution(log_files_dir),
                 "foresee_the_unseen_yaml": PathJoinSubstitution(
                     [FindPackageShare("foresee_the_unseen"), "resource", "commonroad_scenario.yaml"]
                 ),

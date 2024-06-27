@@ -265,9 +265,9 @@ class FOVNode(Node):
         self.deskewed_scan_pub = self.create_publisher(PointCloud, self.deskewed_scan_topic, 1)
         self.environment_scan_pub = self.create_publisher(LaserScan, self.env_scan_topic, 1)
         self.fov_polygon_pub = self.create_publisher(PolygonStamped, self.fov_topic, 1)
-        if self.do_visualize:
-            self.filter_polygon_pub = self.create_publisher(Marker, self.env_polygon_topic, 1)
-            self.create_timer(5, self.visualize_filter_polygon_callback)
+        # if self.do_visualize:
+        #     self.filter_polygon_pub = self.create_publisher(Marker, self.env_polygon_topic, 1)
+        #     self.create_timer(5, self.visualize_filter_polygon_callback)
 
         # Running the laser process functions in a separate, single thread
         laser_scan_process = MutuallyExclusiveCallbackGroup()

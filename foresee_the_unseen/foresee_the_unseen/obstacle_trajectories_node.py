@@ -82,7 +82,7 @@ class ObstacleTrajectoriesNode(Node):
         self.initialpose_publishers: List[Publisher] = []
         self.initialstates_commonroad: List[InitialState] = []
         for namespace, param_dict in self.obstacle_config["obstacle_cars"].items():
-            vehicle_id, is_simulated = param_dict["id"], param_dict["simulated"]
+            vehicle_id = param_dict["id"]
             try:
                 vehicle_dict = fcd_dict[vehicle_id]
             except KeyError:
@@ -91,8 +91,6 @@ class ObstacleTrajectoriesNode(Node):
                 )
                 assert False
 
-            if is_simulated:
-                continue
             # get the waypoints
             waypoints = get_waypoints_from_vehicle_dict(
                 vehicle_dict, self.obstacle_config.get("waypoint_distance", 0.2)
@@ -115,12 +113,12 @@ class ObstacleTrajectoriesNode(Node):
 
             init_state = trajectory_commonroad.state_list[0]
             self.initialstates_commonroad.append(init_state)  # type: ignore
-            if not is_simulated:
-                initpose_log = (
-                    f"The initial pose of `{namespace}` (id={vehicle_id}) is:\n\t"
-                    + f'start_pose:="{np.round([*init_state.position, init_state.orientation], 2).tolist()}"'
-                )
-                self.get_logger().warn(initpose_log)
+            
+            initpose_log = (
+                f"The initial pose of `{namespace}` (id={vehicle_id}) is:\n\t"
+                + f'start_pose:="{np.round([*init_state.position, init_state.orientation], 2).tolist()}"'
+            )
+            self.get_logger().warn(initpose_log)
 
             if self.do_visualize:
                 markers += self.get_trajectory_marker(waypoints, namespace, next(colors))

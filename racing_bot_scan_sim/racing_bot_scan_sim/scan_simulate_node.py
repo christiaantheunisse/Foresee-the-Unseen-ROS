@@ -9,12 +9,13 @@ from collections import namedtuple
 from scipy.spatial.transform import Rotation, Slerp
 
 from builtin_interfaces.msg import Time as TimeMsg
-from std_msgs.msg import Header
+from std_msgs.msg import Header, ColorRGBA
 from sensor_msgs.msg import LaserScan
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Vector3, Point as PointMsg
 from nav_msgs.msg import Odometry
 from racing_bot_interfaces.msg import Trajectory
 from rcl_interfaces.msg import ParameterDescriptor
+from visualization_msgs.msg import Marker
 
 from tf2_ros import TransformException  # type: ignore
 from tf2_ros.buffer import Buffer
@@ -77,7 +78,7 @@ class ScanSimulateNode(Node):
         self.declare_parameter("scan_out_topic", "scan/simulated")
 
         self.declare_parameter("do_simulate_obstacles", True)
-        # self.declare_parameter("do_visualize", True)
+        self.declare_parameter("do_visualize", True)
         self.declare_parameter("do_filter_scan", True)
         self.declare_parameter(
             "environment_boundary",
@@ -98,7 +99,7 @@ class ScanSimulateNode(Node):
         self.scan_out_topic = self.get_parameter("scan_out_topic").get_parameter_value().string_value
 
         self.do_simulate_obstacles = self.get_parameter("do_simulate_obstacles").get_parameter_value().bool_value
-        # self.do_visualize = self.get_parameter("do_visualize").get_parameter_value().bool_value
+        self.do_visualize = self.get_parameter("do_visualize").get_parameter_value().bool_value
         self.do_filter_scan = self.get_parameter("do_filter_scan").get_parameter_value().bool_value
         self.env_polygon = np.array(
             self.get_parameter("environment_boundary").get_parameter_value().double_array_value
@@ -118,8 +119,17 @@ class ScanSimulateNode(Node):
             }
         self.scan_publisher = self.create_publisher(LaserScan, self.scan_out_topic, 5)
 
+        # publish environment polygon
+        if self.do_visualize:
+            self.filter_polygon_pub = self.create_publisher(Marker, "visualization/road_env_polygon", 1)
+            self.create_timer(5, self.visualize_filter_polygon_callback)
+
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
+
+    def visualize_filter_polygon_callback(self) -> None:
+        """Visualize the filter polygon"""
+        self.filter_polygon_pub.publish(self.points_to_linestrip_msg(self.env_polygon, "road env. filter"))
 
     def laserscan_callback(self, scan: LaserScan) -> None:
         """Callback function called for each received LaserScan message."""
@@ -237,6 +247,26 @@ class ScanSimulateNode(Node):
         scan.ranges = ranges.tolist()
 
         return scan
+    
+    def points_to_linestrip_msg(self, points: np.ndarray, namespace: str, marker_idx: int = 0) -> Marker:
+        """Convert a numpy array of points (shape = (N, 2)) to a ROS Marker message"""
+        header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.obstacle_frame)
+
+        point_type_list = [PointMsg(x=float(points[-1, 0]), y=float(points[-1, 1]))]
+        for x, y in points:
+            point_type_list.append(PointMsg(x=float(x), y=float(y)))
+
+        marker = Marker(
+            header=header,
+            id=marker_idx,
+            type=Marker.LINE_STRIP,
+            action=Marker.ADD,
+            points=point_type_list,
+            scale=Vector3(x=0.01),
+            color=ColorRGBA(b=1.0, a=1.0),
+            ns=namespace,
+        )
+        return marker
 
 
 def main(args=None):

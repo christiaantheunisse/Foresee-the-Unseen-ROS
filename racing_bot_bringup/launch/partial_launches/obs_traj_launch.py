@@ -85,6 +85,7 @@ def generate_launch_description():
         name="scan_simulate_node",
         parameters=[
             PathJoinSubstitution([FindPackageShare("racing_bot_scan_sim"), "config", "scan_simulate_node.yaml"]),
+            PathJoinSubstitution([FindPackageShare("foresee_the_unseen"), "resource", "ros_params_scenario.yaml"]),
         ]
     )
 
@@ -158,7 +159,7 @@ def generate_launch_description():
                     "publish_tf": NotSubstitution(use_ekf),
                     "namespace": namespace,
                     # "start_pose": str(start_pose_map),
-                    "minimum_time_interval": "2.0",
+                    "time_interval": "2.0",
                 }.items(),
             )
             slam_launches.append(slam_launch)
