@@ -1,18 +1,18 @@
 # import warnings
 # warnings.filterwarnings("error")
-import traceback
-import warnings
+# import traceback
+# import warnings
 import sys
 
 
-def warn_with_traceback(message, category, filename, lineno, file=None, line=None):
+# def warn_with_traceback(message, category, filename, lineno, file=None, line=None):
 
-    log = file if hasattr(file, "write") else sys.stderr
-    traceback.print_stack(file=log)
-    log.write(warnings.formatwarning(message, category, filename, lineno, line))
+#     log = file if hasattr(file, "write") else sys.stderr
+#     traceback.print_stack(file=log)
+#     log.write(warnings.formatwarning(message, category, filename, lineno, line))
 
 
-# warnings.showwarning = warn_with_traceback
+# # warnings.showwarning = warn_with_traceback
 
 import os
 import yaml
@@ -21,6 +21,7 @@ import copy
 import time
 import numpy as np
 from typing import Dict, Optional, Callable, List, Type, Tuple
+import csv
 
 from commonroad.common.file_reader import CommonRoadFileReader
 from commonroad.scenario.scenario import Scenario
@@ -55,6 +56,7 @@ from foresee_the_unseen.lib.helper_functions import (
     euler_from_quaternion,
     create_log_directory,
     recursive_getitem,
+    make_unique_name,
 )
 
 # to load the pickled error models
@@ -93,7 +95,8 @@ class ForeseeTheUnseen:
         self.logger = logger
         self.frequency = frequency
         self.throttle_duration = 3  # set the throttle duration for the logging when used with ROS
-        self.do_track_exec_time = True
+        self.do_track_exec_time = False
+        self.do_store_shadow_comp_time_to_csv = True
 
         if self.logger is not None:
             assert hasattr(self.logger, "info") and hasattr(
@@ -110,6 +113,21 @@ class ForeseeTheUnseen:
 
         # Make directory for logging
         self.log_dir = create_log_directory(log_dir) if log_dir is not None else None
+
+        # Open a csv file for the computation time tracking
+        if self.do_store_shadow_comp_time_to_csv:
+            t = time.localtime()
+            current_time_str = time.strftime("%Y-%m-%d %A at %H.%Mu", t)
+            extension = (
+                " " + self.configuration["experiment_name"] + ".csv"
+                if "experiment_name" in self.configuration
+                else ".csv"
+            )
+            csv_log_directory = "/home/christiaan/thesis/computation_time_csvs"
+            unique_csv_file_name = make_unique_name(os.path.join(csv_log_directory, current_time_str + extension))
+            self.open_exec_times_csv = open(unique_csv_file_name, "a", newline="")
+            self.csv_writer = csv.writer(self.open_exec_times_csv)
+            self.csv_has_header = False
 
         # Save the configuration to disk for logging purposes
         if self.log_dir is not None:
@@ -343,9 +361,14 @@ class ForeseeTheUnseen:
         scan_delay = plan_start_time - self._field_of_view_stamp if self.configuration["do_account_scan_delay"] else 0.0
         # self.logger.info(f"plan_start_time = {plan_start_time - self._field_of_view_stamp * 1000:.0f} ms")
         self.logger.info(f"scan delay = {(plan_start_time - self._field_of_view_stamp) * 1000:.0f} ms")
+
+        start_shadows_time = time.time()
         self.occ_track.update(field_of_view, self.planner_step, scan_delay)
         shadow_obstacles = self.occ_track.get_dynamic_obstacles(percieved_scenario)
         percieved_scenario.add_objects(shadow_obstacles)
+        if self.do_store_shadow_comp_time_to_csv:
+            self.csv_writer.writerow([time.time() - start_shadows_time])
+            self.open_exec_times_csv.flush()
 
         projected_occluded_area = self.occ_track.get_currently_occluded_area()
 
@@ -401,7 +424,14 @@ class ForeseeTheUnseen:
         if self.do_track_exec_time:
             execution_times["logging"] = time.time() - interm_time
             execution_times["total"] = time.time() - start_time
-            self.logger.info(str({key: round(value * 1000) for key, value in execution_times.items()}))
+            execution_times_ms = {key: round(value * 1000) for key, value in execution_times.items()}
+            self.logger.info(str(execution_times_ms))
+            # if not self.csv_has_header:
+            #     self.csv_writer.writerow(execution_times_ms.keys())
+            #     self.csv_has_header = True
+            # self.csv_writer.writerow(execution_times_ms.values())
+            # self.open_exec_times_csv.flush()
+
 
         if trajectory is not None:
             dt = 1 / self.frequency

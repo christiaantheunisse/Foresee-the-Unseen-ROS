@@ -159,6 +159,18 @@ class OdometrySensorNode(Node):
         msg.pose.pose.orientation.z = float(quaternion[2])
         msg.pose.pose.orientation.w = float(quaternion[3])
 
+        pos_std = 0.087  # [m]
+        pos_var = pos_std * pos_std
+        orient_std = 0.0054  # [rad]
+        orient_var = orient_std * orient_std
+
+        cov = np.zeros((6 ,6), dtype=np.float64)
+        cov[0,0] = pos_var
+        cov[1,1] = pos_var
+        cov[5,5] = orient_var
+
+        msg.pose.covariance = cov.flatten()
+
         msg.twist.twist.linear.x = float(linear_velocity)
         msg.twist.twist.angular.z = float(angular_velocity)
 

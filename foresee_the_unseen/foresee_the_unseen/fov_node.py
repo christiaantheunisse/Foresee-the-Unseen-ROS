@@ -589,7 +589,7 @@ class FOVNode(Node):
             max_step = FOVNode.approx_max_step(current_range, max_incl_angle, angle_incr)
             ranges[(idx + 1) % N] = min(current_range + max_step, ranges[(idx + 1) % N])
 
-        for idx in np.roll(np.arange(N), -start_idx)[::-1]:  # [start_idx-1, ..., 1, 0, N-1, N-2, ..., start_idx]
+        for idx in np.roll(np.arange(N), -start_idx-1)[::-1]:  # [start_idx-1, ..., 1, 0, N-1, N-2, ..., start_idx]
             current_range = ranges[idx]
             angle_incr = angles[idx] - angles[(idx - 1) % N] if idx != 0 else default_angle_incr
             max_step = FOVNode.approx_max_step(current_range, max_incl_angle, angle_incr)

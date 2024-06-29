@@ -220,7 +220,7 @@ class ScanSimulateNode(Node):
         ranges = np.array(scan.ranges)
         N = len(ranges)
         angles = scan.angle_min + np.arange(N) * scan.angle_increment
-        
+
         for namespace, trajectory in self.trajectories.items():
             # get the odometry of the simulated obstacle in the trajectory frame
             obstacle_odometry = self.get_obstacle_odometry(trajectory=trajectory, stamp=scan.header.stamp)
@@ -234,20 +234,18 @@ class ScanSimulateNode(Node):
             )
             obs_pose_laser = self.tf_buffer.transform(obs_pose_traj, scan.header.frame_id)
 
-
-
             # adjust the ranges at the angles in the direction of the obstacle if the obstacle should be visible
             obs_x, obs_y = obs_pose_laser.pose.position.x, obs_pose_laser.pose.position.y  # type: ignore
             obstacle_angle = np.arctan2(obs_y, obs_x)
-            obstacle_distance = np.hypot(obs_x, obs_y)
-            half_angle_width = np.arctan((self.obstacle_width/2) / obstacle_distance)
+            obstacle_distance = np.hypot(obs_x, obs_y) - np.sqrt(2) * self.obstacle_width / 2  # closest point rectangle
+            half_angle_width = np.arctan((self.obstacle_width / 2) / obstacle_distance)
             angle_mask = (angles >= obstacle_angle - half_angle_width) & (angles <= obstacle_angle + half_angle_width)
             ranges[angle_mask] = np.minimum(ranges[angle_mask], obstacle_distance)
 
         scan.ranges = ranges.tolist()
 
         return scan
-    
+
     def points_to_linestrip_msg(self, points: np.ndarray, namespace: str, marker_idx: int = 0) -> Marker:
         """Convert a numpy array of points (shape = (N, 2)) to a ROS Marker message"""
         header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self.obstacle_frame)
