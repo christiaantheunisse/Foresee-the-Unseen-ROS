@@ -728,22 +728,22 @@
   <lanelet id="23">
     <leftBound>
       <point>
-        <x>-0.5126889895443436</x>
-        <y>0.5126889895443436</y>
+        <x>-0.53</x>
+        <y>0.53</y>
       </point>
       <point>
-        <x>-0.5126889895443436</x>
-        <y>-0.5126889895443436</y>
+        <x>-0.53</x>
+        <y>-0.53</y>
       </point>
     </leftBound>
     <rightBound>
       <point>
-        <x>0.5126889895443436</x>
-        <y>0.5126889895443436</y>
+        <x>0.53</x>
+        <y>0.53</y>
       </point>
       <point>
-        <x>0.5126889895443436</x>
-        <y>-0.5126889895443436</y>
+        <x>0.53</x>
+        <y>-0.53</y>
       </point>
     </rightBound>
     <laneletType>unknown</laneletType>

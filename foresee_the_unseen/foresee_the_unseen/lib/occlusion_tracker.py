@@ -268,6 +268,7 @@ class Occlusion_tracker:
             intersections = polygon_diff(shadow.polygon, sensor_view_formal)
             if not intersections:
                 # new_shadows.append(shadow)
+                
                 continue
             else:
                 for intersection in intersections:

@@ -128,6 +128,18 @@ class OdometrySensorNode(Node):
         obs_orient = slerp(interp_factor).as_quat()
         pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w = obs_orient
 
+        pos_std = 0.087 / 2  # [m]
+        pos_var = pos_std * pos_std
+        orient_std = 0.0054 / 2  # [rad]
+        orient_var = orient_std * orient_std
+
+        cov = np.zeros((6, 6), dtype=np.float64)
+        cov[0, 0] = pos_var
+        cov[1, 1] = pos_var
+        cov[5, 5] = orient_var
+
+        odometry.pose.covariance = cov.flatten()
+
         # interpolate velocity
         if trajectory.velocities:
             next_velocity = trajectory.velocities[next_idx].linear.x  # type: ignore
@@ -164,10 +176,10 @@ class OdometrySensorNode(Node):
         orient_std = 0.0054  # [rad]
         orient_var = orient_std * orient_std
 
-        cov = np.zeros((6 ,6), dtype=np.float64)
-        cov[0,0] = pos_var
-        cov[1,1] = pos_var
-        cov[5,5] = orient_var
+        cov = np.zeros((6, 6), dtype=np.float64)
+        cov[0, 0] = pos_var
+        cov[1, 1] = pos_var
+        cov[5, 5] = orient_var
 
         msg.pose.covariance = cov.flatten()
 

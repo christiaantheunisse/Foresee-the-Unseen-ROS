@@ -1,10 +1,13 @@
-experiment_name: conv_scenario_164__foresee_pp
+experiment_name: east_west_scenario__foresee_pp
 
 # MAP TO PLANNER FRAME TRANSFORM
 # pose_of_planner_in_map_frame: [3.80, 0.13, -1.57079632679]  # when the start position is 0.0 in the map frame
-pose_of_planner_in_map_frame: [1.4, 0.3, -1.57079632679]  # when the start position is 0.0 in the map frame
+pose_of_planner_in_map_frame:                             # when the start position is 0.0 in the map frame
 
 #EGO_VEHICLE
+- 1.4
+- 0.3
+- -1.57079632679
 initial_state_x: 0.25
 initial_state_y: -3
 initial_state_orientation: 1.5708
@@ -73,12 +76,4 @@ obstacle_trajectories:
   obstacle_cars:
     # namespace: vehicle id in the .xml file
     obstacle_car1:
-      id: '201'
-    obstacle_car2:
-      id: '202'
-    obstacle_car3:
-      id: '203'
-    obstacle_car4:
-      id: '204'
-    obstacle_car5:
-      id: '205'
+      id: '1'

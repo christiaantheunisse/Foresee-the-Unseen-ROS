@@ -208,24 +208,6 @@ def generate_launch_description():
         ],
         condition=IfCondition(do_simulate),
     )
-    # scan_sensor_node = Node(
-    #     package="racing_bot_simulation",
-    #     executable="scan_sensor_node",
-    #     condition=IfCondition(do_simulate),
-    # )
-    # odom_sensor_node = Node(
-    #     package="racing_bot_simulation",
-    #     executable="odometry_sensor_node",
-    #     condition=IfCondition(do_simulate),
-    # )
-    # static_trans_base_link_to_laser = Node(
-    #     package="tf2_ros",
-    #     executable="static_transform_publisher",
-    #     arguments=("--x 0 --y 0 --z 0 --roll 0 --pitch 0 --yaw 3.14 --frame-id base_link --child-frame-id laser").split(
-    #         " "
-    #     ),
-    #     condition=IfCondition(do_simulate),
-    # )
 
     return LaunchDescription(
         [

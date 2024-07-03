@@ -3,10 +3,11 @@ import os
 import rclpy
 from rclpy.node import Node
 from rclpy.time import Time
-from typing import Callable, Optional
+from typing import Callable, Optional, Generator
 import numpy as np
 from collections import namedtuple
 from scipy.spatial.transform import Rotation, Slerp
+from math import inf
 
 from builtin_interfaces.msg import Time as TimeMsg
 from std_msgs.msg import Header, ColorRGBA
@@ -22,7 +23,7 @@ from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 from tf2_sensor_msgs import transform_points
 import tf2_geometry_msgs  # necessary to enable Buffer.transform
-
+from visualization_msgs.msg import MarkerArray
 
 Point = namedtuple("Point", "x y")
 
@@ -56,6 +57,61 @@ def matrices_from_cw_cvx_polygon(polygon):
         B.append(c)
 
     return np.array(A), np.array(B)
+
+
+def points_to_linesegments(points: np.ndarray) -> Generator[tuple[np.ndarray, np.ndarray], None, None]:
+    for p1, p2 in zip(points, np.roll(points, -1, axis=0)):
+        yield p1, p2
+
+
+def ray_intersection_fraction(ray_endpoint: np.ndarray, p1: np.ndarray, p2: np.ndarray) -> float:
+    """Calculates the fraction of the length along the ray where the intersections is, if any.
+
+    Arguments:
+        ray_endpoint -- the endpoint of the ray starting in the origin
+        p1 -- one point of the linesegment making up the obstacle edge
+        p2 -- the other point of the linesegment making up the obstacle edge
+
+    Returns:
+        None if no intersection and else the fraction [0, 1] of the length of the ray where the intersection is
+    """
+    assert p1.size == p2.size == ray_endpoint.size == 2 and p1.ndim == p2.ndim == ray_endpoint.ndim == 1
+    (x1, y1), (x2, y2), (x3, y3), (x4, y4) = [0, 0], ray_endpoint, p1, p2
+
+    denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+    sign = np.sign(denominator)
+    t_numerator = sign * ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4))
+    u_numerator = -sign * ((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3))
+    denominator *= sign
+    return t_numerator / denominator if 0 <= t_numerator <= denominator and 0 <= u_numerator <= denominator else inf
+
+
+def find_intersec_ranges(angles: np.ndarray, obstacle_points: np.ndarray, max_range: float) -> np.ndarray:
+    """Finds the angles and ranges for the rays that intersection with the obstacle
+
+    Arguments:
+        angles -- angles at which rays are send
+        obstacle_points -- corner points of the obstacle between which edges are drawn.
+        max_range -- maximum ray length
+
+    Returns:
+        the ranges which are either infinite or the intersection distance
+    """
+    # determine angle range to check
+    # obstacle_angles = np.array([np.arctan2(*np.flip(p)) for p in obstacle_points])
+
+    # mask_angles = (angles >= obstacle_angles.min()) & (angles <= obstacle_angles.max())
+    # angles_to_obstacle = angles[mask_angles]
+    # unit_vecs = np.vstack((np.cos(angles_to_obstacle), np.sin(angles_to_obstacle))).T
+    unit_vecs = np.vstack((np.cos(angles), np.sin(angles))).T
+    rays = unit_vecs * max_range
+
+    intersection_distances = []
+    for ray in rays:
+        intersection_distances.append(
+            np.min([ray_intersection_fraction(ray, A, B) for A, B in points_to_linesegments(obstacle_points)])
+        )
+    return np.array(intersection_distances) * max_range
 
 
 class ScanSimulateNode(Node):
@@ -93,6 +149,52 @@ class ScanSimulateNode(Node):
         self.declare_parameter("publish_odometry", True)
         self.declare_parameter("obstacle_width", 0.1)
 
+        road_width = 0.53
+
+        ### Experiment 1: parked cars
+        # distance_from_road = 0.15
+        # length = 0.25
+        # width = 0.15
+        # distance_from_intersection = road_width + 0.5
+
+        ### Experiment 2: big building
+        distance_from_road = 10.0
+        length = 3.0
+        width = 3.0
+        distance_from_intersection = road_width + distance_from_road
+
+        static_obstacle = np.array(
+            [
+                [road_width + distance_from_road, -distance_from_intersection],
+                [road_width + distance_from_road + width, -distance_from_intersection],
+                [road_width + distance_from_road + width, -(distance_from_intersection + length)],
+                [road_width + distance_from_road, -(distance_from_intersection + length)],
+            ]
+        )
+        # static_obstacle2 = np.array(
+        #     [
+        #         [road_width + distance_from_road, -(distance_from_intersection + length + gap)],
+        #         [road_width + distance_from_road + width, -(distance_from_intersection + length + gap)],
+        #         [road_width + distance_from_road + width, -(distance_from_intersection + length + gap + length)],
+        #         [road_width + distance_from_road, -(distance_from_intersection + length + gap + length)],
+        #     ]
+        # )
+        # static_obstacle3 = static_obstacle2 - np.array([0, length + 0.1])
+        # static_obstacle4 = static_obstacle3 - np.array([0, length + 0.1])
+
+        self.declare_parameter(
+            "static_obstacle",
+            static_obstacle.flatten().tolist(),
+            ParameterDescriptor(
+                description="Static obstacle described by a list of consecutive corner points, which does not have to"
+                " be convex: [x1, y1, x2, y2, ...]"
+            ),
+        )
+        self.declare_parameter("only_visualize_static_obstacle", True)
+        # self.declare_parameter("static_obstacle2", static_obstacle2.flatten().tolist())
+        # self.declare_parameter("static_obstacle3", static_obstacle3.flatten().tolist())
+        # self.declare_parameter("static_obstacle4", static_obstacle4.flatten().tolist())
+
         self.obstacle_frame = self.get_parameter("obstacle_frame").get_parameter_value().string_value
         self.scan_in_topic = self.get_parameter("scan_in_topic").get_parameter_value().string_value
         self.namespaces = self.get_parameter("namespaces").get_parameter_value().string_array_value
@@ -107,6 +209,12 @@ class ScanSimulateNode(Node):
         self.laser_filter_matrices = matrices_from_cw_cvx_polygon(self.env_polygon)
         self.do_publish_odometry = self.get_parameter("publish_odometry").get_parameter_value().bool_value
         self.obstacle_width = self.get_parameter("obstacle_width").get_parameter_value().double_value
+
+        self.static_obstacles = []
+        self.static_obstacles.append(
+            np.array(self.get_parameter(f"static_obstacle").get_parameter_value().double_array_value).reshape(-1, 2)
+        )
+        self.only_visual_static_obs = self.get_parameter("only_visualize_static_obstacle").get_parameter_value().bool_value
 
         self.trajectories: dict[str, Trajectory] = {}
 
@@ -126,6 +234,33 @@ class ScanSimulateNode(Node):
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
+
+        # visualize static obstacles
+        self.obstacles_visual_publisher = self.create_publisher(MarkerArray, "visualization/static_obstacles", 5)
+        self.create_timer(3, self.static_obstacles_visualization_callback)
+
+    def static_obstacles_visualization_callback(self) -> None:
+        markers = []
+        header = Header(stamp=self.get_clock().now().to_msg(), frame_id="planner")
+        for idx, static_obstacle in enumerate(self.static_obstacles):
+            x, y = static_obstacle[-1]
+            point_type_list = [PointMsg(x=float(x), y=float(y))]
+            for x, y in static_obstacle:
+                point_type_list.append(PointMsg(x=float(x), y=float(y)))
+
+            marker = Marker(
+                header=header,
+                id=idx,
+                type=Marker.LINE_STRIP,
+                action=Marker.ADD,
+                points=point_type_list,
+                scale=Vector3(x=0.03),
+                color=ColorRGBA(r=0.6, g=0.6, b=0.6, a=1.0),
+                ns="static obstacles",
+            )
+            markers.append(marker)
+
+        self.obstacles_visual_publisher.publish(MarkerArray(markers=markers))
 
     def visualize_filter_polygon_callback(self) -> None:
         """Visualize the filter polygon"""
@@ -242,9 +377,26 @@ class ScanSimulateNode(Node):
             angle_mask = (angles >= obstacle_angle - half_angle_width) & (angles <= obstacle_angle + half_angle_width)
             ranges[angle_mask] = np.minimum(ranges[angle_mask], obstacle_distance)
 
-        scan.ranges = ranges.tolist()
+        if not self.only_visual_static_obs:
+            for obstacle_points in self.get_obstacles_in_laserframe(scan.header.frame_id):
+                intersec_ranges = find_intersec_ranges(angles, obstacle_points, scan.range_max)
+                ranges = np.minimum(intersec_ranges, ranges)
 
+        scan.ranges = ranges.tolist()
         return scan
+
+    def get_obstacles_in_laserframe(self, laser_frame: str) -> list[np.ndarray]:
+        static_obstacles_laser = []
+        # self.get_logger().info(f"{self.static_obstacles=}")
+        for obs_points in self.static_obstacles:
+            transform = self.tf_buffer.lookup_transform(laser_frame, "planner", Time())
+            obs_points_3D = np.hstack((obs_points, np.zeros((len(obs_points), 1))))
+            # self.get_logger().info(f"{obs_points_3D=}")
+            static_obstacles_laser.append(transform_points(obs_points_3D, transform.transform)[:, :2])
+
+        # self.get_logger().info(f"{static_obstacles_laser=}")
+
+        return static_obstacles_laser
 
     def points_to_linestrip_msg(self, points: np.ndarray, namespace: str, marker_idx: int = 0) -> Marker:
         """Convert a numpy array of points (shape = (N, 2)) to a ROS Marker message"""

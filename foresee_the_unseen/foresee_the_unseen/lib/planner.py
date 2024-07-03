@@ -112,6 +112,7 @@ class Planner:
         self.goal_margin = goal_margin
 
         self.goal_reached = False
+        self.ignored_waypoints = 0
 
         self.apply_error_models = apply_error_models
         if self.apply_error_models:
@@ -161,7 +162,7 @@ class Planner:
 
     @property
     def passed_waypoints(self) -> int:
-        return self._passed_waypoints
+        return self._passed_waypoints - self.ignored_waypoints  # type: ignore
 
     @passed_waypoints.setter
     def passed_waypoints(self, value: int) -> None:
@@ -219,9 +220,17 @@ class Planner:
         return (veh_front_l, veh_right_w, veh_back_l, veh_left_w)
 
     def _set_waypoints_variables(self) -> None:
+        self.ignored_waypoints = 0
         self._waypoints_w_ego_pos = np.insert(
-            self.waypoints, self.passed_waypoints, self.initial_state.position, axis=0
+            self.waypoints, self.passed_waypoints, self.initial_state.position, axis=0  # type: ignore
         )
+        # if the previous waypoint is still ahead, don't include it
+        direction_vector = self.waypoints[self.passed_waypoints-1] - self.initial_state.position
+        angle_to_prev_point = np.arctan2(*np.flip(direction_vector))
+        angle_diff_to_prev_point = abs(self.normalize_angles(angle_to_prev_point - self.initial_state.orientation))
+        if angle_diff_to_prev_point < np.pi/2:  # previous point is still ahead
+            self._waypoints_w_ego_pos = np.delete(self._waypoints_w_ego_pos, self.passed_waypoints - 1, axis=0)
+            self.ignored_waypoints = 1
         diff_points = np.diff(self._waypoints_w_ego_pos, axis=0)
         dist_bw_points = np.hypot(*diff_points.T)
         self._dist_along_points = np.hstack(([0], np.cumsum(dist_bw_points)))
@@ -251,7 +260,9 @@ class Planner:
             self.goal_reached = True
 
     def update_passed_waypoints(self) -> None:
-        for waypoint in self.waypoints[self.passed_waypoints :]:
+        for waypoint in self.waypoints[
+            self._passed_waypoints :
+        ]:  # Don't use the property here, because this might subtract 1
             direction_vector = waypoint - self.initial_state.position
             angle_to_next_point = np.arctan2(*np.flip(direction_vector))
             angle_diff_to_next_point = abs(
@@ -630,6 +641,7 @@ class Planner:
         # TODO: Assert statement below was added for reason, but keep throwing errors when the robot is close to its
         #  goal position
         # assert not 0 in idcs_in_range, "The first waypoint lies within the predicted occupancy."
+
         # return an array with 3d vectors consisting of x-coordinate, y-coordinate and yaw angle (theta (th)) for all the
         #  points within the distance range where the orientation changes.
         xyth_start, xyth_end = (
@@ -653,6 +665,7 @@ class Planner:
     ) -> Polygon:
         """Converts the points on the path with an orientation to a polygon representing the occupancy of the vehicle."""
         xy, th = points_with_orient[:, :2], points_with_orient[:, 2]
+        th = self.unnormalize_angles(th)
         # take the average angle for the intermediate points to account for a nod in the polygon. The width is also bigger
         th_diffs = th[2:] - th[1:-1]
         th[1:-1] += th_diffs / 2
@@ -820,11 +833,14 @@ class Planner:
 
         # Calculate the polygons representing the occupancies for the ranges of distance along the centerline of the
         #  path which represents the occupancy at each time step
-        dist_time_min = np.maximum(dist_time_min, 1e-4)
-        dist_time_max = np.maximum(dist_time_max, 1e-4)
+        # dist_time_min = np.maximum(dist_time_min, 1e-4)
+        # dist_time_max = np.maximum(dist_time_max, 1e-4)
         xy_ths_all_times = self.get_xy_ths_for_range(
             dist_time_min, dist_time_max, self.dist_along_points, self.orient_bw_points, self.waypoints_w_ego_pos
         )
+        # self.logger.info(
+        #     f"\n\n{self._passed_waypoints=}\n\n{self.dist_along_points=}\n\n{self.orient_bw_points=}\n\n{self.waypoints_w_ego_pos=}"
+        # )
         occupancies = []
         if isinstance(width_offset_left, Scalar):
             width_offset_left = np.full_like(dist_time_max, width_offset_left)

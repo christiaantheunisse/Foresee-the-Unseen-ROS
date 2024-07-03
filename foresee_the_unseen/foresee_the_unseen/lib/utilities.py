@@ -70,7 +70,7 @@ def Lanelet2ShapelyPolygon(lanelet):
     return lanelet_shapely
 
 
-def polygon_diff(polygonA, polygonB):
+def polygon_diff(polygonA: ShapelyPolygon, polygonB: ShapelyMultiPolygon):
     difference_undef = polygonA.difference(polygonB)
     polygon_list = filter_polygons(difference_undef)
     return polygon_list
@@ -108,6 +108,10 @@ def filter_polygons(input):
                 if element != polygonEmpty:
                     assert element.is_valid
                     polygon_list.append(element)
+            else:
+                assert False, f"Type not found, so ignoring shape in GeometryCollection: {type(input)=}\n{input=}"
+    else:
+        assert False, f"Type not found, so ignoring shape in input: {type(input)=}\n{input=}"
     return polygon_list
 
 
