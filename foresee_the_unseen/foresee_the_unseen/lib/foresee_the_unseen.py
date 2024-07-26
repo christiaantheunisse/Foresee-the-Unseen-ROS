@@ -96,7 +96,7 @@ class ForeseeTheUnseen:
         self.frequency = frequency
         self.throttle_duration = 3  # set the throttle duration for the logging when used with ROS
         self.do_track_exec_time = False
-        self.do_store_shadow_comp_time_to_csv = True
+        self.do_store_shadow_comp_time_to_csv = False
 
         if self.logger is not None:
             assert hasattr(self.logger, "info") and hasattr(
@@ -234,6 +234,8 @@ class ForeseeTheUnseen:
             logger=self.logger,
             max_dist_corner_smoothing=self.configuration["max_dist_corner_smoothing"],
             apply_error_models=self.configuration["apply_error_models"],
+            do_local_error_in_planner=self.configuration.get("do_local_error_in_planner", True),
+            do_traject_error_in_planner=self.configuration.get("do_traject_error_in_planner", True),
             localization_position_std=recursive_getitem(
                 self.configuration,
                 ["localization_standard_deviations", "position"],

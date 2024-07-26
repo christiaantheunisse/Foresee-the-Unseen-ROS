@@ -339,7 +339,7 @@ class FOVNode(Node):
                 return
 
             filtered_scan = self.filter_laserscan(new_scan) if self.do_filter_scan else new_scan
-            ranges, angles, mask_invalid = self.laserscan_to_ranges_angles(
+            ranges, angles, mask_invalid = self.laserscan_to_ranges_angles( 
                 filtered_scan, self.view_range, self.subsample_rate
             )
             if self.do_apply_error_models or self.do_correct_state_unc:
@@ -375,7 +375,7 @@ class FOVNode(Node):
             if self.do_visualize:
                 # publish the deskewed pointcloud
                 points = self.ranges_angles_to_points(ranges_corr, angles_corr)[~mask_invalid]
-                points_deskewed, start_time = self.deskew_laserscan_interpolate_tf(filtered_scan, points)
+                # points_deskewed, start_time = self.deskew_laserscan_interpolate_tf(filtered_scan, points)
                 # pc_deskewed_msg = self.points_to_pointcloud_msg(points_deskewed, start_time)
                 pc_deskewed_msg = self.points_to_pointcloud_msg(fov_points_deskewed, start_time)
                 self.deskewed_scan_pub.publish(pc_deskewed_msg)

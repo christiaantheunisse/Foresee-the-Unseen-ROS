@@ -23,28 +23,23 @@
     subsample_rate: 5
     # Filter the pointcloud measurements
     do_filter_scan: false
+    # environment_boundary: [1.0, 0.0, 2.0, 0.0, 2.0, -0.7, 1.0, -0.7]
 
 /scan_simulate_node:
   ros__parameters:
     do_filter_scan: true
     # environment_boundary: [-0.01, 0.01, 0.01, 0.01, 0.01, -0.01, -0.01, -0.01]
     # environment_boundary: [-5.3, -0.5, -5.3, 0.5, -0.5, 3.0, 0.5, 3.0, 5.3, 0.5, 5.3, -0.5, 0.5, -1.5, -0.5, -1.5]
-    environment_boundary:
-    - -5.3
-    - -0.5
-    - -5.3
-    - 0.5
-    - -0.5
-    - 1.0
-    - 0.5
-    - 1.0
-    - 5.3
-    - 0.5
-    - 5.3
-    - -0.5
-    - 0.5
-    - -1.5
-    - -0.5
-    - -1.5
+    environment_boundary: [0.9, -2.0, 0.0, -2.0, 0.0, 0.6, 0.9, 0.6]
     namespaces:
     - a
+    static_obstacle:
+    - 0.68
+    - -1.03
+    - 0.8300000000000001
+    - -1.03
+    - 0.8300000000000001
+    - -1.28
+    - 0.68
+    - -1.28
+    only_visualize_static_obstacle: true

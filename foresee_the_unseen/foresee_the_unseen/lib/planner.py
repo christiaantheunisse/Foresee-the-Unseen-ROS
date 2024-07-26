@@ -78,6 +78,8 @@ class Planner:
         dt: float,
         min_dist_waypoint: float,
         apply_error_models: bool,
+        do_local_error_in_planner: bool,
+        do_traject_error_in_planner: bool,
         logger: Type[Logger] = PrintLogger,
         max_dist_corner_smoothing: float = 0.1,
         goal_margin: float = 0.5,
@@ -115,6 +117,8 @@ class Planner:
         self.ignored_waypoints = 0
 
         self.apply_error_models = apply_error_models
+        self.do_local_error_in_planner = do_local_error_in_planner
+        self.do_traject_error_in_planner = do_traject_error_in_planner        
         if self.apply_error_models:
             assert localization_position_std is not None
             self.loc_position_std = localization_position_std
@@ -730,31 +734,37 @@ class Planner:
         acceleration_profile = np.diff(np.insert(velocity_profile, 0, self.initial_state.velocity)) / self.dt
 
         # the localization position and orientation error are scalar
-        loc_pos_error = self.loc_position_std * self.z_values["localization_position"]  # type: ignore
-        loc_orient_error = self.loc_orientation_std * self.z_values["localization_orientation"]  # type: ignore
+        if self.do_local_error_in_planner:
+            loc_pos_error = self.loc_position_std * self.z_values["localization_position"]  # type: ignore
+            loc_orient_error = self.loc_orientation_std * self.z_values["localization_orientation"]  # type: ignore
+        else:
+            loc_pos_error, loc_orient_error = 0.0, 0.0
 
-        # the trajectory longitudinal error rate needs to be integrated
-        acc_vel_params = np.vstack((acceleration_profile, velocity_profile)).T
-        dt_model = self.long_error_rate_model.model_info.get("dt", 1 / 30)  # TODO: make sure the model has this value
-        long_rate_mean, long_rate_std = self.long_error_rate_model.get_mean_std(
-            acc_vel_params, curvature=self.max_curvature_waypoints
-        )
-        mask_zero_vel = np.abs(velocity_profile) < 1e-6
-        long_rate_mean[mask_zero_vel], long_rate_std[mask_zero_vel] = 0.0, 0.0
-        # scale the std to account for a different rate (interval for the differentiation/integration)
-        long_rate_std_scaled = np.sqrt(dt_model / self.dt) * long_rate_std
-        long_mean = np.cumsum(long_rate_mean * self.dt)
-        long_std = np.sqrt(np.cumsum(long_rate_std_scaled**2 * self.dt**2))
-        traj_long_error_lower = long_mean - self.z_values["trajectory_longitudinal_rate"] * long_std
-        traj_long_error_upper = long_mean + self.z_values["trajectory_longitudinal_rate"] * long_std
-        traj_long_error = np.vstack((traj_long_error_lower, traj_long_error_upper)).T
+        if self.do_traject_error_in_planner:
+            # the trajectory longitudinal error rate needs to be integrated
+            acc_vel_params = np.vstack((acceleration_profile, velocity_profile)).T
+            dt_model = self.long_error_rate_model.model_info.get("dt", 1 / 30)  # TODO: make sure the model has this value
+            long_rate_mean, long_rate_std = self.long_error_rate_model.get_mean_std(
+                acc_vel_params, curvature=self.max_curvature_waypoints
+            )
+            mask_zero_vel = np.abs(velocity_profile) < 1e-6
+            long_rate_mean[mask_zero_vel], long_rate_std[mask_zero_vel] = 0.0, 0.0
+            # scale the std to account for a different rate (interval for the differentiation/integration)
+            long_rate_std_scaled = np.sqrt(dt_model / self.dt) * long_rate_std
+            long_mean = np.cumsum(long_rate_mean * self.dt)
+            long_std = np.sqrt(np.cumsum(long_rate_std_scaled**2 * self.dt**2))
+            traj_long_error_lower = long_mean - self.z_values["trajectory_longitudinal_rate"] * long_std
+            traj_long_error_upper = long_mean + self.z_values["trajectory_longitudinal_rate"] * long_std
+            traj_long_error = np.vstack((traj_long_error_lower, traj_long_error_upper)).T
 
-        # the trajectory lateral and orientation error
-        curv_vel_params = np.vstack((np.full_like(velocity_profile, self.max_curvature_waypoints), velocity_profile)).T
-        traj_lat_error = self.lat_error_model(curv_vel_params, stds_margin=self.z_values["trajectory_lateral"])
-        traj_orient_error = self.orient_error_model(
-            curv_vel_params, stds_margin=self.z_values["trajectory_orientation"]
-        )
+            # the trajectory lateral and orientation error
+            curv_vel_params = np.vstack((np.full_like(velocity_profile, self.max_curvature_waypoints), velocity_profile)).T
+            traj_lat_error = self.lat_error_model(curv_vel_params, stds_margin=self.z_values["trajectory_lateral"])
+            traj_orient_error = self.orient_error_model(
+                curv_vel_params, stds_margin=self.z_values["trajectory_orientation"]
+            )
+        else:
+            traj_long_error, traj_lat_error, traj_orient_error = 0.0, 0.0, 0.0
 
         return (
             loc_pos_error,

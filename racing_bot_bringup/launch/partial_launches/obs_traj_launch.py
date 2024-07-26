@@ -139,6 +139,8 @@ def generate_launch_description():
         # launch the slam node for each robot and publish the start position
         slam_launches, initialpose_publishers = [], []
         # for namespace, start_pose_planner in zip(obstacle_namespaces, start_poses):
+        if len(obstacle_namespaces) > 2:
+            obstacle_namespaces = list(obstacle_namespaces)[:2]
         for namespace in obstacle_namespaces:
             # convert start pose in `planner` frame to `map` frame
             # start_xy = np.array([start_pose_planner[0], start_pose_planner[1], 1])

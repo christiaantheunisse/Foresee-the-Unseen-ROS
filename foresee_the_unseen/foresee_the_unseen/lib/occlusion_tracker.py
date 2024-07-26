@@ -128,8 +128,8 @@ class Shadow:
 
         if smallest_projection > 0:  # if the starting point of the occlusion is not the starting point of the lane
             sub_center_line = substring(self.center_line, 0, smallest_projection)
-            left_side = sub_center_line.parallel_offset(2.8, "left")  # FIXME: hardcoded maximum lane width
-            right_side = sub_center_line.parallel_offset(2.8, "right")  # FIXME: hardcoded maximum lane width
+            left_side = sub_center_line.parallel_offset(0.26, "left")  # FIXME: hardcoded maximum lane width
+            right_side = sub_center_line.parallel_offset(0.26, "right")  # FIXME: hardcoded maximum lane width
             Area_to_substract = ShapelyPolygon(
                 # The orientation of the left_side and right_side seems to be similar, so one of them needs to be reversed.
                 #  At least in some situations, this causes and error so for now, I'll reverse one of them
