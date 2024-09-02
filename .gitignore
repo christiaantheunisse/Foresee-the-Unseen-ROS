@@ -10,3 +10,5 @@ foresee_the_unseen/foresee_the_unseen/publish_trajectory_node.py
 # racing_bot_encoder/config/robot_params.yaml
 # racing_bot_odometry/config/robot_params.yaml
 # racing_bot_trajectory_follower/config/robot_params.yaml
+
+racing_bot_control

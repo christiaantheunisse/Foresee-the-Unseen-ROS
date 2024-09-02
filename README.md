@@ -1,15 +1,25 @@
 # Foresee the Unseen on a real robot
 
-The main goal is to transfer the algorithm from the paper *Foresee The Unseen: Sequential Reasoning about
-Hidden Obstacles for Safe Driving* ([IEEE](https://ieeexplore.ieee.org/document/9827171) / [open access link](https://www.diva-portal.org/smash/get/diva2:1635726/FULLTEXT01.pdf)) to a real robot, take the necessary measures against sensor noises and delays, and to verify its performance in the real world. The goal of this algorithm, which is further referred to as **Foresee the Unseen** is to safely, but not overconservatively deal with occlusions encountered by autonomous vehicles. The algorithm is implemented in ROS and this repository also contains all the code to get control the robot. The picture below shows the robots on which the software is usable.
+This repo contains the code used on the mobile robot for the experiments in [paper title](media/paper.pdf). The goal was to implement a set-based, occlusion-aware trajectory planner that can handle the imperfect data from a real robot. Error models were developed to properly account for each error as described in the paper. The code for the error models can be found [here](https://github.com/christiaantheunisse/Foresee-Error-Models.git). The planner uses the same reasoning as [[1]](https://ieeexplore.ieee.org/document/9827171) and their implementation served as a starting point for the `foresee_the_unseen` package.
 
-The 'autonomous vehicle'             |  The obstacle cars
+[1] : Sánchez, J. M. G., Nyberg, T., Pek, C., Tumova, J., & Törngren, M. (2022, June). Foresee the unseen: Sequential reasoning about hidden obstacles for safe driving. In 2022 IEEE Intelligent Vehicles Symposium (IV) (pp. 255-264). IEEE. [link](https://ieeexplore.ieee.org/abstract/document/9827171/)
+
+The mobile robots used in the experiments are visualized below
+
+The ego                    |  The obstacle vehicles
 :-------------------------:|:-------------------------:
 ![](media/racing_bot.jpg)  |  ![](media/obstacle_robots.jpg)
 
-The video below shows a preliminairy result of the implemented algorithm.
+The video below shows a RVIZ visualization of the implemented algorithm.
 
 ![Algorithm .gif](media/rviz_visualization.gif)
+
+## Installation
+
+This repo should be put in the source folder of a ROS workspace. The robots used ROS2 Iron.
+
+    cd ros_ws/src  # or some similar path into your ROS workspace
+    git clone <this-repo-ssh-or-html> .  # clone without the repository directory
 
 ## Description of the packages
 A short description of all the packages in this repo is given below. The code was written as part of my graduation internship at ALTEN and most of the code used for the low-level control of the robot was written by Catuja Smit.
@@ -19,7 +29,7 @@ A short description of all the packages in this repo is given below. The code wa
 
 This code package implements the Foresee the Unseen algorithm and contains a few nodes, which are all related to the algorithm or testing of it:
 
-- `fov_node.py`: This node constructs the field of view (FOV) used in the algorithm. It receives the `LaserScan` messages from the Lidar sensor and outputs a `StampedPolygon` describing the FOV. The procedure is further described in the [thesis paper]().
+- `fov_node.py`: This node constructs the field of view (FOV) used in the algorithm. It receives the `LaserScan` messages from the Lidar sensor and outputs a `StampedPolygon` describing the FOV. The procedure is further described in the [paper](media/paper.pdf).
 - `planner_node.py`: The most important node that connects the code from the algorithm to the ROS part. Initially the goal was to also setup a simple simulation, so the code for the algorithm (in the folder `lib`) does import any ROS packages.
 - `obstacle_trajectories.py`: This node publishes the trajectories for all the obstacle cars used in the experiments, both simulated and real cars.
 - `logging_node.py`/`topics_to_disk_node.py`: Are basically the same and can subscribe to multiple topics and write the messages to disk.

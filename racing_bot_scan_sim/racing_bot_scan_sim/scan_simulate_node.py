@@ -382,6 +382,7 @@ class ScanSimulateNode(Node):
                 intersec_ranges = find_intersec_ranges(angles, obstacle_points, scan.range_max)
                 ranges = np.minimum(intersec_ranges, ranges)
 
+        ranges = np.maximum(ranges, 0.16)
         scan.ranges = ranges.tolist()
         return scan
 
